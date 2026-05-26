@@ -10,38 +10,39 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Menu, X, ChevronDown, Activity, Globe, ShoppingCart, Truck, UtensilsCrossed } from "lucide-react";
+import { useLanguage, Language } from "@/lib/translations";
 
-const languages = [
+const languages: { code: Language; label: string }[] = [
   { code: "EN", label: "English" },
   { code: "UA", label: "Українська" },
   { code: "DE", label: "Deutsch" },
 ];
 
-const solutions = [
-  {
-    icon: ShoppingCart,
-    name: "E-commerce",
-    description: "Track hidden fees, refund leaks, and ad spend inefficiencies across your online store.",
-    href: "#calculator",
-  },
-  {
-    icon: Truck,
-    name: "Logistics",
-    description: "Monitor fuel costs, route inefficiencies, and delivery delays eating into margins.",
-    href: "#calculator",
-  },
-  {
-    icon: UtensilsCrossed,
-    name: "Hospitality",
-    description: "Detect food waste, labor overruns, and booking channel fees in restaurants and hotels.",
-    href: "#calculator",
-  },
-];
-
 export function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [currentLang, setCurrentLang] = useState("EN");
+  const { language, setLanguage, t } = useLanguage();
+
+  const solutions = [
+    {
+      icon: ShoppingCart,
+      name: t.ecommerce,
+      description: t.ecommerceDesc,
+      href: "#calculator",
+    },
+    {
+      icon: Truck,
+      name: t.logistics,
+      description: t.logisticsDesc,
+      href: "#calculator",
+    },
+    {
+      icon: UtensilsCrossed,
+      name: t.hospitality,
+      description: t.hospitalityDesc,
+      href: "#calculator",
+    },
+  ];
 
   useEffect(() => {
     const handleScroll = () => {
@@ -55,7 +56,7 @@ export function Navbar() {
     <nav
       className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
         isScrolled
-          ? "glass py-3"
+          ? "bg-background/95 backdrop-blur-xl border-b border-border/50 py-3"
           : "bg-transparent py-4"
       }`}
     >
@@ -74,10 +75,10 @@ export function Navbar() {
           {/* Desktop Navigation */}
           <div className="hidden lg:flex items-center gap-8">
             <DropdownMenu>
-              <DropdownMenuTrigger className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
-                Solutions <ChevronDown className="w-4 h-4" />
+              <DropdownMenuTrigger className="flex items-center gap-1 text-sm font-medium text-foreground bg-secondary/80 hover:bg-secondary px-4 py-2 rounded-lg transition-colors">
+                {t.solutions} <ChevronDown className="w-4 h-4" />
               </DropdownMenuTrigger>
-              <DropdownMenuContent className="glass-strong border-border/50 w-80 p-2">
+              <DropdownMenuContent className="bg-popover border-border w-80 p-2">
                 {solutions.map((solution) => (
                   <DropdownMenuItem 
                     key={solution.name} 
@@ -102,23 +103,23 @@ export function Navbar() {
 
             <Link
               href="#features"
-              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
             >
-              About
+              {t.about}
             </Link>
 
             <Link
               href="#pricing"
-              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
             >
-              Pricing
+              {t.pricing}
             </Link>
 
             <Link
               href="#contact"
-              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
             >
-              Contact
+              {t.contact}
             </Link>
           </div>
 
@@ -126,18 +127,18 @@ export function Navbar() {
           <div className="hidden lg:flex items-center gap-3">
             {/* Language Switcher */}
             <DropdownMenu>
-              <DropdownMenuTrigger className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors px-2 py-1.5 rounded-md hover:bg-white/5">
+              <DropdownMenuTrigger className="flex items-center gap-1.5 text-sm font-medium text-foreground bg-secondary/80 hover:bg-secondary px-3 py-2 rounded-lg transition-colors">
                 <Globe className="w-4 h-4" />
-                {currentLang}
+                {language}
                 <ChevronDown className="w-3 h-3" />
               </DropdownMenuTrigger>
-              <DropdownMenuContent className="glass-strong border-border/50">
+              <DropdownMenuContent className="bg-popover border-border">
                 {languages.map((lang) => (
                   <DropdownMenuItem 
                     key={lang.code}
-                    onClick={() => setCurrentLang(lang.code)}
+                    onClick={() => setLanguage(lang.code)}
                     className={`focus:bg-primary/10 cursor-pointer ${
-                      currentLang === lang.code ? "text-primary" : ""
+                      language === lang.code ? "text-primary bg-primary/5" : ""
                     }`}
                   >
                     {lang.label}
@@ -147,18 +148,18 @@ export function Navbar() {
             </DropdownMenu>
 
             <Link href="/app">
-              <Button variant="ghost" className="text-sm">
-                Cabinet
+              <Button variant="secondary" className="text-sm font-medium bg-secondary hover:bg-secondary/80">
+                {t.cabinet}
               </Button>
             </Link>
-            <Button className="text-sm bg-primary hover:bg-primary/90">
-              Book Demo
+            <Button className="text-sm font-medium bg-primary hover:bg-primary/90 text-primary-foreground">
+              {t.bookDemo}
             </Button>
           </div>
 
           {/* Mobile Menu Button */}
           <button
-            className="lg:hidden text-foreground p-2"
+            className="lg:hidden text-foreground p-2 bg-secondary rounded-lg hover:bg-secondary/80 transition-colors"
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
             aria-label={isMobileMenuOpen ? "Close menu" : "Open menu"}
           >
@@ -177,21 +178,21 @@ export function Navbar() {
               {/* Mobile Solutions */}
               <div className="py-2">
                 <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2 px-2">
-                  Solutions
+                  {t.solutions}
                 </div>
                 {solutions.map((solution) => (
                   <Link
                     key={solution.name}
                     href={solution.href}
-                    className="flex items-center gap-3 px-2 py-3 rounded-lg hover:bg-white/5 transition-colors"
+                    className="flex items-center gap-3 px-2 py-4 rounded-lg hover:bg-secondary transition-colors"
                     onClick={() => setIsMobileMenuOpen(false)}
                   >
-                    <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                      <solution.icon className="w-4 h-4 text-primary" />
+                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <solution.icon className="w-5 h-5 text-primary" />
                     </div>
                     <div>
                       <div className="text-sm font-medium text-foreground">{solution.name}</div>
-                      <div className="text-xs text-muted-foreground">{solution.description}</div>
+                      <div className="text-xs text-muted-foreground line-clamp-2">{solution.description}</div>
                     </div>
                   </Link>
                 ))}
@@ -200,24 +201,24 @@ export function Navbar() {
               <div className="border-t border-border/50 pt-2 mt-2">
                 <Link
                   href="#features"
-                  className="block px-2 py-3 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                  className="block px-2 py-4 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
-                  About
+                  {t.about}
                 </Link>
                 <Link
                   href="#pricing"
-                  className="block px-2 py-3 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                  className="block px-2 py-4 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
-                  Pricing
+                  {t.pricing}
                 </Link>
                 <Link
                   href="#contact"
-                  className="block px-2 py-3 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                  className="block px-2 py-4 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
-                  Contact
+                  {t.contact}
                 </Link>
               </div>
 
@@ -225,17 +226,17 @@ export function Navbar() {
               <div className="border-t border-border/50 pt-4 mt-2">
                 <div className="flex items-center gap-2 px-2 mb-3">
                   <Globe className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Language</span>
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t.language}</span>
                 </div>
                 <div className="flex gap-2 px-2">
                   {languages.map((lang) => (
                     <button
                       key={lang.code}
-                      onClick={() => setCurrentLang(lang.code)}
-                      className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-                        currentLang === lang.code
+                      onClick={() => setLanguage(lang.code)}
+                      className={`px-4 py-2.5 text-sm font-medium rounded-lg transition-colors ${
+                        language === lang.code
                           ? "bg-primary text-primary-foreground"
-                          : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+                          : "bg-secondary text-foreground hover:bg-secondary/80"
                       }`}
                     >
                       {lang.code}
@@ -244,14 +245,14 @@ export function Navbar() {
                 </div>
               </div>
 
-              <div className="flex flex-col gap-2 pt-4 border-t border-border/50 mt-2">
+              <div className="flex flex-col gap-3 pt-4 border-t border-border/50 mt-2 px-2">
                 <Link href="/app" onClick={() => setIsMobileMenuOpen(false)}>
-                  <Button variant="ghost" className="w-full justify-center text-sm">
-                    Cabinet
+                  <Button variant="secondary" className="w-full justify-center text-sm font-medium py-6 bg-secondary hover:bg-secondary/80">
+                    {t.cabinet}
                   </Button>
                 </Link>
-                <Button className="w-full text-sm bg-primary hover:bg-primary/90">
-                  Book Demo
+                <Button className="w-full text-sm font-medium py-6 bg-primary hover:bg-primary/90 text-primary-foreground">
+                  {t.bookDemo}
                 </Button>
               </div>
             </div>

@@ -128,7 +128,7 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent 
-        className="max-w-5xl w-[95vw] h-[85vh] sm:h-[80vh] p-0 glass-strong border-border/50 overflow-hidden"
+        className="max-w-7xl w-[95vw] lg:w-[90vw] h-[85vh] sm:h-[85vh] p-0 bg-card border-border overflow-hidden"
         showCloseButton={false}
       >
         <DialogHeader className="sr-only">
