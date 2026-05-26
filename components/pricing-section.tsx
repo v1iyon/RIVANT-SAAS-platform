@@ -1,8 +1,7 @@
 "use client";
 
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Check, Zap } from "lucide-react";
+import { Check, Zap, Settings, FileText, Users } from "lucide-react";
 
 const plans = [
   {
@@ -10,10 +9,10 @@ const plans = [
     price: 49,
     description: "Perfect for small teams just getting started with visibility.",
     features: [
-      "Up to 5 team members",
-      "Basic dashboard analytics",
-      "Daily email reports",
-      "3 integrations",
+      "Revenue tracking dashboard",
+      "3 platform integrations",
+      "Weekly email reports",
+      "Basic analytics",
       "7-day data retention",
       "Email support",
     ],
@@ -25,14 +24,14 @@ const plans = [
     price: 149,
     description: "For growing businesses that need real-time insights and alerts.",
     features: [
-      "Up to 25 team members",
-      "Advanced analytics & forecasting",
+      "Everything in Starter",
       "Real-time Telegram alerts",
+      "Margin analysis tools",
+      "AI-powered insights",
       "Unlimited integrations",
       "90-day data retention",
       "Priority support",
       "Custom dashboards",
-      "Risk detection AI",
     ],
     cta: "Start Free Trial",
     popular: true,
@@ -42,69 +41,56 @@ const plans = [
     price: 349,
     description: "Enterprise-grade visibility for larger organizations.",
     features: [
-      "Unlimited team members",
-      "Predictive analytics",
-      "Custom alert channels",
+      "Everything in Growth",
+      "Custom forecasting models",
+      "Multi-business management",
+      "Dedicated account manager",
       "API access",
       "Unlimited data retention",
-      "Dedicated account manager",
       "White-label options",
       "SOC 2 compliance",
-      "Custom integrations",
     ],
     cta: "Contact Sales",
     popular: false,
   },
 ];
 
+const addons = [
+  {
+    icon: Settings,
+    name: "Business Setup Fee",
+    price: 199,
+    priceType: "one-time",
+    description: "End-to-end integration by our experts. We connect all your data sources and configure custom alerts.",
+  },
+  {
+    icon: FileText,
+    name: "Quarterly Audit",
+    price: 299,
+    priceType: "per audit",
+    description: "Deep-dive operational report with actionable recommendations from our analytics team.",
+  },
+  {
+    icon: Users,
+    name: "Team Alert Access",
+    price: 29,
+    priceType: "/mo per seat",
+    description: "Add extra teammates to receive Telegram alerts and access the dashboard.",
+  },
+];
+
 export function PricingSection() {
-  const [billingCycle, setBillingCycle] = useState<"monthly" | "annual">("monthly");
-
-  const getPrice = (basePrice: number) => {
-    if (billingCycle === "annual") {
-      return Math.round(basePrice * 0.8); // 20% discount for annual
-    }
-    return basePrice;
-  };
-
   return (
     <section id="pricing" className="py-24 relative">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Section Header */}
         <div className="text-center mb-16">
-          <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">
+          <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4 text-balance">
             Simple, Transparent <span className="text-primary">Pricing</span>
           </h2>
-          <p className="text-muted-foreground max-w-2xl mx-auto mb-8">
+          <p className="text-muted-foreground max-w-2xl mx-auto">
             Choose the plan that fits your business. All plans include a 14-day free trial.
           </p>
-
-          {/* Billing Toggle */}
-          <div className="inline-flex items-center gap-3 glass rounded-full p-1">
-            <button
-              onClick={() => setBillingCycle("monthly")}
-              className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
-                billingCycle === "monthly"
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              Monthly
-            </button>
-            <button
-              onClick={() => setBillingCycle("annual")}
-              className={`px-4 py-2 rounded-full text-sm font-medium transition-all flex items-center gap-2 ${
-                billingCycle === "annual"
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              Annual
-              <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full">
-                Save 20%
-              </span>
-            </button>
-          </div>
         </div>
 
         {/* Pricing Cards */}
@@ -112,9 +98,9 @@ export function PricingSection() {
           {plans.map((plan) => (
             <div
               key={plan.name}
-              className={`relative rounded-2xl p-8 flex flex-col h-full transition-all duration-300 ${
+              className={`relative rounded-2xl p-6 lg:p-8 flex flex-col h-full transition-all duration-300 ${
                 plan.popular
-                  ? "glass-strong glow-blue scale-[1.02] z-10"
+                  ? "glass-strong glow-blue scale-100 lg:scale-[1.02] z-10"
                   : "glass hover:bg-white/[0.08]"
               }`}
             >
@@ -140,15 +126,10 @@ export function PricingSection() {
               <div className="mb-6">
                 <div className="flex items-baseline gap-1">
                   <span className="text-4xl font-bold text-foreground">
-                    ${getPrice(plan.price)}
+                    ${plan.price}
                   </span>
                   <span className="text-muted-foreground">/month</span>
                 </div>
-                {billingCycle === "annual" && (
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Billed annually (${getPrice(plan.price) * 12}/year)
-                  </p>
-                )}
               </div>
 
               {/* Features */}
@@ -176,10 +157,47 @@ export function PricingSection() {
           ))}
         </div>
 
+        {/* Professional Add-ons Section */}
+        <div className="mt-20">
+          <div className="text-center mb-12">
+            <h3 className="text-2xl font-bold text-foreground mb-3">
+              Professional Add-ons
+            </h3>
+            <p className="text-muted-foreground max-w-xl mx-auto">
+              Enhance your PulseOps experience with expert services and additional capabilities.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {addons.map((addon) => (
+              <div
+                key={addon.name}
+                className="glass rounded-xl p-6 hover:bg-white/[0.08] transition-all duration-300 group"
+              >
+                <div className="flex items-start gap-4">
+                  <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 group-hover:bg-primary/20 transition-colors">
+                    <addon.icon className="w-6 h-6 text-primary" />
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="font-semibold text-foreground mb-1">{addon.name}</h4>
+                    <div className="flex items-baseline gap-1 mb-2">
+                      <span className="text-xl font-bold text-foreground">${addon.price}</span>
+                      <span className="text-sm text-muted-foreground">{addon.priceType}</span>
+                    </div>
+                    <p className="text-sm text-muted-foreground leading-relaxed">
+                      {addon.description}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
         {/* Money Back Guarantee */}
         <div className="text-center mt-12">
           <p className="text-sm text-muted-foreground">
-            30-day money-back guarantee • No credit card required for trial •
+            30-day money-back guarantee | No credit card required for trial |
             Cancel anytime
           </p>
         </div>
