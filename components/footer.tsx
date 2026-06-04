@@ -1,128 +1,102 @@
 "use client";
 
 import Link from "next/link";
-import { Activity, Twitter, Linkedin, Github } from "lucide-react";
-
-const footerLinks = {
-  product: [
-    { name: "Features", href: "#features" },
-    { name: "Pricing", href: "#pricing" },
-    { name: "Integrations", href: "#" },
-    { name: "Changelog", href: "#" },
-    { name: "Documentation", href: "#" },
-  ],
-  company: [
-    { name: "About", href: "#" },
-    { name: "Blog", href: "#" },
-    { name: "Careers", href: "#" },
-    { name: "Press Kit", href: "#" },
-    { name: "Contact", href: "#contact" },
-  ],
-  connect: [
-    { name: "Twitter", href: "#", icon: Twitter },
-    { name: "LinkedIn", href: "#", icon: Linkedin },
-    { name: "GitHub", href: "#", icon: Github },
-  ],
-  legal: [
-    { name: "Privacy Policy", href: "#" },
-    { name: "Terms of Service", href: "#" },
-    { name: "Cookie Policy", href: "#" },
-  ],
-};
+import { Mail, Send } from "lucide-react";
+import { Instagram } from "lucide-react";
+import { useLanguage } from "@/lib/translations";
 
 export function Footer() {
+  const { t } = useLanguage();
+
+  const footerLinks = {
+    main: [
+      { name: "About", href: "#about" },
+      { name: "Pricing", href: "#pricing" },
+      { name: "Contact", href: "#contact" },
+    ],
+    social: [
+      { name: "Telegram", href: "https://t.me/your_handle", icon: Send },
+      { name: "Instagram", href: "https://instagram.com/your_handle", icon: Instagram },
+      { name: "Email", href: "mailto:hello@RIVANT.com", icon: Mail },
+    ],
+    legal: [
+      { name: "Privacy Policy", href: "/privacy" },
+      { name: "Terms of Service", href: "/terms" },
+      { name: "Cookie Policy", href: "/cookies" },
+    ],
+  };
+
+  // Плавная прокрутка для якорных ссылок
+  const handleSmoothScroll = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
+    if (href.startsWith("#")) {
+      e.preventDefault();
+      const element = document.querySelector(href);
+      if (element) {
+        element.scrollIntoView({ behavior: "smooth" });
+      }
+    }
+  };
+
   return (
-    <footer className="py-16 border-t border-border/50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-8 lg:gap-12">
-          {/* Brand Column */}
-          <div className="col-span-2 lg:col-span-1">
-            <Link href="/" className="flex items-center gap-2 mb-4">
-              <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-                <Activity className="w-5 h-5 text-primary-foreground" />
-              </div>
-              <span className="text-xl font-semibold text-foreground">
-                PulseOps
-              </span>
+    <footer className="py-4 border-t border-border/40">
+      <div className="px-6 md:px-12 lg:px-20">
+        
+        {/* Первый ряд */}
+        <div className="flex justify-between items-center">
+          {/* Левая часть: RIVANT + описание */}
+          <div className="flex flex-col gap-0.5">
+            <Link href="/" className="flex items-center gap-1">
+              <img src="/icon.png" alt="RIVANT" className="w-4 h-4" />
+              <span className="text-xs font-semibold">RIVANT</span>
             </Link>
-            <p className="text-sm text-muted-foreground mb-4 leading-relaxed">
-              Reveal hidden losses before they become expensive. Real-time business
-              visibility for growing companies.
+            <p className="text-[10px] text-muted-foreground">
+              Reveal hidden losses — real-time visibility for growing companies.
             </p>
-            <div className="flex items-center gap-3">
-              {footerLinks.connect.map((link) => (
-                <Link
-                  key={link.name}
-                  href={link.href}
-                  className="w-9 h-9 rounded-lg glass flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-white/10 transition-colors"
-                >
-                  <link.icon className="w-4 h-4" />
-                  <span className="sr-only">{link.name}</span>
-                </Link>
-              ))}
-            </div>
           </div>
 
-          {/* Product Links */}
-          <div>
-            <h4 className="text-sm font-semibold text-foreground mb-4">Product</h4>
-            <ul className="space-y-3">
-              {footerLinks.product.map((link) => (
-                <li key={link.name}>
-                  <Link
-                    href={link.href}
-                    className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    {link.name}
-                  </Link>
-                </li>
-              ))}
-            </ul>
+          {/* Центр: About, Pricing, Contact */}
+          <div className="flex gap-5">
+            {footerLinks.main.map((link) => (
+              <Link
+                key={link.name}
+                href={link.href}
+                onClick={(e) => handleSmoothScroll(e, link.href)}
+                className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {link.name}
+              </Link>
+            ))}
           </div>
 
-          {/* Company Links */}
-          <div>
-            <h4 className="text-sm font-semibold text-foreground mb-4">Company</h4>
-            <ul className="space-y-3">
-              {footerLinks.company.map((link) => (
-                <li key={link.name}>
-                  <Link
-                    href={link.href}
-                    className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    {link.name}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          {/* Legal Links */}
-          <div>
-            <h4 className="text-sm font-semibold text-foreground mb-4">Legal</h4>
-            <ul className="space-y-3">
-              {footerLinks.legal.map((link) => (
-                <li key={link.name}>
-                  <Link
-                    href={link.href}
-                    className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    {link.name}
-                  </Link>
-                </li>
-              ))}
-            </ul>
+          {/* Правая часть: иконки соцсетей */}
+          <div className="flex gap-2">
+            {footerLinks.social.map((link) => (
+              <Link
+                key={link.name}
+                href={link.href}
+                target="_blank"
+                className="text-muted-foreground/50 hover:text-foreground transition-colors"
+              >
+                <link.icon className="w-3.5 h-3.5" />
+              </Link>
+            ))}
           </div>
         </div>
 
-        {/* Bottom Bar */}
-        <div className="mt-12 pt-8 border-t border-border/50 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p className="text-sm text-muted-foreground">
-            © {new Date().getFullYear()} PulseOps. All rights reserved.
-          </p>
-          <p className="text-sm text-muted-foreground">
-            Built with precision for business clarity.
-          </p>
+        {/* Второй ряд */}
+        <div className="mt-3 pt-2 border-t border-border/30 flex justify-between items-center text-[9px] text-muted-foreground/50">
+          <div className="flex gap-2">
+            <span>© {new Date().getFullYear()} RIVANT</span>
+            <span>•</span>
+            <span>Built with precision</span>
+          </div>
+          <div className="flex gap-4">
+            {footerLinks.legal.map((link) => (
+              <Link key={link.name} href={link.href} className="hover:text-muted-foreground transition-colors">
+                {link.name}
+              </Link>
+            ))}
+          </div>
         </div>
       </div>
     </footer>

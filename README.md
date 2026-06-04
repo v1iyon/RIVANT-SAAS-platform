@@ -1,4 +1,4 @@
-# v0-pulseops-saas-platform
+# v0-RIVANT-saas-platform
 
 This is a [Next.js](https://nextjs.org) project bootstrapped with [v0](https://v0.app).
 

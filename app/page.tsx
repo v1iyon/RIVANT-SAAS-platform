@@ -23,9 +23,13 @@ export default function Home() {
     setIsDemoOpen(true);
   };
 
+  const handleCloseDemo = () => {
+    setIsDemoOpen(false);
+  };
+
   return (
     <main className="min-h-screen bg-background">
-      <Navbar />
+      <Navbar onOpenDemo={handleOpenDemo} />
       
       <HeroSection 
         onOpenCalculator={handleOpenCalculator}
@@ -46,9 +50,7 @@ export default function Home() {
       
       <Footer />
 
-      <LiveDemoModal 
-        isOpen={isDemoOpen} 
-        onClose={() => setIsDemoOpen(false)} 
+      <LiveDemoModal isOpen={isDemoOpen} onClose={() => setIsDemoOpen(false)}
       />
     </main>
   );

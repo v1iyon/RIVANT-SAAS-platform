@@ -1,48 +1,36 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import Link from "next/link";
+import { useState, useEffect, useRef } from "react";
+import { useRouter, usePathname } from "next/navigation";
+import { User, X, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Menu, X, ChevronDown, Activity, Globe, ShoppingCart, Truck, UtensilsCrossed } from "lucide-react";
 import { useLanguage, Language } from "@/lib/translations";
 
-const languages: { code: Language; label: string }[] = [
-  { code: "EN", label: "English" },
-  { code: "UA", label: "Українська" },
-  { code: "DE", label: "Deutsch" },
-];
+interface NavbarProps {
+  onOpenDemo?: () => void;
+}
 
-export function Navbar() {
+export function Navbar({ onOpenDemo }: NavbarProps) {
+  const router = useRouter();
+  const pathname = usePathname();
   const [isScrolled, setIsScrolled] = useState(false);
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { language, setLanguage, t } = useLanguage();
+  const modalRef = useRef<HTMLDivElement>(null);
+  const mobileMenuRef = useRef<HTMLDivElement>(null);
 
-  const solutions = [
-    {
-      icon: ShoppingCart,
-      name: t.ecommerce,
-      description: t.ecommerceDesc,
-      href: "#calculator",
-    },
-    {
-      icon: Truck,
-      name: t.logistics,
-      description: t.logisticsDesc,
-      href: "#calculator",
-    },
-    {
-      icon: UtensilsCrossed,
-      name: t.hospitality,
-      description: t.hospitalityDesc,
-      href: "#calculator",
-    },
-  ];
+  const T = t as any;
+
+  useEffect(() => {
+    const savedLogin = localStorage.getItem("isLoggedIn");
+    if (savedLogin === "true") {
+      setIsLoggedIn(true);
+    }
+  }, []);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -52,213 +40,273 @@ export function Navbar() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent | TouchEvent) => {
+      if (modalRef.current && !modalRef.current.contains(e.target as Node)) {
+        setIsLoginModalOpen(false);
+      }
+      if (mobileMenuRef.current && !mobileMenuRef.current.contains(e.target as Node) && isMobileMenuOpen) {
+        setIsMobileMenuOpen(false);
+      }
+    };
+    
+    if (isLoginModalOpen || isMobileMenuOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      document.addEventListener("touchstart", handleClickOutside);
+      document.body.style.overflow = "hidden";
+    }
+    
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("touchstart", handleClickOutside);
+      document.body.style.overflow = "";
+    };
+  }, [isLoginModalOpen, isMobileMenuOpen]);
+
+  const scrollTo = (id: string) => {
+    const element = document.querySelector(id);
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth" });
+      setIsMobileMenuOpen(false);
+    }
+  };
+
+  const changeLanguage = (lang: Language) => {
+    console.log("Changing language to:", lang);
+    setLanguage(lang);
+  };
+
+  const openLogin = () => {
+    console.log("Opening login modal");
+    setIsLoginModalOpen(true);
+    setIsMobileMenuOpen(false);
+  };
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (loginEmail && loginPassword) {
+      setIsLoggedIn(true);
+      localStorage.setItem("isLoggedIn", "true");
+      setIsLoginModalOpen(false);
+      setLoginEmail("");
+      setLoginPassword("");
+      router.push("/dashboard");
+    }
+  };
+
+  const handleDemo = () => {
+    if (onOpenDemo) {
+      onOpenDemo();
+    }
+    setIsMobileMenuOpen(false);
+  };
+
+  const isDashboard = pathname === "/dashboard";
+  if (isDashboard) return null;
+
   return (
-    <nav
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
-        isScrolled
-          ? "bg-background/95 backdrop-blur-xl border-b border-border/50 py-3"
-          : "bg-transparent py-4"
-      }`}
-    >
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between">
-          {/* Logo */}
-          <Link href="/" className="flex items-center gap-2 group">
-            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-              <Activity className="w-5 h-5 text-primary-foreground" />
-            </div>
-            <span className="text-xl font-semibold text-foreground">
-              PulseOps
-            </span>
-          </Link>
-
-          {/* Desktop Navigation */}
-          <div className="hidden lg:flex items-center gap-8">
-            <DropdownMenu>
-              <DropdownMenuTrigger className="flex items-center gap-1 text-sm font-medium text-foreground bg-secondary/80 hover:bg-secondary px-4 py-2 rounded-lg transition-colors">
-                {t.solutions} <ChevronDown className="w-4 h-4" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="bg-popover border-border w-80 p-2">
-                {solutions.map((solution) => (
-                  <DropdownMenuItem 
-                    key={solution.name} 
-                    className="focus:bg-primary/10 rounded-lg p-3 cursor-pointer"
-                    asChild
-                  >
-                    <Link href={solution.href} className="flex items-start gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-                        <solution.icon className="w-5 h-5 text-primary" />
-                      </div>
-                      <div>
-                        <div className="font-medium text-foreground">{solution.name}</div>
-                        <div className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-                          {solution.description}
-                        </div>
-                      </div>
-                    </Link>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            <Link
-              href="#features"
-              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+    <>
+      <nav
+        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
+          isScrolled
+            ? "bg-black/95 backdrop-blur-xl border-b border-white/10 py-2"
+            : "bg-transparent py-3"
+        }`}
+      >
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between">
+            <button
+              onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+              className="flex-shrink-0 cursor-pointer"
             >
-              {t.about}
-            </Link>
+              <img src="/icon8.png" alt="RIVANT" className="w-28 sm:w-40 md:w-52 object-contain" />
+            </button>
 
-            <Link
-              href="#pricing"
-              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-            >
-              {t.pricing}
-            </Link>
+            {!isDashboard && (
+              <div className="hidden md:flex items-center gap-6">
+                <button onClick={() => scrollTo("#features")} className="text-sm font-medium text-gray-400 hover:text-white">
+                  {T.about || "About"}
+                </button>
+                <button onClick={() => scrollTo("#pricing")} className="text-sm font-medium text-gray-400 hover:text-white">
+                  {T.pricing || "Pricing"}
+                </button>
+                <button onClick={() => scrollTo("#contact")} className="text-sm font-medium text-gray-400 hover:text-white">
+                  {T.contact || "Contact"}
+                </button>
+              </div>
+            )}
 
-            <Link
-              href="#contact"
-              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-            >
-              {t.contact}
-            </Link>
-          </div>
-
-          {/* Desktop CTA Buttons */}
-          <div className="hidden lg:flex items-center gap-3">
-            {/* Language Switcher */}
-            <DropdownMenu>
-              <DropdownMenuTrigger className="flex items-center gap-1.5 text-sm font-medium text-foreground bg-secondary/80 hover:bg-secondary px-3 py-2 rounded-lg transition-colors">
-                <Globe className="w-4 h-4" />
-                {language}
-                <ChevronDown className="w-3 h-3" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="bg-popover border-border">
-                {languages.map((lang) => (
-                  <DropdownMenuItem 
-                    key={lang.code}
-                    onClick={() => setLanguage(lang.code)}
-                    className={`focus:bg-primary/10 cursor-pointer ${
-                      language === lang.code ? "text-primary bg-primary/5" : ""
+            <div className="hidden md:flex items-center gap-3">
+              <div className="flex items-center bg-white/10 rounded-lg overflow-hidden">
+                {(["EN", "UA", "DE"] as Language[]).map((lang) => (
+                  <button
+                    key={lang}
+                    onClick={() => changeLanguage(lang)}
+                    className={`px-3 py-1.5 text-sm font-medium transition-colors cursor-pointer ${
+                      language === lang ? "bg-blue-600 text-white" : "text-gray-400 hover:text-white"
                     }`}
                   >
-                    {lang.label}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            <Link href="/app">
-              <Button variant="secondary" className="text-sm font-medium bg-secondary hover:bg-secondary/80">
-                {t.cabinet}
-              </Button>
-            </Link>
-            <Button className="text-sm font-medium bg-primary hover:bg-primary/90 text-primary-foreground">
-              {t.bookDemo}
-            </Button>
-          </div>
-
-          {/* Mobile Menu Button */}
-          <button
-            className="lg:hidden text-foreground p-2 bg-secondary rounded-lg hover:bg-secondary/80 transition-colors"
-            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            aria-label={isMobileMenuOpen ? "Close menu" : "Open menu"}
-          >
-            {isMobileMenuOpen ? (
-              <X className="w-6 h-6" />
-            ) : (
-              <Menu className="w-6 h-6" />
-            )}
-          </button>
-        </div>
-
-        {/* Mobile Menu */}
-        {isMobileMenuOpen && (
-          <div className="lg:hidden mt-4 pb-4 border-t border-border/50 pt-4 animate-in fade-in slide-in-from-top-2 duration-200">
-            <div className="flex flex-col gap-2">
-              {/* Mobile Solutions */}
-              <div className="py-2">
-                <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2 px-2">
-                  {t.solutions}
-                </div>
-                {solutions.map((solution) => (
-                  <Link
-                    key={solution.name}
-                    href={solution.href}
-                    className="flex items-center gap-3 px-2 py-4 rounded-lg hover:bg-secondary transition-colors"
-                    onClick={() => setIsMobileMenuOpen(false)}
-                  >
-                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                      <solution.icon className="w-5 h-5 text-primary" />
-                    </div>
-                    <div>
-                      <div className="text-sm font-medium text-foreground">{solution.name}</div>
-                      <div className="text-xs text-muted-foreground line-clamp-2">{solution.description}</div>
-                    </div>
-                  </Link>
+                    {lang}
+                  </button>
                 ))}
               </div>
-
-              <div className="border-t border-border/50 pt-2 mt-2">
-                <Link
-                  href="#features"
-                  className="block px-2 py-4 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-                  onClick={() => setIsMobileMenuOpen(false)}
+              
+              {/* Demo button - полностью прозрачная, только обводка */}
+              {!isDashboard && (
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  className="border-blue-600 text-blue-600 hover:bg-blue-600 hover:text-white cursor-pointer"
+                  onClick={handleDemo}
                 >
-                  {t.about}
-                </Link>
-                <Link
-                  href="#pricing"
-                  className="block px-2 py-4 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-                  onClick={() => setIsMobileMenuOpen(false)}
-                >
-                  {t.pricing}
-                </Link>
-                <Link
-                  href="#contact"
-                  className="block px-2 py-4 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-                  onClick={() => setIsMobileMenuOpen(false)}
-                >
-                  {t.contact}
-                </Link>
-              </div>
-
-              {/* Mobile Language Switcher */}
-              <div className="border-t border-border/50 pt-4 mt-2">
-                <div className="flex items-center gap-2 px-2 mb-3">
-                  <Globe className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t.language}</span>
-                </div>
-                <div className="flex gap-2 px-2">
-                  {languages.map((lang) => (
-                    <button
-                      key={lang.code}
-                      onClick={() => setLanguage(lang.code)}
-                      className={`px-4 py-2.5 text-sm font-medium rounded-lg transition-colors ${
-                        language === lang.code
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-secondary text-foreground hover:bg-secondary/80"
-                      }`}
-                    >
-                      {lang.code}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-3 pt-4 border-t border-border/50 mt-2 px-2">
-                <Link href="/app" onClick={() => setIsMobileMenuOpen(false)}>
-                  <Button variant="secondary" className="w-full justify-center text-sm font-medium py-6 bg-secondary hover:bg-secondary/80">
-                    {t.cabinet}
-                  </Button>
-                </Link>
-                <Button className="w-full text-sm font-medium py-6 bg-primary hover:bg-primary/90 text-primary-foreground">
-                  {t.bookDemo}
+                  {T.demo || "Demo"}
                 </Button>
+              )}
+              
+              {/* Cabinet button - такой же стиль, но с полупрозрачным синим фоном */}
+              {!isDashboard && (
+                <Button
+                  size="sm"
+                  className="border border-blue-600 bg-blue-600/20 text-blue-600 hover:bg-blue-600 hover:text-white cursor-pointer"
+                  onClick={openLogin}
+                >
+                  <User className="w-4 h-4 mr-1" /> {T.cabinet || "Cabinet"}
+                </Button>
+              )}
+            </div>
+
+            {!isDashboard && (
+              <button
+                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                className="md:hidden flex flex-col gap-1.5 p-2"
+              >
+                <span className={`w-6 h-0.5 bg-white transition-all ${isMobileMenuOpen ? "rotate-45 translate-y-2" : ""}`} />
+                <span className={`w-6 h-0.5 bg-white transition-all ${isMobileMenuOpen ? "opacity-0" : ""}`} />
+                <span className={`w-6 h-0.5 bg-white transition-all ${isMobileMenuOpen ? "-rotate-45 -translate-y-2" : ""}`} />
+              </button>
+            )}
+          </div>
+        </div>
+      </nav>
+
+      {!isDashboard && isMobileMenuOpen && (
+        <div className="fixed inset-0 z-40 md:hidden">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setIsMobileMenuOpen(false)} />
+          <div 
+            ref={mobileMenuRef}
+            className="absolute top-16 left-4 right-4 bg-gray-900 rounded-2xl border border-white/10 p-4 space-y-3"
+          >
+            <button
+              onClick={() => scrollTo("#features")}
+              className="w-full text-left px-4 py-3 text-gray-300 hover:text-white hover:bg-white/10 rounded-lg"
+            >
+              {T.about || "About"}
+            </button>
+            <button
+              onClick={() => scrollTo("#pricing")}
+              className="w-full text-left px-4 py-3 text-gray-300 hover:text-white hover:bg-white/10 rounded-lg"
+            >
+              {T.pricing || "Pricing"}
+            </button>
+            <button
+              onClick={() => scrollTo("#contact")}
+              className="w-full text-left px-4 py-3 text-gray-300 hover:text-white hover:bg-white/10 rounded-lg"
+            >
+              {T.contact || "Contact"}
+            </button>
+            
+            <div className="border-t border-white/10 my-2" />
+            
+            <div className="px-4 py-2">
+              <p className="text-xs text-gray-500 mb-2 flex items-center gap-1">
+                <Globe className="w-3 h-3" /> Language
+              </p>
+              <div className="flex gap-2">
+                {(["EN", "UA", "DE"] as Language[]).map((lang) => (
+                  <button
+                    key={lang}
+                    onClick={() => changeLanguage(lang)}
+                    className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${
+                      language === lang ? "bg-blue-600 text-white" : "bg-white/10 text-gray-400 hover:text-white"
+                    }`}
+                  >
+                    {lang}
+                  </button>
+                ))}
               </div>
             </div>
+            
+            <button
+              onClick={handleDemo}
+              className="w-full px-4 py-3 border border-blue-600 text-blue-600 rounded-lg font-medium hover:bg-blue-600 hover:text-white"
+            >
+              {T.demo || "Demo"}
+            </button>
+            
+            <button
+              onClick={openLogin}
+              className="w-full px-4 py-3 border border-blue-600 bg-blue-600/20 text-blue-600 rounded-lg font-medium hover:bg-blue-600 hover:text-white"
+            >
+              <User className="w-4 h-4 inline mr-2" /> {T.cabinet || "Cabinet"}
+            </button>
           </div>
-        )}
-      </div>
-    </nav>
+        </div>
+      )}
+
+      {isLoginModalOpen && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/90" onClick={() => setIsLoginModalOpen(false)} />
+          <div
+            ref={modalRef}
+            className="relative w-full max-w-md bg-gray-900 rounded-2xl p-6 border border-white/10"
+          >
+            <button
+              onClick={() => setIsLoginModalOpen(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-white p-2"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <h2 className="text-2xl font-bold text-white mb-2">Welcome Back</h2>
+            <p className="text-gray-400 text-sm mb-6">Sign in to access your dashboard</p>
+
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Email</label>
+                <input
+                  type="email"
+                  value={loginEmail}
+                  onChange={(e) => setLoginEmail(e.target.value)}
+                  className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 text-white text-base"
+                  placeholder="admin@rivant.com"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Password</label>
+                <input
+                  type="password"
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 text-white text-base"
+                  placeholder="••••••••"
+                  required
+                />
+              </div>
+              <button
+                type="submit"
+                className="w-full py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700"
+              >
+                Sign In
+              </button>
+            </form>
+
+            <p className="text-center text-xs text-gray-500 mt-4">
+              🔓 <span className="text-blue-500">Any email / any password</span> — demo access
+            </p>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

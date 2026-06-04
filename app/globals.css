@@ -4,7 +4,6 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* PulseOps Dark Theme - #0A0A0A background with Electric Blue #007AFF accents */
   --background: oklch(0.07 0 0);
   --foreground: oklch(0.98 0 0);
   --card: oklch(0.12 0 0);
@@ -125,7 +124,6 @@
   }
 }
 
-/* Glassmorphism utility */
 .glass {
   background: rgba(255, 255, 255, 0.05);
   backdrop-filter: blur(20px);
@@ -140,17 +138,14 @@
   border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
-/* Blue glow effect */
 .glow-blue {
   box-shadow: 0 0 40px rgba(0, 122, 255, 0.3), 0 0 80px rgba(0, 122, 255, 0.15);
 }
 
-/* Smooth scrolling */
 html {
   scroll-behavior: smooth;
 }
 
-/* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
 }
@@ -166,4 +161,64 @@ html {
 
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.25);
+}
+
+input[type="range"] {
+  touch-action: pan-x !important;
+}
+
+[data-slot="slider"] {
+  touch-action: pan-x pinch-zoom !important;
+}
+
+button, a, [role="button"] {
+  -webkit-tap-highlight-color: transparent;
+  cursor: pointer;
+}
+
+[data-slot="slider-thumb"] {
+  min-width: 14px !important;
+  min-height: 14px !important;
+  width: 14px !important;
+  height: 14px !important;
+  border-radius: 50% !important;
+  background-color: var(--primary) !important;
+  border: 2px solid white !important;
+}
+
+@media (max-width: 768px) {
+  [data-slot="slider-thumb"] {
+    min-width: 44px !important;
+    min-height: 44px !important;
+    width: 44px !important;
+    height: 44px !important;
+  }
+  
+  button, a, [role="button"] {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+}
+
+html, body {
+  overflow-x: hidden;
+  position: relative;
+  width: 100%;
+}
+
+/* Mobile touch optimizations */
+@media (max-width: 768px) {
+  button, 
+  a, 
+  [role="button"],
+  .touch-manipulation {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+  
+  input, 
+  textarea, 
+  select {
+    font-size: 16px !important; /* Prevents zoom on focus in iOS */
+  }
 }
