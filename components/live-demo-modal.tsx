@@ -1,7 +1,282 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/ui/button"; return (
+    <div>
+      <div className="text-xl font-bold text-white">{prefix}{Math.round(displayValue).toLocaleString()}{suffix}</div>
+      <div className={`text-xs flex items-center gap-0.5 mt-1 ${isPositive ? "text-green-400" : "text-red-400"}`}>
+        {changePercent > 0 ? "+" : ""}{changePercent}% 
+        {changePercent > 0 ? <ArrowUpRight className="w-3 h-3" /> : changePercent < 0 ? <ArrowDownRight className="w-3 h-3" /> : null}
+      </div>
+    </div>
+  );
+}
+
+function TickerSparkline({ history, color, currentValue, previousValue }: { history: number[]; color: string; currentValue: number; previousValue: number }) {
+  const [items, setItems] = useState(history);
+  const [isAnimating, setIsAnimating] = useState(false);
+  const prevHistoryLengthRef = useRef(history.length);
+  
+  useEffect(() => {
+    if (history.length !== prevHistoryLengthRef.current) {
+      setIsAnimating(true);
+      setTimeout(() => setIsAnimating(false), 300);
+    }
+    setItems(history);
+    prevHistoryLengthRef.current = history.length;
+  }, [history]);
+  
+  const maxValue = Math.max(...items);
+  const minValue = Math.min(...items);
+  const range = maxValue - minValue;
+  const isPositive = currentValue >= previousValue;
+  
+  return (
+    <div className="flex items-end gap-0.5 h-8 mt-2 w-full overflow-hidden">
+      <div className={`flex items-end gap-0.5 w-full transition-transform duration-300 ease-out ${isAnimating ? '-translate-x-2' : 'translate-x-0'}`}>
+        {items.map((value, i) => {
+          let height = range === 0 ? 20 : ((value - minValue) / range) * 20 + 4;
+          const isNew = i === items.length - 1;
+          const isFirst = i === 0;
+          return (
+            <div
+              key={i}
+              className={`flex-1 rounded-sm transition-all duration-200 min-w-[6px] ${
+                isNew ? (isPositive ? 'bg-green-500 shadow-lg shadow-green-500/30 scale-110' : 'bg-red-500 shadow-lg shadow-red-500/30 scale-110') : color
+              } ${isFirst && isAnimating ? 'opacity-0' : 'opacity-100'}`}
+              style={{ height: `${height}px`, transition: 'opacity 0.2s ease-out, height 0.3s ease-out' }}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// Функция перевода риска
+function translateRisk(risk: Risk, t: any): Risk {
+  const translatedRisk = { ...risk };
+  switch (risk.alertType) {
+    case "revenue_drop":
+      translatedRisk.title = t.alertRevenueDropTitle || "Revenue dropping";
+      translatedRisk.description = t.alertRevenueDropDesc || "Revenue decreased significantly in the last hour";
+      translatedRisk.action = t.alertViewDetails || "View Details";
+      break;
+    case "revenue_rise":
+      translatedRisk.title = t.alertRevenueRiseTitle || "Revenue spike";
+      translatedRisk.description = t.alertRevenueRiseDesc || "Unusual revenue increase detected";
+      translatedRisk.action = t.alertViewDetails || "View Details";
+      break;
+    case "profit_drop":
+      translatedRisk.title = t.alertProfitDropTitle || "Profit margin shrinking";
+      translatedRisk.description = t.alertProfitDropDesc || "Profit margin dropped below target";
+      translatedRisk.action = t.alertAnalyze || "Analyze";
+      break;
+    case "profit_rise":
+      translatedRisk.title = t.alertProfitRiseTitle || "Profit surge";
+      translatedRisk.description = t.alertProfitRiseDesc || "Exceptional profit margin detected";
+      translatedRisk.action = t.alertAnalyze || "Analyze";
+      break;
+    case "cac_increase":
+      translatedRisk.title = t.alertCacIncreaseTitle || "Customer acquisition cost rising";
+      translatedRisk.description = t.alertCacIncreaseDesc || "CAC increased - review ad performance";
+      translatedRisk.action = t.alertReviewMarketing || "Review Marketing";
+      break;
+    case "cac_decrease":
+      translatedRisk.title = t.alertCacDecreaseTitle || "CAC decreasing";
+      translatedRisk.description = t.alertCacDecreaseDesc || "Marketing efficiency improving";
+      translatedRisk.action = t.alertReviewMarketing || "Review Marketing";
+      break;
+    case "integration_down":
+      translatedRisk.title = t.alertIntegrationDownTitle || "Integration disconnected";
+      translatedRisk.description = (t.alertIntegrationDownDesc || "Connection to {name} has been lost").replace("{name}", risk.integrationId || "integration");
+      translatedRisk.action = t.alertReconnect || "Reconnect";
+      break;
+    case "low_stock":
+      translatedRisk.title = t.alertLowStockTitle || "Low stock alert";
+      translatedRisk.description = t.alertLowStockDesc || "Top SKU #4521 has only 3 days of stock remaining";
+      translatedRisk.action = t.alertReorder || "Reorder Now";
+      break;
+    case "shipping_delay":
+      translatedRisk.title = t.alertShippingDelayTitle || "Shipping delay detected";
+      translatedRisk.description = t.alertShippingDelayDesc || "Average delivery time increased by 1.4 days";
+      translatedRisk.action = t.alertViewOrders || "View Orders";
+      break;
+    case "conversion_drop":
+      translatedRisk.title = t.alertConversionDropTitle || "Conversion rate dropping";
+      translatedRisk.description = t.alertConversionDropDesc || "Checkout completion dropped 12% in last 2 hours";
+      translatedRisk.action = t.alertCheckFunnel || "Check Funnel";
+      break;
+    case "ad_spend":
+      translatedRisk.title = t.alertAdSpendTitle || "Ad spend spike";
+      translatedRisk.description = t.alertAdSpendDesc || "Meta Ads spending 23% above daily budget";
+      translatedRisk.action = t.alertCheckCampaigns || "Check Campaigns";
+      break;
+  }
+  return translatedRisk;
+}
+
+// Генерация уведомлений
+function generateAlertFromState(
+  integrations: Integration[],
+  currentRevenue: number,
+  prevRevenue: number,
+  currentProfit: number,
+  prevProfit: number,
+  usedAlertIds: Set<string>
+): Risk | null {
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  
+  const downIntegrations = integrations.filter(i => i.status === "error");
+  for (const integration of downIntegrations) {
+    const alertId = `integration_${integration.id}_${Math.floor(now.getTime() / 60000)}`;
+    if (!usedAlertIds.has(alertId)) {
+      return {
+        id: now.getTime(),
+        title: "",
+        description: "",
+        time: timeStr,
+        severity: "high",
+        action: "",
+        category: "integration",
+        integrationId: integration.name,
+        alertType: "integration_down"
+      };
+    }
+  }
+  
+  const revenueChange = (currentRevenue - prevRevenue) / prevRevenue;
+  if (Math.abs(revenueChange) > 0.02 && Math.random() > 0.7) {
+    const isDrop = revenueChange < 0;
+    const alertId = `revenue_${Math.floor(now.getTime() / 60000)}`;
+    if (!usedAlertIds.has(alertId)) {
+      return {
+        id: now.getTime(),
+        title: "",
+        description: "",
+        time: timeStr,
+        severity: Math.abs(revenueChange) > 0.035 ? "high" : "medium",
+        action: "",
+        category: "ads",
+        alertType: isDrop ? "revenue_drop" : "revenue_rise"
+      };
+    }
+  }
+  
+  return null;
+}
+
+// Резервные типы уведомлений — используются, если по метрикам ничего не triggered,
+// чтобы риски гарантированно приходили не реже, чем раз в 20 секунд
+const FALLBACK_ALERT_TYPES: { alertType: Risk["alertType"]; category: Risk["category"]; severity: Risk["severity"] }[] = [
+  { alertType: "low_stock", category: "inventory", severity: "high" },
+  { alertType: "shipping_delay", category: "shipping", severity: "medium" },
+  { alertType: "conversion_drop", category: "conversion", severity: "high" },
+  { alertType: "ad_spend", category: "ads", severity: "medium" },
+  { alertType: "cac_increase", category: "cac", severity: "medium" },
+];
+
+function generateFallbackAlert(usedAlertIds: Set<string>): Risk | null {
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const bucket = Math.floor(now.getTime() / 20000); // новый набор доступных типов каждые 20с
+  const shuffled = [...FALLBACK_ALERT_TYPES].sort(() => Math.random() - 0.5);
+
+  for (const template of shuffled) {
+    const alertId = `${template.alertType}_${bucket}`;
+    if (!usedAlertIds.has(alertId)) {
+      return {
+        id: now.getTime(),
+        title: "",
+        description: "",
+        time: timeStr,
+        severity: template.severity,
+        action: "",
+        category: template.category,
+        alertType: template.alertType,
+      };
+    }
+  }
+  return null;
+}
+
+// ГЛАВНЫЙ ГРАФИК
+function RevenueExpensesChart() {
+  const { t } = useLanguage();
+  const T = t as any;
+  const [hoveredBar, setHoveredBar] = useState<number | null>(null);
+  const [selectedMetric, setSelectedMetric] = useState<"revenue" | "expenses" | "profit">("revenue");
+  const history = CHART_DATA;
+  
+  const maxRevenue = Math.max(...history.map(d => d.revenue));
+  const maxExpenses = Math.max(...history.map(d => d.expenses));
+  const maxProfit = Math.max(...history.map(d => d.profit));
+  const minProfit = Math.min(...history.map(d => d.profit));
+  let maxValue = selectedMetric === "revenue" ? maxRevenue : selectedMetric === "expenses" ? maxExpenses : maxProfit;
+  let minValue = selectedMetric === "profit" ? minProfit : 0;
+  
+  const getYSteps = () => {
+    if (selectedMetric === "revenue") return [0, 50000, 100000, 150000];
+    if (selectedMetric === "expenses") return [0, 40000, 80000, 120000];
+    return [0, 20000, 40000, 60000];
+  };
+  const ySteps = getYSteps();
+  const getBarColor = () => {
+    if (selectedMetric === "revenue") return "bg-gradient-to-t from-blue-600 to-blue-400";
+    if (selectedMetric === "expenses") return "bg-gradient-to-t from-rose-600 to-rose-400";
+    return "bg-gradient-to-t from-green-600 to-emerald-400";
+  };
+  const getMetricValue = (item: any) => {
+    if (selectedMetric === "revenue") return item.revenue;
+    if (selectedMetric === "expenses") return item.expenses;
+    return item.profit;
+  };
+  
+  const totalRevenue = history.reduce((sum, d) => sum + d.revenue, 0);
+  const totalExpenses = history.reduce((sum, d) => sum + d.expenses, 0);
+  const totalProfit = totalRevenue - totalExpenses;
+  const avgMargin = history.reduce((sum, d) => sum + d.margin, 0) / history.length;
+  const expenseEfficiency = (totalExpenses / totalRevenue * 100).toFixed(1);
+  const bestDay = history.reduce((best, d, i) => d.margin > history[best].margin ? i : best, 0);
+  const worstDay = history.reduce((worst, d, i) => d.margin < history[worst].margin ? i : worst, 0);
+  
+  return (
+    <div className="bg-gradient-to-br from-gray-900/80 to-black rounded-2xl p-3 sm:p-5 border border-gray-800 overflow-hidden">
+      <div className="flex flex-wrap justify-between items-center gap-2 sm:gap-3 mb-4 sm:mb-5">
+        <div className="flex items-center gap-2">
+          <BarChart3 className="w-5 h-5 text-blue-400 flex-shrink-0" />
+          <h3 className="text-base sm:text-lg font-bold text-white">{T.demoRevenueVsExpenses || "Revenue vs Expenses (30 days)"}</h3>
+        </div>
+        <div className="flex gap-1 sm:gap-2 bg-gray-800/50 rounded-lg p-1">
+          <button onClick={() => setSelectedMetric("revenue")} className={`px-2.5 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all ${selectedMetric === "revenue" ? "bg-blue-500/30 text-blue-400" : "text-gray-500 hover:text-gray-300"}`}>{T.demoRevenue || "Revenue"}</button>
+          <button onClick={() => setSelectedMetric("expenses")} className={`px-2.5 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all ${selectedMetric === "expenses" ? "bg-rose-500/30 text-rose-400" : "text-gray-500 hover:text-gray-300"}`}>{T.demoExpenses || "Expenses"}</button>
+          <button onClick={() => setSelectedMetric("profit")} className={`px-2.5 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all ${selectedMetric === "profit" ? "bg-green-500/30 text-green-400" : "text-gray-500 hover:text-gray-300"}`}>{T.demoProfit || "Profit"}</button>
+        </div>
+      </div>
+      
+      <div className="relative mt-3">
+        <div className="absolute left-12 right-0 top-0 bottom-0 pointer-events-none">
+          {ySteps.map((step, idx) => {
+            let yPercent;
+            if (selectedMetric === "profit") {
+              const range = maxValue - minValue;
+              yPercent = range === 0 ? 50 : (1 - (step - minValue) / range) * 100;
+            } else {
+              yPercent = (1 - step / maxValue) * 100;
+            }
+            if (yPercent < 0 || yPercent > 100) return null;
+            return <div key={idx} className="absolute w-full border-t border-gray-800/50" style={{ top: `${yPercent}%` }} />;
+          })}
+        </div>
+        
+        <div className="absolute left-0 top-0 bottom-0 w-12 flex flex-col justify-between text-xs font-mono">
+          {ySteps.slice().reverse().map((step, idx) => (
+            <div key={idx} className="text-gray-500 -translate-y-1/2">
+              {selectedMetric === "profit" ? (step >= 0 ? "+" : "") : "$"}{(step / 1000).toFixed(0)}k
+            </div>
+          ))}
+        </div>
 import { useLanguage } from "@/lib/translations";
 import { 
   LayoutDashboard, AlertTriangle, TrendingUp, Link2, 
@@ -989,7 +1264,7 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
             {lastNotification && activeView !== "risks" && (
             <div className="fixed bottom-20 right-4 left-4 md:left-auto md:right-4 md:w-80 bg-gray-900/95 rounded-xl p-4 border-l-4 border-blue-500 shadow-xl animate-in slide-in-from-right-5 fade-in duration-300 backdrop-blur-md z-50">
                 <div className="flex justify-between items-start">
-                  <div className="flex-1">
+                  <div className="flex-1 pr-4">
                     <div className="flex items-center gap-2 mb-1">
                       <div className={`p-1 rounded ${lastNotification.severity === "high" ? "bg-red-500/20" : lastNotification.severity === "medium" ? "bg-yellow-500/20" : "bg-blue-500/20"}`}>
                         {getCategoryIcon(lastNotification.category)}
@@ -1000,11 +1275,8 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
                   </div>
                   {/* FIX: увеличенная тап-зона крестика в тосте-уведомлении (p-2 -m-2 вместо голой иконки) */}
                   <button
-  onPointerDown={(e) => {
-    e.stopPropagation();
-    setLastNotification(null);
-  }}
-  className="w-10 h-10 flex items-center justify-center rounded-lg text-gray-500 hover:text-white touch-manipulation"
+  onClick={() => setLastNotification(null)}
+  className="flex-shrink-0 p-2 rounded-lg text-gray-500 hover:text-white/80"
 >
   <X className="w-5 h-5" />
 </button>
