@@ -300,8 +300,16 @@ function RevenueExpensesChart() {
             </div>
           ))}
         </div>
-        
-        <div className="ml-12 h-48 sm:h-64 flex items-end gap-0.5 sm:gap-1 overflow-x-auto pb-2">
+
+        {/*
+          FIX: убрали items-end с контейнера графика (та же проблема, что и
+          в LiveDemoModal): каждая колонка сжималась по высоте до размера
+          собственного бара, поэтому hover/click-зона была в несколько px.
+          Теперь колонка растянута на всю высоту (h-48/h-64), бар прижат
+          к низу через mt-auto, а onClick добавлен для тач-устройств,
+          где hover не срабатывает надёжно.
+        */}
+        <div className="ml-12 h-48 sm:h-64 flex gap-0.5 sm:gap-1 overflow-x-auto pb-2">
           {history.map((item, idx) => {
             const value = getMetricValue(item);
             let percent;
@@ -312,8 +320,14 @@ function RevenueExpensesChart() {
               percent = (value / maxValue) * 100;
             }
             return (
-              <div key={idx} className="flex-1 flex flex-col items-center gap-0.5 group cursor-pointer min-w-[20px] sm:min-w-[24px]" onMouseEnter={() => setHoveredBar(idx)} onMouseLeave={() => setHoveredBar(null)}>
-                <div className="relative w-full">
+              <div
+                key={idx}
+                className="flex-1 h-full flex flex-col justify-end items-center gap-0.5 group cursor-pointer min-w-[20px] sm:min-w-[24px]"
+                onMouseEnter={() => setHoveredBar(idx)}
+                onMouseLeave={() => setHoveredBar(null)}
+                onClick={() => setHoveredBar((prev) => (prev === idx ? null : idx))}
+              >
+                <div className="relative w-full mt-auto">
                   <div className={`w-full ${getBarColor()} rounded-t-sm transition-all duration-150`} style={{ height: `${Math.max(percent, 3)}px`, minHeight: '3px' }} />
                   {hoveredBar === idx && (
                     <div className="absolute -top-28 left-1/2 -translate-x-1/2 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 z-20 shadow-xl whitespace-nowrap">
@@ -598,7 +612,7 @@ export default function DashboardPage() {
             </button>
             <button
               onClick={() => setIsMobileSidebarOpen(false)}
-              className="lg:hidden w-9 h-9 flex-shrink-0 rounded-lg bg-gray-800/70 flex items-center justify-center text-gray-300 hover:text-white transition-colors"
+              className="lg:hidden w-10 h-10 flex-shrink-0 rounded-lg bg-gray-800/70 flex items-center justify-center text-gray-300 hover:text-white transition-colors"
               aria-label={getTranslation("close", "Close")}
             >
               <X className="w-4 h-4" />
@@ -850,9 +864,10 @@ export default function DashboardPage() {
           {risk.action}
         </Button>
       </div>
+      {/* FIX: увеличенная тап-зона крестика удаления риска (p-2 -m-1 вместо p-1) */}
       <button
         onClick={() => { setRisks(prev => prev.filter(r => r.id !== risk.id)); setAlertCount(prev => Math.max(0, prev - 1)); }}
-        className="text-gray-600 hover:text-gray-300 transition-colors p-1 rounded-lg hover:bg-gray-800 self-start shrink-0"
+        className="text-gray-600 hover:text-gray-300 transition-colors p-2 -m-1 rounded-lg hover:bg-gray-800 self-start shrink-0"
       >
         <X className="w-4 h-4" />
       </button>
@@ -1142,7 +1157,7 @@ export default function DashboardPage() {
               <h2 className="text-lg font-semibold text-white">
                 {language === "UA" ? "Редагувати профіль" : language === "DE" ? "Profil bearbeiten" : "Edit Profile"}
               </h2>
-              <button onClick={() => setShowEditProfileModal(false)} className="text-gray-500 hover:text-gray-300 transition-colors">
+              <button onClick={() => setShowEditProfileModal(false)} className="text-gray-500 hover:text-gray-300 transition-colors p-2 -m-2">
                 <X className="w-5 h-5" />
               </button>
             </div>
