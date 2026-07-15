@@ -577,16 +577,31 @@ export default function DashboardPage() {
   
   return (
     <div className="h-screen bg-background flex flex-col lg:flex-row overflow-hidden pb-16 lg:pb-0">
+      {/* Затемняющая подложка — тап мимо меню закрывает его */}
+      {isMobileSidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/70 lg:hidden"
+          onClick={() => setIsMobileSidebarOpen(false)}
+        />
+      )}
+
       {/* Sidebar - как в демо */}
       <aside className={`
-        fixed lg:static inset-y-0 left-0 z-50 w-64 bg-black/60 border-r border-gray-800 
+        fixed lg:static inset-y-0 left-0 z-50 w-64 bg-gray-950 lg:bg-black/60 border-r border-gray-800 
         transform transition-transform duration-300 ease-in-out overflow-hidden
         ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
         <div className="flex flex-col h-full p-4 overflow-hidden">
-          <div className="flex items-center gap-2 mb-8">
+          <div className="flex items-center justify-between gap-2 mb-8">
             <button onClick={handleLogout} className="focus:outline-none hover:opacity-80 transition-opacity">
               <img src="/icon8.png" alt="RIVANT" className="w-48 object-contain" />
+            </button>
+            <button
+              onClick={() => setIsMobileSidebarOpen(false)}
+              className="lg:hidden w-9 h-9 flex-shrink-0 rounded-lg bg-gray-800/70 flex items-center justify-center text-gray-300 hover:text-white transition-colors"
+              aria-label={getTranslation("close", "Close")}
+            >
+              <X className="w-4 h-4" />
             </button>
           </div>
           
