@@ -194,23 +194,23 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setIsMobileMenuOpen(false)} />
           <div 
             ref={mobileMenuRef}
-            className="absolute top-16 left-4 right-4 bg-gray-900 rounded-2xl border border-white/10 p-4 space-y-3"
+            className="absolute top-16 left-4 right-4 bg-gray-900 rounded-2xl border border-white/10 p-4 space-y-1"
           >
             <button
               onClick={() => scrollTo("#features")}
-              className="w-full text-left px-4 py-3 text-gray-300 hover:text-white hover:bg-white/10 rounded-lg"
+              className="w-full text-left px-4 py-2.5 text-gray-300 hover:text-white hover:bg-white/10 rounded-lg"
             >
               {T.about || "About"}
             </button>
             <button
               onClick={() => scrollTo("#pricing")}
-              className="w-full text-left px-4 py-3 text-gray-300 hover:text-white hover:bg-white/10 rounded-lg"
+              className="w-full text-left px-4 py-2.5 text-gray-300 hover:text-white hover:bg-white/10 rounded-lg"
             >
               {T.pricing || "Pricing"}
             </button>
             <button
               onClick={() => scrollTo("#contact")}
-              className="w-full text-left px-4 py-3 text-gray-300 hover:text-white hover:bg-white/10 rounded-lg"
+              className="w-full text-left px-4 py-2.5 text-gray-300 hover:text-white hover:bg-white/10 rounded-lg"
             >
               {T.contact || "Contact"}
             </button>
