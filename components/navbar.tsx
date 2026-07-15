@@ -22,6 +22,10 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
   const { language, setLanguage, t } = useLanguage();
   const modalRef = useRef<HTMLDivElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
+  // FIX: отдельный ref для кнопки-переключателя (гамбургер/X), чтобы
+  // клик по ней не считался "кликом снаружи" меню и не вызывал повторное
+  // открытие сразу после закрытия (race condition touchstart -> click).
+  const menuToggleRef = useRef<HTMLButtonElement>(null);
 
   const T = t as any;
 
@@ -45,17 +49,27 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
       if (modalRef.current && !modalRef.current.contains(e.target as Node)) {
         setIsLoginModalOpen(false);
       }
-      if (mobileMenuRef.current && !mobileMenuRef.current.contains(e.target as Node) && isMobileMenuOpen) {
+      // FIX: игнорируем клики по самой кнопке-переключателю,
+      // иначе tap по X сначала закрывает меню через этот обработчик,
+      // а следом идущий синтетический click открывает его обратно.
+      const clickedToggle =
+        menuToggleRef.current && menuToggleRef.current.contains(e.target as Node);
+      if (
+        mobileMenuRef.current &&
+        !mobileMenuRef.current.contains(e.target as Node) &&
+        !clickedToggle &&
+        isMobileMenuOpen
+      ) {
         setIsMobileMenuOpen(false);
       }
     };
-    
+
     if (isLoginModalOpen || isMobileMenuOpen) {
       document.addEventListener("mousedown", handleClickOutside);
       document.addEventListener("touchstart", handleClickOutside);
       document.body.style.overflow = "hidden";
     }
-    
+
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
       document.removeEventListener("touchstart", handleClickOutside);
@@ -150,19 +164,19 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
                   </button>
                 ))}
               </div>
-              
+
               {/* Demo button - полностью прозрачная, только обводка */}
               {!isDashboard && (
-                <Button 
-                  size="sm" 
-                  variant="outline" 
+                <Button
+                  size="sm"
+                  variant="outline"
                   className="border-blue-600 text-blue-600 hover:bg-blue-600 hover:text-white cursor-pointer"
                   onClick={handleDemo}
                 >
                   {T.demo || "Demo"}
                 </Button>
               )}
-              
+
               {/* Cabinet button - такой же стиль, но с полупрозрачным синим фоном */}
               {!isDashboard && (
                 <Button
@@ -176,9 +190,14 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
             </div>
 
             {!isDashboard && (
+              // FIX: увеличенная тап-зона (p-3 -m-1 вместо p-2) — визуальный
+              // размер иконки-гамбургера не меняется, но кликабельная область
+              // становится примерно на 40% больше.
               <button
-                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                className="md:hidden flex flex-col gap-1.5 p-2"
+                ref={menuToggleRef}
+                onClick={() => setIsMobileMenuOpen((prev) => !prev)}
+                className="md:hidden flex flex-col gap-1.5 p-3 -m-1"
+                aria-label={isMobileMenuOpen ? "Close menu" : "Open menu"}
               >
                 <span className={`w-6 h-0.5 bg-white transition-all ${isMobileMenuOpen ? "rotate-45 translate-y-2" : ""}`} />
                 <span className={`w-6 h-0.5 bg-white transition-all ${isMobileMenuOpen ? "opacity-0" : ""}`} />
@@ -192,7 +211,7 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
       {!isDashboard && isMobileMenuOpen && (
         <div className="fixed inset-0 z-40 md:hidden">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setIsMobileMenuOpen(false)} />
-          <div 
+          <div
             ref={mobileMenuRef}
             className="absolute top-16 left-4 right-4 bg-gray-900 rounded-2xl border border-white/10 p-4 space-y-1"
           >
@@ -214,9 +233,9 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
             >
               {T.contact || "Contact"}
             </button>
-            
+
             <div className="border-t border-white/10 my-2" />
-            
+
             <div className="px-4 py-2">
               <p className="text-xs text-gray-500 mb-2 flex items-center gap-1">
                 <Globe className="w-3 h-3" /> Language
@@ -235,14 +254,14 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
                 ))}
               </div>
             </div>
-            
+
             <button
               onClick={handleDemo}
               className="w-full px-4 py-3 border border-blue-600 text-blue-600 rounded-lg font-medium hover:bg-blue-600 hover:text-white"
             >
               {T.demo || "Demo"}
             </button>
-            
+
             <button
               onClick={openLogin}
               className="w-full px-4 py-3 border border-blue-600 bg-blue-600/20 text-blue-600 rounded-lg font-medium hover:bg-blue-600 hover:text-white"
@@ -262,7 +281,7 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
           >
             <button
               onClick={() => setIsLoginModalOpen(false)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-white p-2"
+              className="absolute top-4 right-4 text-gray-400 hover:text-white p-3 -m-1"
             >
               <X className="w-5 h-5" />
             </button>
