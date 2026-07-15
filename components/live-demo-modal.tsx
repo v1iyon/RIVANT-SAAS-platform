@@ -382,16 +382,16 @@ function RevenueExpensesChart() {
   const worstDay = history.reduce((worst, d, i) => d.margin < history[worst].margin ? i : worst, 0);
   
   return (
-    <div className="bg-gradient-to-br from-gray-900/80 to-black rounded-2xl p-5 border border-gray-800">
-      <div className="flex flex-wrap justify-between items-center gap-3 mb-5">
+    <div className="bg-gradient-to-br from-gray-900/80 to-black rounded-2xl p-3 sm:p-5 border border-gray-800 overflow-hidden">
+      <div className="flex flex-wrap justify-between items-center gap-2 sm:gap-3 mb-4 sm:mb-5">
         <div className="flex items-center gap-2">
-          <BarChart3 className="w-5 h-5 text-blue-400" />
-          <h3 className="text-lg font-bold text-white">{T.demoRevenueVsExpenses || "Revenue vs Expenses (30 days)"}</h3>
+          <BarChart3 className="w-5 h-5 text-blue-400 flex-shrink-0" />
+          <h3 className="text-base sm:text-lg font-bold text-white">{T.demoRevenueVsExpenses || "Revenue vs Expenses (30 days)"}</h3>
         </div>
-        <div className="flex gap-2 bg-gray-800/50 rounded-lg p-1">
-          <button onClick={() => setSelectedMetric("revenue")} className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${selectedMetric === "revenue" ? "bg-blue-500/30 text-blue-400" : "text-gray-500 hover:text-gray-300"}`}>{T.demoRevenue || "Revenue"}</button>
-          <button onClick={() => setSelectedMetric("expenses")} className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${selectedMetric === "expenses" ? "bg-rose-500/30 text-rose-400" : "text-gray-500 hover:text-gray-300"}`}>{T.demoExpenses || "Expenses"}</button>
-          <button onClick={() => setSelectedMetric("profit")} className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${selectedMetric === "profit" ? "bg-green-500/30 text-green-400" : "text-gray-500 hover:text-gray-300"}`}>{T.demoProfit || "Profit"}</button>
+        <div className="flex gap-1 sm:gap-2 bg-gray-800/50 rounded-lg p-1">
+          <button onClick={() => setSelectedMetric("revenue")} className={`px-2.5 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all ${selectedMetric === "revenue" ? "bg-blue-500/30 text-blue-400" : "text-gray-500 hover:text-gray-300"}`}>{T.demoRevenue || "Revenue"}</button>
+          <button onClick={() => setSelectedMetric("expenses")} className={`px-2.5 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all ${selectedMetric === "expenses" ? "bg-rose-500/30 text-rose-400" : "text-gray-500 hover:text-gray-300"}`}>{T.demoExpenses || "Expenses"}</button>
+          <button onClick={() => setSelectedMetric("profit")} className={`px-2.5 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all ${selectedMetric === "profit" ? "bg-green-500/30 text-green-400" : "text-gray-500 hover:text-gray-300"}`}>{T.demoProfit || "Profit"}</button>
         </div>
       </div>
       
@@ -666,10 +666,10 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
   const cacChange = ((currentCac - prevCac) / prevCac * 100).toFixed(1);
   
   const sidebarItems = [
-    { icon: LayoutDashboard, label: T.demoOverview || "Dashboard Overview", view: "overview" as ViewType },
-    { icon: AlertTriangle, label: T.demoRiskDetection || "Risk Detection", view: "risks" as ViewType },
-    { icon: TrendingUp, label: T.demoCashflowForecast || "Cashflow Forecast", view: "forecast" as ViewType },
-    { icon: Link2, label: T.demoIntegrations || "Integrations", view: "integrations" as ViewType },
+    { icon: LayoutDashboard, label: T.demoOverview || "Dashboard Overview", shortLabel: T.overview || "Overview", view: "overview" as ViewType },
+    { icon: AlertTriangle, label: T.demoRiskDetection || "Risk Detection", shortLabel: T.risks || "Risks", view: "risks" as ViewType },
+    { icon: TrendingUp, label: T.demoCashflowForecast || "Cashflow Forecast", shortLabel: T.forecast || "Forecast", view: "forecast" as ViewType },
+    { icon: Link2, label: T.demoIntegrations || "Integrations", shortLabel: T.integrations || "Integrations", view: "integrations" as ViewType },
   ];
   
   const getCategoryIcon = (category: string) => {
@@ -739,9 +739,9 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
           <div className="flex-1 p-4 sm:p-6 pb-24 md:pb-6 overflow-auto">
             
             {/* Mobile navigation */}
-            <div className="flex md:hidden items-center justify-between mb-5 pr-12">
+            <div className="flex md:hidden items-center justify-between mb-5 pr-11">
               <h2 className="text-lg font-bold text-white truncate">
-                {sidebarItems.find(i => i.view === activeView)?.label}
+                {sidebarItems.find(i => i.view === activeView)?.shortLabel}
               </h2>
               <button onClick={() => setShowTelegramPopup(true)} className="ml-2 p-2 bg-gray-800/30 rounded-lg relative flex-shrink-0">
                 <Bell className="w-5 h-5 text-gray-500" />
@@ -1022,7 +1022,7 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
                 }`}
               >
                 <item.icon className="w-5 h-5" />
-                <span className="truncate w-full text-center">{item.label}</span>
+                <span className="truncate w-full text-center">{item.shortLabel}</span>
               </button>
             ))}
           </div>
