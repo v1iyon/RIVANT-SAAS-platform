@@ -417,37 +417,37 @@ function RevenueExpensesChart() {
         </div>
       </div>
       
-      <div className="grid grid-cols-3 gap-3 mt-6 pt-4 border-t border-gray-800">
-        <div className="bg-blue-500/5 rounded-xl p-3 border border-blue-500/15">
-          <div className="flex items-center gap-1.5 mb-1">
-            <DollarSign className="w-3.5 h-3.5 text-blue-400" />
-            <div className="text-[10px] text-gray-500 uppercase tracking-wider">{T.demoRevenue || "Total Revenue"}</div>
+      <div className="grid grid-cols-3 gap-2 sm:gap-3 mt-6 pt-4 border-t border-gray-800">
+        <div className="bg-blue-500/5 rounded-xl p-2 sm:p-3 border border-blue-500/15 overflow-hidden">
+          <div className="flex items-center gap-1 sm:gap-1.5 mb-1">
+            <DollarSign className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-blue-400 flex-shrink-0" />
+            <div className="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-wider truncate">{T.demoRevenue || "Total Revenue"}</div>
           </div>
-          <div className="text-xl font-bold text-white">${(totalRevenue / 1000).toFixed(0)}k</div>
-          <div className="text-[10px] text-gray-500 mt-1">↑ {Math.abs(((history[history.length-1].revenue - history[0].revenue) / history[0].revenue * 100)).toFixed(0)}% {T.demoVsStart || "vs start"}</div>
+          <div className="text-base sm:text-xl font-bold text-white truncate">${(totalRevenue / 1000).toFixed(0)}k</div>
+          <div className="text-[9px] sm:text-[10px] text-gray-500 mt-1 truncate">↑ {Math.abs(((history[history.length-1].revenue - history[0].revenue) / history[0].revenue * 100)).toFixed(0)}% {T.demoVsStart || "vs start"}</div>
         </div>
-        <div className="bg-rose-500/5 rounded-xl p-3 border border-rose-500/15">
-          <div className="flex items-center gap-1.5 mb-1">
-            <TrendingDown className="w-3.5 h-3.5 text-rose-400" />
-            <div className="text-[10px] text-gray-500 uppercase tracking-wider">{T.demoExpenses || "Total Expenses"}</div>
+        <div className="bg-rose-500/5 rounded-xl p-2 sm:p-3 border border-rose-500/15 overflow-hidden">
+          <div className="flex items-center gap-1 sm:gap-1.5 mb-1">
+            <TrendingDown className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-rose-400 flex-shrink-0" />
+            <div className="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-wider truncate">{T.demoExpenses || "Total Expenses"}</div>
           </div>
-          <div className="text-xl font-bold text-white">${(totalExpenses / 1000).toFixed(0)}k</div>
-          <div className="text-[10px] text-gray-500 mt-1">{((totalExpenses / totalRevenue) * 100).toFixed(0)}% {T.demoOfRevenue || "of revenue"}</div>
+          <div className="text-base sm:text-xl font-bold text-white truncate">${(totalExpenses / 1000).toFixed(0)}k</div>
+          <div className="text-[9px] sm:text-[10px] text-gray-500 mt-1 truncate">{((totalExpenses / totalRevenue) * 100).toFixed(0)}% {T.demoOfRevenue || "of revenue"}</div>
         </div>
-        <div className="bg-green-500/10 rounded-xl p-3 border border-green-500/20">
-          <div className="flex items-center gap-1.5 mb-1">
-            <TrendingUp className="w-3.5 h-3.5 text-green-400" />
-            <div className="text-[10px] text-gray-500 uppercase tracking-wider">{T.demoProfit || "Net Profit"}</div>
+        <div className="bg-green-500/10 rounded-xl p-2 sm:p-3 border border-green-500/20 overflow-hidden">
+          <div className="flex items-center gap-1 sm:gap-1.5 mb-1">
+            <TrendingUp className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-green-400 flex-shrink-0" />
+            <div className="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-wider truncate">{T.demoProfit || "Net Profit"}</div>
           </div>
-          <div className="text-xl font-bold text-green-400">+${(totalProfit / 1000).toFixed(0)}k</div>
-          <div className="text-[10px] text-gray-500 mt-1">{avgMargin.toFixed(1)}% {T.demoAvgMargin || "avg margin"}</div>
+          <div className="text-base sm:text-xl font-bold text-green-400 truncate">+${(totalProfit / 1000).toFixed(0)}k</div>
+          <div className="text-[9px] sm:text-[10px] text-gray-500 mt-1 truncate">{avgMargin.toFixed(1)}% {T.demoAvgMargin || "avg margin"}</div>
         </div>
       </div>
       
-      <div className="flex justify-between items-center mt-3 pt-2 text-[10px] text-gray-600 border-t border-gray-800/50">
-        <span>{T.demoExpenseRatio || "Expense ratio"}: {expenseEfficiency}%</span>
-        <span>{T.demoPeakMargin || "Peak margin"}: {history[bestDay].margin}% ({T.demoDay || "day"} {bestDay + 1})</span>
-        <span>{T.demoLowMargin || "Low margin"}: {history[worstDay].margin}% ({T.demoDay || "day"} {worstDay + 1})</span>
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 mt-3 pt-2 text-[10px] text-gray-600 border-t border-gray-800/50">
+        <span className="truncate">{T.demoExpenseRatio || "Expense ratio"}: {expenseEfficiency}%</span>
+        <span className="truncate">{T.demoPeakMargin || "Peak margin"}: {history[bestDay].margin}% ({T.demoDay || "day"} {bestDay + 1})</span>
+        <span className="truncate">{T.demoLowMargin || "Low margin"}: {history[worstDay].margin}% ({T.demoDay || "day"} {worstDay + 1})</span>
       </div>
     </div>
   );
