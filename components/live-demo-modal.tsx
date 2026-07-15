@@ -172,8 +172,8 @@ function TickerSparkline({ history, color, currentValue, previousValue }: { hist
   const isPositive = currentValue >= previousValue;
   
   return (
-    <div className="flex items-end gap-0.5 h-8 mt-2 overflow-hidden">
-      <div className={`flex items-end gap-0.5 transition-transform duration-300 ease-out ${isAnimating ? '-translate-x-2' : 'translate-x-0'}`}>
+    <div className="flex items-end gap-0.5 h-8 mt-2 w-full overflow-hidden">
+      <div className={`flex items-end gap-0.5 w-full transition-transform duration-300 ease-out ${isAnimating ? '-translate-x-2' : 'translate-x-0'}`}>
         {items.map((value, i) => {
           let height = range === 0 ? 20 : ((value - minValue) / range) * 20 + 4;
           const isNew = i === items.length - 1;
@@ -830,33 +830,33 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
                 </div>
 
                 {/* 2. График */}
-                <div className="bg-gray-900/30 rounded-xl p-5 border border-gray-800">
+                <div className="bg-gray-900/30 rounded-xl p-3 sm:p-5 border border-gray-800 overflow-hidden">
                   <h3 className="font-semibold text-white text-base mb-4">{T.demoMonthlyForecast || "Monthly Forecast"}</h3>
-                  <div className="flex justify-around items-end h-40 gap-4">
+                  <div className="flex justify-around items-end h-40 gap-1 sm:gap-4">
                     {[
                       { monthIdx: 6, revenue: 280, expenses: 210, revenueActual: 268 },
                       { monthIdx: 7, revenue: 298, expenses: 215, revenueActual: 291 },
                       { monthIdx: 8, revenue: 312, expenses: 222, revenueActual: null }
                     ].map((m, i) => (
-                      <div key={i} className="flex flex-col items-center gap-2 flex-1">
-                        <div className="relative w-full flex justify-center gap-2 items-end">
+                      <div key={i} className="flex flex-col items-center gap-2 flex-1 min-w-0">
+                        <div className="relative w-full flex justify-center gap-1 sm:gap-2 items-end">
                           {m.revenueActual && (
                             <div className="relative group">
-                              <div className="w-8 bg-blue-500/30 rounded-t" style={{ height: `${m.revenueActual / 3.2}px` }} />
-                              <div className="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition bg-gray-800 text-white text-[10px] px-1 rounded whitespace-nowrap">{T.demoActual || "Actual"}: ${m.revenueActual}k</div>
+                              <div className="w-4 sm:w-8 bg-blue-500/30 rounded-t" style={{ height: `${m.revenueActual / 3.2}px` }} />
+                              <div className="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition bg-gray-800 text-white text-[10px] px-1 rounded whitespace-nowrap hidden sm:block">{T.demoActual || "Actual"}: ${m.revenueActual}k</div>
                             </div>
                           )}
                           <div className="relative group">
-                            <div className="w-8 bg-blue-500 rounded-t" style={{ height: `${m.revenue / 3.2}px` }} />
-                            <div className="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition bg-gray-800 text-white text-[10px] px-1 rounded whitespace-nowrap">{T.demoForecast || "Forecast"}: ${m.revenue}k</div>
+                            <div className="w-4 sm:w-8 bg-blue-500 rounded-t" style={{ height: `${m.revenue / 3.2}px` }} />
+                            <div className="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition bg-gray-800 text-white text-[10px] px-1 rounded whitespace-nowrap hidden sm:block">{T.demoForecast || "Forecast"}: ${m.revenue}k</div>
                           </div>
                           <div className="relative group">
-                            <div className="w-8 bg-rose-500/60 rounded-t" style={{ height: `${m.expenses / 3.2}px` }} />
-                            <div className="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition bg-gray-800 text-white text-[10px] px-1 rounded whitespace-nowrap">{T.demoExpenses || "Expenses"}: ${m.expenses}k</div>
+                            <div className="w-4 sm:w-8 bg-rose-500/60 rounded-t" style={{ height: `${m.expenses / 3.2}px` }} />
+                            <div className="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition bg-gray-800 text-white text-[10px] px-1 rounded whitespace-nowrap hidden sm:block">{T.demoExpenses || "Expenses"}: ${m.expenses}k</div>
                           </div>
                         </div>
-                        <span className="text-sm text-gray-400 font-medium">{months[m.monthIdx]}</span>
-                        <div className="flex gap-3 text-[10px] text-gray-600">
+                        <span className="text-xs sm:text-sm text-gray-400 font-medium truncate max-w-full">{months[m.monthIdx]}</span>
+                        <div className="flex gap-1.5 sm:gap-3 text-[9px] sm:text-[10px] text-gray-600">
                           <span className="text-blue-400">↑${m.revenue}k</span>
                           <span className="text-rose-400">↓${m.expenses}k</span>
                         </div>
