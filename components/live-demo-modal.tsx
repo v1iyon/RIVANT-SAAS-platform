@@ -987,7 +987,7 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
             
             {/* Notification Toast */}
             {lastNotification && activeView !== "risks" && (
-            <div className="fixed bottom-20 right-4 left-4 md:left-auto md:right-4 md:w-80 bg-gray-900/95 rounded-xl p-4 border-l-4 border-blue-500 shadow-xl animate-in slide-in-from-right-5 fade-in duration-300 backdrop-blur-md z-[9999] pointer-events-auto">
+            <div className="fixed bottom-20 right-4 left-4 md:left-auto md:right-4 md:w-80 bg-gray-900/95 rounded-xl p-4 border-l-4 border-blue-500 shadow-xl animate-in slide-in-from-right-5 fade-in duration-300 backdrop-blur-md z-50">
                 <div className="flex justify-between items-start">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
@@ -999,7 +999,15 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
                     <p className="text-xs text-gray-400 mt-0.5">{lastNotification.description}</p>
                   </div>
                   {/* FIX: увеличенная тап-зона крестика в тосте-уведомлении (p-2 -m-2 вместо голой иконки) */}
-                  <button onClick={() => setLastNotification(null)} className="text-gray-500 hover:text-white/80 p-2 -m-2"><X className="w-5 h-5" /></button>
+                  <button
+  onPointerDown={(e) => {
+    e.stopPropagation();
+    setLastNotification(null);
+  }}
+  className="w-10 h-10 flex items-center justify-center rounded-lg text-gray-500 hover:text-white touch-manipulation"
+>
+  <X className="w-5 h-5" />
+</button>
                 </div>
                 <button onClick={() => setActiveView("risks")} className="mt-2 text-xs text-blue-400 hover:text-blue-300 font-medium">{T.demoViewInRisks || "View in Risks →"}</button>
               </div>
