@@ -417,8 +417,20 @@ function RevenueExpensesChart() {
             </div>
           ))}
         </div>
-        
-        <div className="ml-12 h-64 flex items-end gap-1">
+
+        {/*
+          FIX: убрали items-end с контейнера графика.
+          Раньше "flex items-end" сжимал КАЖДУЮ колонку по высоте до размера
+          её собственного бара (иногда 3px), а hover/click-обработчики висели
+          именно на этой сжатой колонке — из-за этого по столбикам было
+          невозможно попасть пальцем.
+          Теперь колонка занимает всю высоту h-64, а сам бар прижимается
+          к низу через "mt-auto" внутри неё — кликабельная зона стала
+          на порядок больше (256px высоты вместо нескольких px).
+          Также добавлен onClick — на touch-устройствах hover не работает
+          надёжно, поэтому тултип теперь можно открыть/закрыть тапом.
+        */}
+        <div className="ml-12 h-64 flex gap-1">
           {history.map((item, idx) => {
             const value = getMetricValue(item);
             let percent;
@@ -429,8 +441,14 @@ function RevenueExpensesChart() {
               percent = (value / maxValue) * 100;
             }
             return (
-              <div key={idx} className="flex-1 flex flex-col items-center gap-0.5 group cursor-pointer" onMouseEnter={() => setHoveredBar(idx)} onMouseLeave={() => setHoveredBar(null)}>
-                <div className="relative w-full">
+              <div
+                key={idx}
+                className="flex-1 h-full flex flex-col justify-end items-center gap-0.5 group cursor-pointer"
+                onMouseEnter={() => setHoveredBar(idx)}
+                onMouseLeave={() => setHoveredBar(null)}
+                onClick={() => setHoveredBar((prev) => (prev === idx ? null : idx))}
+              >
+                <div className="relative w-full mt-auto">
                   <div className={`w-full ${getBarColor()} rounded-t-sm transition-all duration-150`} style={{ height: `${Math.max(percent, 3)}px`, minHeight: '3px' }} />
                   {hoveredBar === idx && (
                     <div className="absolute -top-28 left-1/2 -translate-x-1/2 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 z-20 shadow-xl whitespace-nowrap">
@@ -705,7 +723,8 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4" style={{ backgroundColor: "rgba(0,0,0,0.95)", backdropFilter: "blur(8px)" }}>
       <div ref={modalRef} className="relative w-full max-w-[95vw] sm:max-w-[90vw] h-[95vh] bg-gradient-to-br from-gray-950 to-black border border-gray-800 rounded-2xl overflow-hidden flex flex-col shadow-2xl">
-        <button onClick={onClose} className="absolute top-3 right-3 z-50 w-8 h-8 rounded-lg bg-gray-800/50 flex items-center justify-center text-gray-400 hover:text-white transition-colors">
+        {/* FIX: w-8 h-8 -> w-10 h-10, это главный крестик закрытия демо */}
+        <button onClick={onClose} className="absolute top-3 right-3 z-50 w-10 h-10 rounded-lg bg-gray-800/50 flex items-center justify-center text-gray-400 hover:text-white transition-colors">
           <X className="w-4 h-4" />
         </button>
         
@@ -816,7 +835,8 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
                               <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${risk.severity === "high" ? "bg-red-500/20 text-red-400" : risk.severity === "medium" ? "bg-yellow-500/20 text-yellow-400" : "bg-blue-500/20 text-blue-400"}`}>{risk.severity.toUpperCase()}</span>
                               <span className="text-xs text-gray-500">{risk.time}</span>
                             </div>
-                            <button onClick={() => removeRisk(risk.id)} className="text-gray-500 hover:text-white/60"><X className="w-3.5 h-3.5" /></button>
+                            {/* FIX: увеличенная тап-зона крестика удаления риска (p-2 -m-2) */}
+                            <button onClick={() => removeRisk(risk.id)} className="text-gray-500 hover:text-white/60 p-2 -m-2"><X className="w-3.5 h-3.5" /></button>
                           </div>
                           <h4 className="font-semibold text-white text-base mt-1">{risk.title}</h4>
                           <p className="text-sm text-gray-400 mt-0.5">{risk.description}</p>
@@ -978,7 +998,8 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
                     </div>
                     <p className="text-xs text-gray-400 mt-0.5">{lastNotification.description}</p>
                   </div>
-                  <button onClick={() => setLastNotification(null)} className="text-gray-500 hover:text-white/80"><X className="w-3 h-3" /></button>
+                  {/* FIX: увеличенная тап-зона крестика в тосте-уведомлении (p-2 -m-2 вместо голой иконки) */}
+                  <button onClick={() => setLastNotification(null)} className="text-gray-500 hover:text-white/80 p-2 -m-2"><X className="w-3 h-3" /></button>
                 </div>
                 <button onClick={() => setActiveView("risks")} className="mt-2 text-xs text-blue-400 hover:text-blue-300 font-medium">{T.demoViewInRisks || "View in Risks →"}</button>
               </div>
@@ -990,7 +1011,7 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
                 <div className="bg-gray-900 rounded-xl p-6 w-full max-w-md border border-gray-800">
                   <div className="flex justify-between mb-4">
                     <h3 className="text-lg font-bold text-white">{T.demoTelegramAlerts || "Telegram Alerts"}</h3>
-                    <button onClick={() => setShowTelegramPopup(false)}><X className="w-5 h-5 text-gray-500" /></button>
+                    <button onClick={() => setShowTelegramPopup(false)} className="p-2 -m-2"><X className="w-5 h-5 text-gray-500" /></button>
                   </div>
                   <div className="bg-gray-800/50 rounded-xl p-4 mb-4">
                     <div className="flex items-center gap-3 mb-3">
