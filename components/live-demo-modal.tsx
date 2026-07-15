@@ -999,7 +999,7 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
                     <p className="text-xs text-gray-400 mt-0.5">{lastNotification.description}</p>
                   </div>
                   {/* FIX: увеличенная тап-зона крестика в тосте-уведомлении (p-2 -m-2 вместо голой иконки) */}
-                  <button onClick={() => setLastNotification(null)} className="text-gray-500 hover:text-white/80 p-2 -m-2"><X className="w-3 h-3" /></button>
+                  <button onClick={() => setLastNotification(null)} className="text-gray-500 hover:text-white/80 p-2 -m-2"><X className="w-5 h-5" /></button>
                 </div>
                 <button onClick={() => setActiveView("risks")} className="mt-2 text-xs text-blue-400 hover:text-blue-300 font-medium">{T.demoViewInRisks || "View in Risks →"}</button>
               </div>
