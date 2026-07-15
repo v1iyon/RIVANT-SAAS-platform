@@ -307,6 +307,40 @@ function generateAlertFromState(
   return null;
 }
 
+// Резервные типы уведомлений — используются, если по метрикам ничего не triggered,
+// чтобы риски гарантированно приходили не реже, чем раз в 20 секунд
+const FALLBACK_ALERT_TYPES: { alertType: Risk["alertType"]; category: Risk["category"]; severity: Risk["severity"] }[] = [
+  { alertType: "low_stock", category: "inventory", severity: "high" },
+  { alertType: "shipping_delay", category: "shipping", severity: "medium" },
+  { alertType: "conversion_drop", category: "conversion", severity: "high" },
+  { alertType: "ad_spend", category: "ads", severity: "medium" },
+  { alertType: "cac_increase", category: "cac", severity: "medium" },
+];
+
+function generateFallbackAlert(usedAlertIds: Set<string>): Risk | null {
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const bucket = Math.floor(now.getTime() / 20000); // новый набор доступных типов каждые 20с
+  const shuffled = [...FALLBACK_ALERT_TYPES].sort(() => Math.random() - 0.5);
+
+  for (const template of shuffled) {
+    const alertId = `${template.alertType}_${bucket}`;
+    if (!usedAlertIds.has(alertId)) {
+      return {
+        id: now.getTime(),
+        title: "",
+        description: "",
+        time: timeStr,
+        severity: template.severity,
+        action: "",
+        category: template.category,
+        alertType: template.alertType,
+      };
+    }
+  }
+  return null;
+}
+
 // ГЛАВНЫЙ ГРАФИК
 function RevenueExpensesChart() {
   const { t } = useLanguage();
@@ -545,13 +579,13 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
       const now = Date.now();
       const timeSinceLastAlert = now - lastAlertTimeRef.current;
       
-      if (timeSinceLastAlert > 25000 && risks.length < 8) {
+      if (timeSinceLastAlert > 20000 && risks.length < 8) {
         const alert = generateAlertFromState(
           integrations,
           newRevenue, currentRevenue,
           newProfit, currentProfit,
           usedAlertIdsRef.current
-        );
+        ) || generateFallbackAlert(usedAlertIdsRef.current);
         
         if (alert) {
           const alertIdKey = `${alert.alertType}_${Math.floor(now / 60000)}`;
@@ -702,18 +736,14 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
           </div>
           
           {/* Main Content */}
-          <div className="flex-1 p-4 sm:p-6 overflow-auto">
+          <div className="flex-1 p-4 sm:p-6 pb-24 md:pb-6 overflow-auto">
             
             {/* Mobile navigation */}
-            <div className="flex md:hidden items-center justify-between mb-5">
-              <div className="flex gap-2 overflow-x-auto pb-1 flex-1">
-                {sidebarItems.map((item) => (
-                  <button key={item.label} onClick={() => setActiveView(item.view)} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${activeView === item.view ? "bg-blue-500/20 text-blue-400" : "text-gray-500 bg-gray-800/30"}`}>
-                    <item.icon className="w-4 h-4" /> {item.label}
-                  </button>
-                ))}
-              </div>
-              <button onClick={() => setShowTelegramPopup(true)} className="ml-2 p-2 bg-gray-800/30 rounded-lg relative">
+            <div className="flex md:hidden items-center justify-between mb-5 pr-12">
+              <h2 className="text-lg font-bold text-white truncate">
+                {sidebarItems.find(i => i.view === activeView)?.label}
+              </h2>
+              <button onClick={() => setShowTelegramPopup(true)} className="ml-2 p-2 bg-gray-800/30 rounded-lg relative flex-shrink-0">
                 <Bell className="w-5 h-5 text-gray-500" />
                 {alertCount > 0 && <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-blue-500 text-xs flex items-center justify-center text-white font-bold">{alertCount}</span>}
               </button>
@@ -979,6 +1009,24 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
             )}
           </div>
         </div>
+
+        {/* Mobile bottom tab navigation */}
+        <nav className="md:hidden absolute bottom-0 left-0 right-0 z-40 bg-gray-950/95 backdrop-blur-xl border-t border-gray-800 px-2 py-2">
+          <div className="flex items-center justify-around">
+            {sidebarItems.map((item) => (
+              <button
+                key={item.label}
+                onClick={() => setActiveView(item.view)}
+                className={`flex flex-col items-center gap-1 px-2 py-1.5 rounded-lg text-[10px] font-medium transition-colors min-w-0 flex-1 ${
+                  activeView === item.view ? "text-blue-400" : "text-gray-500"
+                }`}
+              >
+                <item.icon className="w-5 h-5" />
+                <span className="truncate w-full text-center">{item.label}</span>
+              </button>
+            ))}
+          </div>
+        </nav>
       </div>
     </div>
   );
