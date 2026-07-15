@@ -388,12 +388,12 @@ function MetricCard({ title, value, change, icon: Icon, color, prefix = "$", suf
           {isPositive ? "+" : ""}{Math.abs(change)}%
         </div>
       </div>
-      <div className="flex items-end justify-between gap-1.5">
-        <div className="min-w-0 flex-1">
-          <div className="text-base sm:text-xl font-bold text-white truncate">{prefix}{displayValue}{suffix}</div>
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-1 sm:gap-1.5">
+        <div className="min-w-0">
+          <div className="text-lg sm:text-xl font-bold text-white whitespace-nowrap">{prefix}{displayValue}{suffix}</div>
           <div className="text-[11px] sm:text-xs text-gray-400 mt-0.5 truncate">{title}</div>
         </div>
-        <div className="flex-shrink-0 w-12 sm:w-24">
+        <div className="w-full sm:w-24 sm:flex-shrink-0">
           <TickerSparkline history={sparklineData} color={color.replace("bg-", "bg-").replace("/10", "/40")} currentValue={value} previousValue={prevValue} />
         </div>
       </div>
@@ -675,6 +675,14 @@ export default function DashboardPage() {
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
+
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center gap-3 px-3 py-2.5 mt-2 rounded-lg text-sm text-red-400 hover:bg-red-500/10 border border-red-500/20 transition-colors"
+          >
+            <LogOut className="w-4 h-4 shrink-0" />
+            <span className="flex-1 text-left font-medium">{getTranslation("signOut", "Sign Out")}</span>
+          </button>
         </div>
       </aside>
       
