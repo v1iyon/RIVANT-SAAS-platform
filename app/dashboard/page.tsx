@@ -203,8 +203,8 @@ function TickerSparkline({ history, color, currentValue, previousValue }: { hist
   const isPositive = currentValue >= previousValue;
   
   return (
-    <div className="flex items-end gap-0.5 h-8 mt-2 overflow-hidden">
-      <div className={`flex items-end gap-0.5 transition-transform duration-300 ease-out ${isAnimating ? '-translate-x-2' : 'translate-x-0'}`}>
+    <div className="flex items-end gap-0.5 h-8 mt-2 w-full overflow-hidden">
+      <div className={`flex items-end gap-0.5 w-full transition-transform duration-300 ease-out ${isAnimating ? '-translate-x-2' : 'translate-x-0'}`}>
         {items.map((value, i) => {
           let height = range === 0 ? 20 : ((value - minValue) / range) * 20 + 4;
           const isNew = i === items.length - 1;
@@ -867,24 +867,24 @@ export default function DashboardPage() {
               </div>
 
               {/* 2. График */}
-              <div className="bg-gray-900/30 rounded-xl p-5 border border-gray-800">
+              <div className="bg-gray-900/30 rounded-xl p-3 sm:p-5 border border-gray-800 overflow-hidden">
                 <h3 className="font-semibold text-white text-base mb-4">{T.demoMonthlyForecast || "Monthly Forecast"}</h3>
-                <div className="flex justify-around items-end h-40 gap-4">
+                <div className="flex justify-around items-end h-40 gap-1 sm:gap-4">
                   {[
                     { month: "Jul", revenue: 280, expenses: 210, revenueActual: 268 },
                     { month: "Aug", revenue: 298, expenses: 215, revenueActual: 291 },
                     { month: "Sep", revenue: 312, expenses: 222, revenueActual: null }
                   ].map((m, i) => (
-                    <div key={i} className="flex flex-col items-center gap-2 flex-1">
-                      <div className="relative w-full flex justify-center gap-2 items-end">
+                    <div key={i} className="flex flex-col items-center gap-2 flex-1 min-w-0">
+                      <div className="relative w-full flex justify-center gap-1 sm:gap-2 items-end">
                         {m.revenueActual && (
-                          <div className="w-8 bg-blue-500/30 rounded-t" style={{ height: `${m.revenueActual / 3.2}px` }} />
+                          <div className="w-4 sm:w-8 bg-blue-500/30 rounded-t" style={{ height: `${m.revenueActual / 3.2}px` }} />
                         )}
-                        <div className="w-8 bg-blue-500 rounded-t" style={{ height: `${m.revenue / 3.2}px` }} />
-                        <div className="w-8 bg-rose-500/60 rounded-t" style={{ height: `${m.expenses / 3.2}px` }} />
+                        <div className="w-4 sm:w-8 bg-blue-500 rounded-t" style={{ height: `${m.revenue / 3.2}px` }} />
+                        <div className="w-4 sm:w-8 bg-rose-500/60 rounded-t" style={{ height: `${m.expenses / 3.2}px` }} />
                       </div>
-                      <span className="text-sm text-gray-400 font-medium">{m.month}</span>
-                      <div className="flex gap-2 text-[10px]">
+                      <span className="text-xs sm:text-sm text-gray-400 font-medium truncate max-w-full">{m.month}</span>
+                      <div className="flex gap-1.5 sm:gap-2 text-[9px] sm:text-[10px]">
                         <span className="text-blue-400">↑${m.revenue}k</span>
                         <span className="text-rose-400">↓${m.expenses}k</span>
                       </div>
@@ -954,23 +954,23 @@ export default function DashboardPage() {
           {activeView === "settings" && (
             <div className="space-y-6">
               <div className="bg-card rounded-xl p-6 border border-border">
-                <div className="flex items-center gap-4 mb-6">
-                  <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center overflow-hidden">
+                <div className="flex flex-wrap items-center gap-4 mb-6">
+                  <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center overflow-hidden shrink-0">
                     {profilePhotoUrl ? (
                       <img src={profilePhotoUrl} alt="avatar" className="w-full h-full object-cover" />
                     ) : (
                       <User className="w-8 h-8 text-primary" />
                     )}
                   </div>
-                  <div>
-                    <h3 className="text-xl font-bold text-foreground">{profileName}</h3>
-                    <p className="text-sm text-muted-foreground">{profileEmail}</p>
-                    <div className="flex items-center gap-2 mt-1">
+                  <div className="min-w-0">
+                    <h3 className="text-xl font-bold text-foreground truncate">{profileName}</h3>
+                    <p className="text-sm text-muted-foreground truncate">{profileEmail}</p>
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
                       <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded-full">{T.growthPlan || "Growth Plan"}</span>
                       <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full">Active</span>
                     </div>
                   </div>
-                  <Button variant="outline" size="sm" className="ml-auto" onClick={openEditProfile}>{T.editProfile || "Edit Profile"}</Button>
+                  <Button variant="outline" size="sm" className="w-full sm:w-auto sm:ml-auto" onClick={openEditProfile}>{T.editProfile || "Edit Profile"}</Button>
                 </div>
               </div>
               
@@ -1092,7 +1092,7 @@ export default function DashboardPage() {
       {/* Logout Confirmation Modal */}
       {showLogoutModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-[320px] shadow-2xl">
+          <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-[90vw] max-w-[320px] shadow-2xl">
             <h2 className="text-lg font-semibold text-white mb-2">
               {language === "UA" ? "Вийти з системи?" : language === "DE" ? "Abmelden?" : "Sign out?"}
             </h2>
