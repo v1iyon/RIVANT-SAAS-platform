@@ -987,20 +987,20 @@ notificationTimeoutRef.current = setTimeout(() => setLastNotification(null), 700
               </div>
             )}
             
-            {/* Notification Toast */}
+           {/* Notification Toast */}
         {lastNotification && activeView !== "risks" && (
           <div className="fixed bottom-20 right-4 left-4 md:left-auto md:right-4 md:w-80 bg-gray-900/95 rounded-xl p-4 border-l-4 border-blue-500 shadow-xl animate-in slide-in-from-right-5 fade-in duration-300 backdrop-blur-md z-50">
             <div className="flex justify-between items-start">
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
                   <div
-                    className={p-1 rounded ${
+                    className={`p-1 rounded ${
                       lastNotification.severity === "high"
                         ? "bg-red-500/20"
                         : lastNotification.severity === "medium"
                         ? "bg-yellow-500/20"
                         : "bg-blue-500/20"
-                    }}
+                    }`}
                   >
                     {getCategoryIcon(lastNotification.category)}
                   </div>
