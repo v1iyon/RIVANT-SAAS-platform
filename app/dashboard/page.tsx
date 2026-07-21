@@ -599,6 +599,15 @@ export default function DashboardPage() {
     const translation = (t as any)[key];
     return translation !== undefined ? translation : fallback;
   };
+const getPlanLabel = (plan: string | null | undefined): string => {
+    switch (plan) {
+      case "trial": return getTranslation("trialPlan", "Trial Plan");
+      case "starter": return getTranslation("starterPlan", "Starter Plan");
+      case "growth": return getTranslation("growthPlan", "Growth Plan");
+      case "scale": return getTranslation("scalePlan", "Scale Plan");
+      default: return getTranslation("noPlan", "No Plan");
+    }
+  };
 
   const changeLanguage = (lang: Language) => {
     setLanguage(lang);
@@ -735,7 +744,7 @@ if (!subInfo) {
                 </div>
                 <div className="flex-1 text-left">
                   <div className="font-medium text-gray-200">{profileName}</div>
-                  <div className="text-xs text-gray-500">{getTranslation("growthPlan", "Growth Plan")}</div>
+                  <div className="text-xs text-gray-500">{getPlanLabel(subInfo?.plan)}</div>
                 </div>
                 <ChevronDown className="w-4 h-4" />
               </DropdownMenuTrigger>
@@ -1084,7 +1093,7 @@ if (!subInfo) {
                     <h3 className="text-xl font-bold text-foreground truncate">{profileName}</h3>
                     <p className="text-sm text-muted-foreground truncate">{profileEmail}</p>
                     <div className="flex items-center gap-2 mt-1 flex-wrap">
-                      <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded-full">{T.growthPlan || "Growth Plan"}</span>
+                      <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded-full">{getPlanLabel(subInfo?.plan)}</span>
                       <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full">Active</span>
                     </div>
                   </div>
