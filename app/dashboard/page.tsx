@@ -531,6 +531,20 @@ export default function DashboardPage() {
   const marginChange = (currentMargin - prevMargin).toFixed(1);
   const cacChange = ((currentCac - prevCac) / prevCac * 100).toFixed(1);
   
+  const handleConnectTelegram = async () => {
+  const res = await fetch("/api/telegram-connect", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: profileEmail }),
+  });
+  const data = await res.json();
+  if (data.url) {
+    window.open(data.url, "_blank");
+  } else {
+    alert("Ошибка: " + (data.error || "не удалось получить ссылку"));
+  }
+};
+
   const handleLogout = () => {
     setShowLogoutModal(true);
   };
@@ -1045,7 +1059,7 @@ export default function DashboardPage() {
                   </div>
                   <div className="flex items-center justify-between py-2">
                     <div><p className="font-medium text-foreground">{T.settingsTelegram || "Telegram Notifications"}</p><p className="text-xs text-muted-foreground">{T.settingsTelegramDesc || "Connect Telegram for instant alerts"}</p></div>
-                    <Button variant="outline" size="sm">{T.settingsConnect || "Connect"}</Button>
+                    <Button variant="outline" size="sm" onClick={handleConnectTelegram}>{T.settingsConnect || "Connect"}</Button>
                   </div>
                 </div>
               </div>

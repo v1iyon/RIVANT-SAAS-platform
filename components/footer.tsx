@@ -15,7 +15,7 @@ export function Footer() {
       { name: "Contact", href: "#contact" },
     ],
     social: [
-      { name: "Telegram", href: "https://t.me/your_handle", icon: Send },
+      { name: "Telegram", href: "https://t.me/rivant_os_bot", icon: Send },
       { name: "Instagram", href: "https://instagram.com/your_handle", icon: Instagram },
       { name: "Email", href: "mailto:hello@RIVANT.com", icon: Mail },
     ],
