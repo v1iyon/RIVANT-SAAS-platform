@@ -557,7 +557,11 @@ export default function DashboardPage() {
   }, [router]);
 
   const hasGrowthAccess = subInfo ? ["trial", "growth", "scale"].includes(subInfo.plan || "") : false;
-  const isBlocked = subInfo?.access_status === "blocked";
+const isBlocked =
+  !subInfo ||                                   // подписка не найдена вообще
+  !subInfo.plan ||                              // плана нет
+  subInfo.access_status === "blocked" ||        // явно заблокирован
+  subInfo.access_status === "none";             // явный статус "нет плана", если так возвращает API
 
 
   const revenueChange = ((currentRevenue - prevRevenue) / prevRevenue * 100).toFixed(1);
@@ -674,26 +678,31 @@ if (!subInfo) {
   }
 
   if (isBlocked) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <div className="text-center max-w-md">
-          <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-4">
-            <AlertCircle className="w-8 h-8 text-red-400" />
-          </div>
-          <h2 className="text-xl font-bold text-white mb-2">Subscription expired</h2>
-          <p className="text-gray-400 text-sm mb-6">
-            Your access is paused, but your data is safe. Renew your plan to continue.
-          </p>
-          <Button className="bg-blue-600 hover:bg-blue-700" onClick={() => router.push("/#pricing")}>
-            View plans
-          </Button>
-          <button onClick={confirmLogout} className="block mx-auto mt-4 text-sm text-gray-500 hover:text-gray-300">
-            Sign out
-          </button>
+  const neverHadPlan = !subInfo?.plan;
+  return (
+    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+      <div className="text-center max-w-md">
+        <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-4">
+          <AlertCircle className="w-8 h-8 text-red-400" />
         </div>
+        <h2 className="text-xl font-bold text-white mb-2">
+          {neverHadPlan ? "No active plan" : "Subscription expired"}
+        </h2>
+        <p className="text-gray-400 text-sm mb-6">
+          {neverHadPlan
+            ? "Choose a plan to access your dashboard."
+            : "Your access is paused, but your data is safe. Renew your plan to continue."}
+        </p>
+        <Button className="bg-blue-600 hover:bg-blue-700" onClick={() => router.push("/#pricing")}>
+          View plans
+        </Button>
+        <button onClick={confirmLogout} className="block mx-auto mt-4 text-sm text-gray-500 hover:text-gray-300">
+          Sign out
+        </button>
       </div>
-    );
-  }
+    </div>
+  );
+}
 
   return (
     <div className="h-screen bg-background flex flex-col lg:flex-row overflow-hidden pb-16 lg:pb-0">

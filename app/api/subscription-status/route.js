@@ -31,7 +31,7 @@ export async function GET(req) {
       .insert({
         user_id: appUser.id,
         plan: "trial",
-        access_status: "active",
+        access_status: "trial",
         current_period_end: periodEnd,
       })
       .select("plan, access_status, current_period_end")
