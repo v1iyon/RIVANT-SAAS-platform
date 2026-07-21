@@ -504,14 +504,14 @@ export default function DashboardPage() {
   const [timezone, setTimezone] = useState("America/New_York");
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
-  const [profileName, setProfileName] = useState("John Doe");
-  const [profileEmail, setProfileEmail] = useState("john.doe@rivant.com");
-  const [profilePhone, setProfilePhone] = useState("+1 (555) 123-4567");
-  const [profileInitials, setProfileInitials] = useState("JD");
+  const [profileName, setProfileName] = useState("");
+  const [profileEmail, setProfileEmail] = useState("");
+  const [profilePhone, setProfilePhone] = useState("");
+  const [profileInitials, setProfileInitials] = useState("");
   const [profilePhotoUrl, setProfilePhotoUrl] = useState<string | null>(null);
-  const [editName, setEditName] = useState("John Doe");
-  const [editEmail, setEditEmail] = useState("john.doe@rivant.com");
-  const [editPhone, setEditPhone] = useState("+1 (555) 123-4567");
+  const [editName, setEditName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [editPhone, setEditPhone] = useState("");
   const [editPhotoUrl, setEditPhotoUrl] = useState<string | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
@@ -537,10 +537,12 @@ export default function DashboardPage() {
       // Подтягиваем сохранённые имя/телефон/фото, если они уже есть в базе
       const profileRes = await fetch(`/api/profile?email=${encodeURIComponent(email)}`, { cache: "no-store" });
       const profile = await profileRes.json();
-      if (profile.full_name) {
-        setProfileName(profile.full_name);
-        setEditName(profile.full_name);
-        const initials = profile.full_name.split(" ").map((w: string) => w[0]).join("").toUpperCase().slice(0, 2);
+      // Если full_name ещё не сохранён (старый юзер / гонка при первой регистрации) — берём часть до @
+      const displayName = profile.full_name || email.split("@")[0] || "";
+      if (displayName) {
+        setProfileName(displayName);
+        setEditName(displayName);
+        const initials = displayName.split(" ").map((w: string) => w[0]).join("").toUpperCase().slice(0, 2);
         setProfileInitials(initials);
       }
       if (profile.phone) {

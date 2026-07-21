@@ -13,9 +13,11 @@ export async function POST(req) {
   let { data: appUser } = await admin.from("users").select("id").eq("email", email).maybeSingle();
 
   if (!appUser) {
+    const defaultName = email.split("@")[0];
+
     const { data: created, error } = await admin
       .from("users")
-      .insert({ email, language: lang })
+      .insert({ email, language: lang, full_name: defaultName })
       .select("id")
       .single();
     if (error) return Response.json({ error: error.message }, { status: 500 });

@@ -115,11 +115,25 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
         setAuthError(error.message);
         return;
       }
-      await fetch("/api/auth-sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: loginEmail, language }),
-      });
+      try {
+        const syncRes = await fetch("/api/auth-sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: loginEmail, language }),
+        });
+        if (!syncRes.ok) {
+          const errBody = await syncRes.json().catch(() => ({}));
+          console.error("auth-sync failed:", syncRes.status, errBody);
+          setAuthError(errBody.error || "Не удалось создать профиль. Попробуйте ещё раз.");
+          setAuthLoading(false);
+          return;
+        }
+      } catch (e) {
+        console.error("auth-sync network error:", e);
+        setAuthError("Ошибка сети при создании профиля. Проверьте соединение.");
+        setAuthLoading(false);
+        return;
+      }
     } else {
       const { error } = await supabase.auth.signInWithPassword({
         email: loginEmail,
