@@ -1,7 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
 
-// Важно: без этого Next.js может закэшировать ответ GET-роута,
-// и изменения в базе (blocked/starter) не будут видны сразу.
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
@@ -17,23 +15,43 @@ export async function GET(req) {
   const { data: appUser } = await admin.from("users").select("id").eq("email", email).maybeSingle();
   if (!appUser) return Response.json({ plan: null, access_status: "none" });
 
-  const { data: sub } = await admin
+  let { data: sub } = await admin
     .from("subscriptions")
     .select("plan, access_status, current_period_end")
     .eq("user_id", appUser.id)
     .maybeSingle();
 
-  if (!sub) return Response.json({ plan: null, access_status: "none" });
+  // Если у пользователя вообще нет записи в subscriptions (баг регистрации,
+  // ручное создание аккаунта и т.п.) — самовосстанавливаемся: создаём
+  // ему триал на 14 дней, а не оставляем "голым" без подписки.
+  if (!sub) {
+    const periodEnd = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: created, error } = await admin
+      .from("subscriptions")
+      .insert({
+        user_id: appUser.id,
+        plan: "trial",
+        access_status: "active",
+        current_period_end: periodEnd,
+      })
+      .select("plan, access_status, current_period_end")
+      .maybeSingle();
+
+    if (error) {
+      // Если создать не удалось — лучше явно заблокировать, чем молча
+      // давать частичный доступ без какой-либо записи о подписке.
+      return Response.json(
+        { plan: null, access_status: "blocked" },
+        { headers: { "Cache-Control": "no-store, max-age=0" } }
+      );
+    }
+    sub = created;
+  }
 
   const periodEnded = sub.current_period_end
     ? new Date(sub.current_period_end) < new Date()
     : false;
 
-  // Период (триал или оплаченный месяц) закончился -> блокируем доступ полностью.
-  // Неважно plan="trial" или plan="growth" — если current_period_end
-  // в прошлом и оплата не продлила период, доступ закрыт.
-  // Когда подключим Paddle, вебхук на успешную оплату будет обновлять
-  // current_period_end на новую дату и access_status обратно на "active".
   if (periodEnded && sub.access_status !== "blocked") {
     await admin
       .from("subscriptions")
