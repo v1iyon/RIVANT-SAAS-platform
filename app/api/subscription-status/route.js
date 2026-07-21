@@ -1,5 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
 
+// Важно: без этого Next.js может закэшировать ответ GET-роута,
+// и изменения в базе (blocked/starter) не будут видны сразу.
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 const admin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_KEY
@@ -18,5 +23,28 @@ export async function GET(req) {
     .eq("user_id", appUser.id)
     .maybeSingle();
 
-  return Response.json(sub || { plan: null, access_status: "none" });
-}s
+  if (!sub) return Response.json({ plan: null, access_status: "none" });
+
+  const periodEnded = sub.current_period_end
+    ? new Date(sub.current_period_end) < new Date()
+    : false;
+
+  // Период (триал или оплаченный месяц) закончился -> блокируем доступ полностью.
+  // Неважно plan="trial" или plan="growth" — если current_period_end
+  // в прошлом и оплата не продлила период, доступ закрыт.
+  // Когда подключим Paddle, вебхук на успешную оплату будет обновлять
+  // current_period_end на новую дату и access_status обратно на "active".
+  if (periodEnded && sub.access_status !== "blocked") {
+    await admin
+      .from("subscriptions")
+      .update({ access_status: "blocked" })
+      .eq("user_id", appUser.id);
+
+    return Response.json(
+      { ...sub, access_status: "blocked" },
+      { headers: { "Cache-Control": "no-store, max-age=0" } }
+    );
+  }
+
+  return Response.json(sub, { headers: { "Cache-Control": "no-store, max-age=0" } });
+}

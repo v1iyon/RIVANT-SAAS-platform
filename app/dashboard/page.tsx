@@ -530,9 +530,27 @@ export default function DashboardPage() {
       setEditEmail(email);
       setIsAuthenticated(true);
 
-      const res = await fetch(`/api/subscription-status?email=${encodeURIComponent(email)}`);
+      const res = await fetch(`/api/subscription-status?email=${encodeURIComponent(email)}`, { cache: "no-store" });
       const sub = await res.json();
       setSubInfo(sub);
+
+      // Подтягиваем сохранённые имя/телефон/фото, если они уже есть в базе
+      const profileRes = await fetch(`/api/profile?email=${encodeURIComponent(email)}`, { cache: "no-store" });
+      const profile = await profileRes.json();
+      if (profile.full_name) {
+        setProfileName(profile.full_name);
+        setEditName(profile.full_name);
+        const initials = profile.full_name.split(" ").map((w: string) => w[0]).join("").toUpperCase().slice(0, 2);
+        setProfileInitials(initials);
+      }
+      if (profile.phone) {
+        setProfilePhone(profile.phone);
+        setEditPhone(profile.phone);
+      }
+      if (profile.avatar_url) {
+        setProfilePhotoUrl(profile.avatar_url);
+        setEditPhotoUrl(profile.avatar_url);
+      }
     });
   }, [router]);
 
@@ -576,7 +594,7 @@ export default function DashboardPage() {
     setShowEditProfileModal(true);
   };
 
-  const saveProfile = () => {
+  const saveProfile = async () => {
     const initials = editName.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
     setProfileName(editName);
     setProfileEmail(editEmail);
@@ -584,6 +602,22 @@ export default function DashboardPage() {
     setProfileInitials(initials);
     setProfilePhotoUrl(editPhotoUrl);
     setShowEditProfileModal(false);
+
+    // Сохраняем в базу, чтобы имя не сбрасывалось при новом входе
+    try {
+      await fetch("/api/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: profileEmail,
+          full_name: editName,
+          phone: editPhone,
+          avatar_url: editPhotoUrl,
+        }),
+      });
+    } catch (e) {
+      console.error("Failed to save profile", e);
+    }
   };
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
