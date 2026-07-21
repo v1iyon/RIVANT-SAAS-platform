@@ -531,17 +531,17 @@ export default function DashboardPage() {
   const marginChange = (currentMargin - prevMargin).toFixed(1);
   const cacChange = ((currentCac - prevCac) / prevCac * 100).toFixed(1);
   
-  const handleConnectTelegram = async () => {
+ const handleConnectTelegram = async () => {
   const res = await fetch("/api/telegram-connect", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email: profileEmail }),
+    body: JSON.stringify({ email: profileEmail, language }),
   });
   const data = await res.json();
   if (data.url) {
     window.open(data.url, "_blank");
   } else {
-    alert("Ошибка: " + (data.error || "не удалось получить ссылку"));
+    alert("Error: " + (data.error || "could not get link"));
   }
 };
 
