@@ -5,6 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { User, X, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useLanguage, Language } from "@/lib/translations";
+import { createClient } from "@/lib/supabase-browser";
 
 interface NavbarProps {
   onOpenDemo?: () => void;
@@ -18,6 +19,10 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
+  const [authError, setAuthError] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
+  const supabase = createClient();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { language, setLanguage, t } = useLanguage();
   const modalRef = useRef<HTMLDivElement>(null);
@@ -30,10 +35,9 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
   const T = t as any;
 
   useEffect(() => {
-    const savedLogin = localStorage.getItem("isLoggedIn");
-    if (savedLogin === "true") {
-      setIsLoggedIn(true);
-    }
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session) setIsLoggedIn(true);
+    });
   }, []);
 
   useEffect(() => {
@@ -96,16 +100,38 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
     setIsMobileMenuOpen(false);
   };
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (loginEmail && loginPassword) {
-      setIsLoggedIn(true);
-      localStorage.setItem("isLoggedIn", "true");
-      setIsLoginModalOpen(false);
-      setLoginEmail("");
-      setLoginPassword("");
-      router.push("/dashboard");
+    setAuthError("");
+    setAuthLoading(true);
+
+    if (authMode === "signup") {
+      const { error } = await supabase.auth.signUp({
+        email: loginEmail,
+        password: loginPassword,
+      });
+      setAuthLoading(false);
+      if (error) {
+        setAuthError(error.message);
+        return;
+      }
+    } else {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: loginEmail,
+        password: loginPassword,
+      });
+      setAuthLoading(false);
+      if (error) {
+        setAuthError(error.message);
+        return;
+      }
     }
+
+    setIsLoggedIn(true);
+    setIsLoginModalOpen(false);
+    setLoginEmail("");
+    setLoginPassword("");
+    router.push("/dashboard");
   };
 
   const handleDemo = () => {
@@ -286,8 +312,12 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
               <X className="w-5 h-5" />
             </button>
 
-            <h2 className="text-2xl font-bold text-white mb-2">Welcome Back</h2>
-            <p className="text-gray-400 text-sm mb-6">Sign in to access your dashboard</p>
+            <h2 className="text-2xl font-bold text-white mb-2">
+              {authMode === "signup" ? "Create Account" : "Welcome Back"}
+            </h2>
+            <p className="text-gray-400 text-sm mb-6">
+              {authMode === "signup" ? "Start your 14-day free trial" : "Sign in to access your dashboard"}
+            </p>
 
             <form onSubmit={handleLogin} className="space-y-4">
               <div>
@@ -297,7 +327,7 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
                   value={loginEmail}
                   onChange={(e) => setLoginEmail(e.target.value)}
                   className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 text-white text-base"
-                  placeholder="admin@rivant.com"
+                  placeholder="you@company.com"
                   required
                 />
               </div>
@@ -309,16 +339,35 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
                   onChange={(e) => setLoginPassword(e.target.value)}
                   className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 text-white text-base"
                   placeholder="••••••••"
+                  minLength={6}
                   required
                 />
               </div>
+              {authError && <p className="text-red-400 text-sm">{authError}</p>}
               <button
                 type="submit"
-                className="w-full py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700"
+                disabled={authLoading}
+                className="w-full py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50"
               >
-                Sign In
+                {authLoading ? "..." : authMode === "signup" ? "Create Account" : "Sign In"}
               </button>
             </form>
+
+            <p className="text-center text-sm text-gray-500 mt-4">
+              {authMode === "signin" ? (
+                <>Don't have an account?{" "}
+                  <button onClick={() => { setAuthMode("signup"); setAuthError(""); }} className="text-blue-500 hover:underline">
+                    Sign up
+                  </button>
+                </>
+              ) : (
+                <>Already have an account?{" "}
+                  <button onClick={() => { setAuthMode("signin"); setAuthError(""); }} className="text-blue-500 hover:underline">
+                    Sign in
+                  </button>
+                </>
+              )}
+            </p>
 
             <p className="text-center text-xs text-gray-500 mt-4">
               🔓 <span className="text-blue-500">Any email / any password</span> — demo access

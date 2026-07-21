@@ -47,6 +47,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
+import { createClient } from "@/lib/supabase-browser";
 
 type ViewType = "overview" | "risks" | "forecast" | "integrations" | "settings";
 
@@ -515,14 +516,18 @@ export default function DashboardPage() {
   const photoInputRef = useRef<HTMLInputElement>(null);
   
   const addToQueue = <T,>(queue: T[], newValue: T): T[] => [...queue.slice(1), newValue];
-  
+  const supabase = createClient();
+
   useEffect(() => {
-    const isLoggedIn = localStorage.getItem("isLoggedIn");
-    if (isLoggedIn !== "true") {
-      router.push("/");
-    } else {
-      setIsAuthenticated(true);
-    }
+    supabase.auth.getSession().then(({ data }) => {
+      if (!data.session) {
+        router.push("/");
+      } else {
+        setProfileEmail(data.session.user.email || "");
+        setEditEmail(data.session.user.email || "");
+        setIsAuthenticated(true);
+      }
+    });
   }, [router]);
   
   
@@ -549,8 +554,8 @@ export default function DashboardPage() {
     setShowLogoutModal(true);
   };
 
-  const confirmLogout = () => {
-    localStorage.removeItem("isLoggedIn");
+  const confirmLogout = async () => {
+    await supabase.auth.signOut();
     router.push("/");
   };
 
