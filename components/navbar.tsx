@@ -115,6 +115,11 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
         setAuthError(error.message);
         return;
       }
+      await fetch("/api/auth-sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: loginEmail, language }),
+      });
     } else {
       const { error } = await supabase.auth.signInWithPassword({
         email: loginEmail,
@@ -369,9 +374,6 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
               )}
             </p>
 
-            <p className="text-center text-xs text-gray-500 mt-4">
-              🔓 <span className="text-blue-500">Any email / any password</span> — demo access
-            </p>
           </div>
         </div>
       )}
