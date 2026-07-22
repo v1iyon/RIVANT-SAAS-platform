@@ -55,7 +55,7 @@ export function LossCalculator() {
 
   return (
     <section id="calculator" className="py-12 relative px-4">
-      <div className="max-w-4xl mx-auto bg-card rounded-2xl p-6 sm:p-10 mb-20 border border-border shadow-sm">
+      <div className="max-w-4xl mx-auto bg-card rounded-2xl p-6 sm:p-10 mb-6 border border-border shadow-sm">
         <div className="text-center mb-8 p-6 bg-secondary/50 rounded-xl select-none">
           <p className="text-sm text-muted-foreground uppercase tracking-wider mb-2">{t.estimatedLoss || "Estimated Monthly Loss"}</p>
           <div className="flex items-center justify-center gap-2">
