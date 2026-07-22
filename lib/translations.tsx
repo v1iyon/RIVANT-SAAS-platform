@@ -118,7 +118,7 @@ export const translations = {
     "Instant Telegram alerts",
     "AI root-cause insights",
     "90-day predictive forecasting",
-    "Unlimited data history"
+    "90-day data history"
   ],
    scaleFeatures: [
     "Stripe integration",
@@ -129,7 +129,6 @@ export const translations = {
     "90-day predictive forecasting",
     "Unlimited data history",
     "Priority technical support",
-    "Dedicated onboarding"
   ],
     addOnsTitle: "Professional Add-ons",
     businessSetup: "Business Setup",
@@ -386,7 +385,7 @@ minutes: "minutes",
     "Миттєві сповіщення в Telegram",
     "AI-аналіз причин зміни показників",
     "Прогнозування на 90 днів",
-    "Необмежена історія даних"
+    "Зберігання історії за 90 днів"
   ],
    scaleFeatures: [
     "Інтеграція зі Stripe",
@@ -397,7 +396,6 @@ minutes: "minutes",
     "Прогнозування на 90 днів",
     "Необмежена історія даних",
     "Пріоритетна техпідтримка",
-    "Персональний онбординг"
   ],
     addOnsTitle: "Професійні додатки",
     businessSetup: "Налаштування бізнесу",
@@ -657,7 +655,7 @@ minutes: "Minuten",
     "Echtzeit-Telegram-Benachrichtigungen",
     "KI-gestützte Ursachenanalyse",
     "90-Tage-Prognose",
-    "Unbegrenzte Datenhistorie"
+    "90 Tage Datenhistorie"
   ],
     scaleFeatures: [
     "Stripe-Integration",
@@ -668,7 +666,6 @@ minutes: "Minuten",
     "90-Tage-Prognose",
     "Unbegrenzte Datenhistorie",
     "Prioritärer technischer Support",
-    "Persönliches Onboarding"
   ],
     addOnsTitle: "Professionelle Add-ons",
     businessSetup: "Business-Setup",
