@@ -615,7 +615,7 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
             setLastNotification(translatedAlert);
             lastAlertTimeRef.current = now;
             if (notificationTimeoutRef.current) clearTimeout(notificationTimeoutRef.current);
-            notificationTimeoutRef.current = setTimeout(() => setLastNotification(null), 7000);
+            notificationTimeoutRef.current = setTimeout(() => setLastNotification(null), 4000);
           }
         }
       }
