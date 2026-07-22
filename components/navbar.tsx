@@ -339,54 +339,66 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
             </p>
 
             <form onSubmit={handleLogin} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Email</label>
-                <input
-                  type="email"
-                  value={loginEmail}
-                  onChange={(e) => setLoginEmail(e.target.value)}
-                  className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 text-white text-base"
-                  placeholder="you@company.com"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Password</label>
-                <input
-                  type="password"
-                  value={loginPassword}
-                  onChange={(e) => setLoginPassword(e.target.value)}
-                  className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 text-white text-base"
-                  placeholder="••••••••"
-                  minLength={6}
-                  required
-                />
-              </div>
-              {authError && <p className="text-red-400 text-sm">{authError}</p>}
-              <button
-                type="submit"
-                disabled={authLoading}
-                className="w-full py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50"
-              >
-                {authLoading ? "..." : authMode === "signup" ? "Create Account" : "Sign In"}
-              </button>
-            </form>
+  <div>
+    <label className="block text-sm font-medium text-gray-300 mb-1">
+      {t.emailLabel}
+    </label>
+    <input
+      type="email"
+      value={loginEmail}
+      onChange={(e) => setLoginEmail(e.target.value)}
+      className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 text-white text-base"
+      placeholder="you@company.com"
+      required
+    />
+  </div>
+  <div>
+    <label className="block text-sm font-medium text-gray-300 mb-1">
+      {t.passwordLabel}
+    </label>
+    <input
+      type="password"
+      value={loginPassword}
+      onChange={(e) => setLoginPassword(e.target.value)}
+      className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 text-white text-base"
+      placeholder="••••••••"
+      minLength={6}
+      required
+    />
+  </div>
+  {authError && <p className="text-red-400 text-sm">{authError}</p>}
+  <button
+    type="submit"
+    disabled={authLoading}
+    className="w-full py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50"
+  >
+    {authLoading ? "..." : authMode === "signup" ? t.signUpBtn : t.signInBtn}
+  </button>
+</form>
 
-            <p className="text-center text-sm text-gray-500 mt-4">
-              {authMode === "signin" ? (
-                <>Don't have an account?{" "}
-                  <button onClick={() => { setAuthMode("signup"); setAuthError(""); }} className="text-blue-500 hover:underline">
-                    Sign up
-                  </button>
-                </>
-              ) : (
-                <>Already have an account?{" "}
-                  <button onClick={() => { setAuthMode("signin"); setAuthError(""); }} className="text-blue-500 hover:underline">
-                    Sign in
-                  </button>
-                </>
-              )}
-            </p>
+<p className="text-center text-sm text-gray-500 mt-4">
+  {authMode === "signin" ? (
+    <>
+      {t.noAccountText}{" "}
+      <button 
+        onClick={() => { setAuthMode("signup"); setAuthError(""); }} 
+        className="text-blue-500 hover:underline"
+      >
+        {t.signUpLink}
+      </button>
+    </>
+  ) : (
+    <>
+      {t.hasAccountText}{" "}
+      <button 
+        onClick={() => { setAuthMode("signin"); setAuthError(""); }} 
+        className="text-blue-500 hover:underline"
+      >
+        {t.signInLink}
+      </button>
+    </>
+  )}
+</p>
 
           </div>
         </div>
