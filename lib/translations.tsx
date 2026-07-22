@@ -117,7 +117,7 @@ export const translations = {
     "COGS tracking & margin analytics",
     "Instant Telegram alerts",
     "AI root-cause insights",
-    "90-day predictive forecasting",
+    "30-day predictive forecasting",
     "90-day data history"
   ],
    scaleFeatures: [
@@ -384,7 +384,7 @@ minutes: "minutes",
     "Облік витрат і розрахунок маржинальності",
     "Миттєві сповіщення в Telegram",
     "AI-аналіз причин зміни показників",
-    "Прогнозування на 90 днів",
+    "Прогнозування на 30 днів",
     "Зберігання історії за 90 днів"
   ],
    scaleFeatures: [
@@ -654,7 +654,7 @@ minutes: "Minuten",
     "Selbstkosten- und Margenanalyse",
     "Echtzeit-Telegram-Benachrichtigungen",
     "KI-gestützte Ursachenanalyse",
-    "90-Tage-Prognose",
+    "30-Tage-Prognose",
     "90 Tage Datenhistorie"
   ],
     scaleFeatures: [
