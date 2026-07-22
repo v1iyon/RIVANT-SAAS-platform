@@ -332,12 +332,11 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
             </button>
 
             <h2 className="text-2xl font-bold text-white mb-2">
-              {authMode === "signup" ? "Create Account" : "Welcome Back"}
-            </h2>
-            <p className="text-gray-400 text-sm mb-6">
-              {authMode === "signup" ? "Start your 14-day free trial" : "Sign in to access your dashboard"}
-            </p>
-
+  {authMode === "signup" ? t.registerTitle : t.loginTitle}
+</h2>
+<p className="text-gray-400 text-sm mb-6">
+  {authMode === "signup" ? t.registerSubtitle : t.loginSubtitle}
+</p>
             <form onSubmit={handleLogin} className="space-y-4">
   <div>
     <label className="block text-sm font-medium text-gray-300 mb-1">

@@ -280,7 +280,9 @@ signUpBtn: "Create Account",
 noAccountText: "Don't have an account?",
 hasAccountText: "Already have an account?",
 signUpLink: "Sign up",
-signInLink: "Sign in"
+signInLink: "Sign in",
+registerTitle: "Create Account",
+registerSubtitle: "Start your 14-day free trial"
   },
   UA: {
     overview: "Огляд",
@@ -557,7 +559,9 @@ signUpBtn: "Створити акаунт",
 noAccountText: "Немає акаунта?",
 hasAccountText: "Вже є акаунт?",
 signUpLink: "Зареєструватися",
-signInLink: "Увійти"
+signInLink: "Увійти",
+registerTitle: "Створити акаунт",
+registerSubtitle: "Почніть безкоштовний пробний період на 14 днів"
   },
   DE: {
     overview: "Übersicht",
@@ -834,7 +838,9 @@ signUpBtn: "Konto erstellen",
 noAccountText: "Noch kein Konto?",
 hasAccountText: "Bereits ein Konto?",
 signUpLink: "Registrieren",
-signInLink: "Anmelden"
+signInLink: "Anmelden",
+registerTitle: "Konto erstellen",
+registerSubtitle: "Starten Sie Ihre 14-tägige kostenlose Testversion"
   },
 } as const;
 
