@@ -127,7 +127,6 @@ export const translations = {
     "Instant Telegram alerts",
     "AI root-cause insights",
     "90-day predictive forecasting",
-    "What-if scenario modeling",
     "Unlimited data history",
     "Priority technical support",
     "Dedicated onboarding"
@@ -396,7 +395,6 @@ minutes: "minutes",
     "Миттєві сповіщення в Telegram",
     "AI-аналіз причин зміни показників",
     "Прогнозування на 90 днів",
-    "Моделювання сценаріїв «Що, якщо»",
     "Необмежена історія даних",
     "Пріоритетна техпідтримка",
     "Персональний онбординг"
@@ -668,7 +666,6 @@ minutes: "Minuten",
     "Echtzeit-Telegram-Benachrichtigungen",
     "KI-gestützte Ursachenanalyse",
     "90-Tage-Prognose",
-    "Was-wäre-wenn-Szenariomodellierung",
     "Unbegrenzte Datenhistorie",
     "Prioritärer technischer Support",
     "Persönliches Onboarding"
