@@ -1,5 +1,8 @@
 "use client";
 
+import { useState } from "react";
+import { createClient } from "@/lib/supabase-browser";
+import { loadPaddle, openPaddleCheckout } from "@/lib/paddle-client";
 import { Button } from "@/components/ui/button";
 import { Check, Zap, Settings, FileText, Users, ArrowRight } from "lucide-react";
 import { useLanguage } from "@/lib/translations";
@@ -12,46 +15,77 @@ type Plan = {
   popular: boolean;
 };
 
-type Addon = {
-  icon: typeof Settings;
-  name: string;
-  price: number;
-  priceType: string;
-  description: string;
+const PRICE_IDS: Record<string, string> = {
+  starter: process.env.NEXT_PUBLIC_PADDLE_PRICE_STARTER!,
+  growth: process.env.NEXT_PUBLIC_PADDLE_PRICE_GROWTH!,
+  scale: process.env.NEXT_PUBLIC_PADDLE_PRICE_SCALE!,
 };
 
 export function PricingSection() {
   const { t } = useLanguage();
-    const T = t as any;
+  const T = t as any;
+  const supabase = createClient();
+  const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
+
+  const planKeyMap: Record<string, string> = {
+    [T.starter ?? "Starter"]: "starter",
+    [T.growth ?? "Growth"]: "growth",
+    [T.scale ?? "Scale"]: "scale",
+  };
+
+  const handleGetStarted = async (planName: string) => {
+    const { data } = await supabase.auth.getSession();
+    if (!data.session) {
+      alert(T.pleaseSignInFirst ?? "Please sign in first");
+      return;
+    }
+    const planKey = planKeyMap[planName];
+    const priceId = PRICE_IDS[planKey];
+
+    setLoadingPlan(planKey);
+    try {
+      await loadPaddle();
+      openPaddleCheckout({
+        priceId,
+        email: data.session.user.email!,
+        plan: planKey,
+      });
+    } catch (e) {
+      console.error("paddle checkout error:", e);
+      alert("Не удалось открыть окно оплаты");
+    } finally {
+      setLoadingPlan(null);
+    }
+  };
 
   const plans: Plan[] = [
-      {
-        name: T.starter ?? "Starter",
-        price: 99,
-        description: T.pricingSubtitle ?? "Best for individuals starting out",
-        features: T.starterFeatures ?? [],
-        popular: false,
-      },
-      {
-        name: T.growth ?? "Growth",
-        price: 299,
-        description: T.pricingSubtitle ?? "Best for growing teams",
-        features: T.growthFeatures ?? [],
-        popular: true,
-      },
-      {
-        name: T.scale ?? "Scale",
-        price: 499,
-        description: T.pricingSubtitle ?? "Best for scaling businesses",
-        features: T.scaleFeatures ?? [],
-        popular: false,
-      },
+    {
+      name: T.starter ?? "Starter",
+      price: 99,
+      description: T.pricingSubtitle ?? "Best for individuals starting out",
+      features: T.starterFeatures ?? [],
+      popular: false,
+    },
+    {
+      name: T.growth ?? "Growth",
+      price: 299,
+      description: T.pricingSubtitle ?? "Best for growing teams",
+      features: T.growthFeatures ?? [],
+      popular: true,
+    },
+    {
+      name: T.scale ?? "Scale",
+      price: 499,
+      description: T.pricingSubtitle ?? "Best for scaling businesses",
+      features: T.scaleFeatures ?? [],
+      popular: false,
+    },
   ];
 
   const addons = [
-      { icon: Settings, name: T.businessSetup ?? "Business Setup", price: 199, priceType: T.oneTime ?? "One-time", description: T.businessSetupDesc ?? "Professional setup service" },
-      { icon: FileText, name: T.quarterlyAudit ?? "Quarterly Audit", price: 299, priceType: T.perQuarter ?? "Per quarter", description: T.quarterlyAuditDesc ?? "Regular audit service" },
-      { icon: Users, name: T.teamAlerts ?? "Team Alerts", price: 29, priceType: T.perMonth ?? "Per month", description: T.teamAlertsDesc ?? "Alert your team" },
+    { icon: Settings, name: T.businessSetup ?? "Business Setup", price: 199, priceType: T.oneTime ?? "One-time", description: T.businessSetupDesc ?? "Professional setup service" },
+    { icon: FileText, name: T.quarterlyAudit ?? "Quarterly Audit", price: 299, priceType: T.perQuarter ?? "Per quarter", description: T.quarterlyAuditDesc ?? "Regular audit service" },
+    { icon: Users, name: T.teamAlerts ?? "Team Alerts", price: 29, priceType: T.perMonth ?? "Per month", description: T.teamAlertsDesc ?? "Alert your team" },
   ];
 
   return (
@@ -59,7 +93,7 @@ export function PricingSection() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-16">
           <h2 className="text-4xl font-bold text-foreground mb-4">
-              {T.pricingTitle ?? "Pricing"} <span className="text-primary">{T.pricingTitleHighlight ?? "Plans"}</span>
+            {T.pricingTitle ?? "Pricing"} <span className="text-primary">{T.pricingTitleHighlight ?? "Plans"}</span>
           </h2>
         </div>
 
@@ -69,8 +103,8 @@ export function PricingSection() {
             <div
               key={plan.name}
               className={`relative rounded-2xl p-8 flex flex-col h-full transition-all duration-300 border hover:scale-105 hover:z-20 ${
-                plan.popular 
-                  ? "bg-[#0A0A0A] border-primary shadow-[0_0_30px_-10px_rgba(59,130,246,0.5)]" 
+                plan.popular
+                  ? "bg-[#0A0A0A] border-primary shadow-[0_0_30px_-10px_rgba(59,130,246,0.5)]"
                   : "bg-[#0A0A0A] border-white/10 hover:border-white/20"
               }`}
             >
@@ -80,11 +114,11 @@ export function PricingSection() {
                 </div>
               )}
               <div className="mb-4">
-  <h3 className="text-xl font-bold text-white mb-1">{plan.name}</h3>
-  <p className="text-xs text-slate-400 leading-tight">
-    {plan.description}
-  </p>
-</div>
+                <h3 className="text-xl font-bold text-white mb-1">{plan.name}</h3>
+                <p className="text-xs text-slate-400 leading-tight">
+                  {plan.description}
+                </p>
+              </div>
               <div className="mb-6 text-4xl font-bold text-white">
                 ${plan.price}<span className="text-sm text-muted-foreground font-normal">{t.perMonth}</span>
               </div>
@@ -95,8 +129,12 @@ export function PricingSection() {
                   </li>
                 ))}
               </ul>
-              <Button className="w-full bg-primary hover:bg-blue-600 text-white font-semibold py-6 text-lg">
-                  {T.getStarted ?? "Get Started"}
+              <Button
+                className="w-full bg-primary hover:bg-blue-600 text-white font-semibold py-6 text-lg"
+                onClick={() => handleGetStarted(plan.name)}
+                disabled={loadingPlan === planKeyMap[plan.name]}
+              >
+                {loadingPlan === planKeyMap[plan.name] ? "..." : T.getStarted ?? "Get Started"}
               </Button>
             </div>
           ))}
