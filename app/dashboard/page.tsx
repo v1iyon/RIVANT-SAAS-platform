@@ -1200,7 +1200,11 @@ if (!subInfo) {
                   </div>
                   <div className="flex items-center justify-between py-2">
                     <div><p className="font-medium text-foreground">{T.settingsApiKeys || "API Keys"}</p><p className="text-xs text-muted-foreground">{T.settingsApiKeysDesc || "Manage API access tokens"}</p></div>
-                    <Button variant="outline" size="sm">{T.settingsManage || "Manage"}</Button>
+                    {subInfo?.plan === "scale" ? (
+                      <Button variant="outline" size="sm">{T.settingsManage || "Manage"}</Button>
+                    ) : (
+                      <Button variant="outline" size="sm" onClick={() => router.push("/#pricing")}>Scale plan only</Button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1210,12 +1214,6 @@ if (!subInfo) {
                   <Settings className="w-4 h-4 text-primary" /> {T.settingsPreferences || "Preferences"}
                 </h3>
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between py-2">
-                    <div><p className="font-medium text-foreground">{T.settingsAutoRefresh || "Auto-refresh Interval"}</p><p className="text-xs text-muted-foreground">{T.settingsAutoRefreshDesc || "How often data updates"}</p></div>
-                    <select value={autoRefresh} onChange={(e) => setAutoRefresh(Number(e.target.value))} className="bg-secondary border border-border rounded-lg px-3 py-1.5 text-foreground text-sm">
-                      <option value={15}>15 seconds</option><option value={30}>30 seconds</option><option value={60}>1 minute</option><option value={300}>5 minutes</option>
-                    </select>
-                  </div>
                   <div className="flex items-center justify-between py-2">
                     <div><p className="font-medium text-foreground">{T.language || "Language"}</p><p className="text-xs text-muted-foreground">{T.settingsSelectLanguage || "Select your preferred language"}</p></div>
                     <div className="flex gap-1">
