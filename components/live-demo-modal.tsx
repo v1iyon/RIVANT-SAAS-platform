@@ -46,7 +46,8 @@ const BASE_PROFIT = 34563;
 const BASE_MARGIN = 27.5;
 const BASE_CAC = 47;
 
-// Интеграции
+// Интеграции (используются только для генерации демо-алертов "integration_down",
+// сама вкладка Integrations теперь рендерится отдельно, см. ниже)
 const INITIAL_INTEGRATIONS: Integration[] = [
   { id: "shopify", name: "Shopify", icon: "🛍️", status: "connected", lastSync: "2 min ago", lastSyncTime: new Date() },
   { id: "meta", name: "Meta Ads", icon: "📱", status: "connected", lastSync: "5 min ago", lastSyncTime: new Date() },
@@ -419,18 +420,6 @@ function RevenueExpensesChart() {
           ))}
         </div>
 
-        {/*
-          FIX: убрали items-end с контейнера графика.
-          Раньше "flex items-end" сжимал КАЖДУЮ колонку по высоте до размера
-          её собственного бара (иногда 3px), а hover/click-обработчики висели
-          именно на этой сжатой колонке — из-за этого по столбикам было
-          невозможно попасть пальцем.
-          Теперь колонка занимает всю высоту h-64, а сам бар прижимается
-          к низу через "mt-auto" внутри неё — кликабельная зона стала
-          на порядок больше (256px высоты вместо нескольких px).
-          Также добавлен onClick — на touch-устройствах hover не работает
-          надёжно, поэтому тултип теперь можно открыть/закрыть тапом.
-        */}
         <div className="ml-12 h-64 flex gap-1">
           {history.map((item, idx) => {
             const value = getMetricValue(item);
@@ -523,6 +512,15 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
   const notificationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   const [integrations, setIntegrations] = useState<Integration[]>(INITIAL_INTEGRATIONS);
+
+  // Состояние карточки подключения Stripe на вкладке "Інтеграції"
+  const [stripeKeyInput, setStripeKeyInput] = useState("");
+  const [stripeConnected, setStripeConnected] = useState(false);
+
+  const handleConnectStripe = () => {
+    if (!stripeKeyInput.trim()) return;
+    setStripeConnected(true);
+  };
   
   const [currentRevenue, setCurrentRevenue] = useState(BASE_REVENUE);
   const [currentProfit, setCurrentProfit] = useState(BASE_PROFIT);
@@ -936,54 +934,57 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
               </div>
             )}
             
-            {/* Integrations View */}
+            {/* Integrations View — приведено к виду реального ЛК (карточка Stripe + "coming soon") */}
             {activeView === "integrations" && (
               <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <h2 className="text-2xl font-bold text-white">{T.demoIntegrations || "Integrations"}</h2>
-                    <p className="text-sm text-gray-500 mt-1">{T.demoConnectedSources || "Connected data sources"}</p>
-                  </div>
-                  <Button size="default" className="bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 font-semibold">+ {T.demoAddIntegration || "Add"}</Button>
+                <div>
+                  <h2 className="text-2xl font-bold text-white">{T.demoIntegrations || "Integrations"}</h2>
+                  <p className="text-sm text-gray-500 mt-1">{T.demoConnectedSources || "Connected data sources"}</p>
                 </div>
-                <div className="space-y-3">
-                  {integrations.map((integration) => (
-                    <div key={integration.id} className={`bg-gray-900/30 rounded-xl p-4 flex justify-between items-center border ${integration.status === "error" ? "border-red-500/30 bg-red-500/5" : "border-gray-800"}`}>
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-gray-800 flex items-center justify-center">
-                          <Link className="w-5 h-5 text-gray-400" />
-                        </div>
-                        <div>
-                          <h4 className="font-semibold text-white">{integration.name}</h4>
-                          <p className="text-xs text-gray-500">{integration.lastSync}</p>
-                          {integration.errorMessage && <p className="text-xs text-red-400 mt-0.5">{integration.errorMessage}</p>}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {integration.status === "error" ? (
-                          <Button onClick={() => reconnectIntegration(integration.id)} size="sm" variant="outline" className="border-red-500/50 text-red-400 hover:bg-red-500/20">
-                            <Wifi className="w-3 h-3 mr-1" /> {T.alertReconnect || "Reconnect"}
-                          </Button>
-                        ) : (
-                          getStatusBadge(integration.status)
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                
-                <div className="bg-gray-900/20 rounded-xl p-4 border border-gray-800 mt-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Activity className="w-4 h-4 text-green-400" />
-                      <span className="text-sm text-gray-400">{T.demoDataSyncStatus || "Data Sync Status"}</span>
-                    </div>
-                    <span className="text-xs text-green-400">{T.demoAllSystemsOperational || "All systems operational"}</span>
+
+                <div className="space-y-4">
+                  {/* Карточка подключения Stripe */}
+                  <div className="bg-gray-900/40 rounded-xl p-5 border border-gray-800">
+                    <h4 className="font-semibold text-white text-base">Stripe</h4>
+                    <p className="text-sm text-gray-500 mt-1">
+                      {T.demoStripeDesc || "Connect your Stripe account to pull real revenue data"}
+                    </p>
+
+                    <input
+                      type="text"
+                      value={stripeKeyInput}
+                      onChange={(e) => setStripeKeyInput(e.target.value)}
+                      placeholder={T.demoStripePlaceholder || "rk_live_... (restricted, read-only key)"}
+                      className="w-full mt-4 bg-gray-800/60 border border-gray-700 rounded-lg px-3 py-2.5 text-sm text-gray-300 placeholder:text-gray-500 focus:outline-none focus:border-blue-500/50 transition-colors"
+                    />
+
+                    <p className="text-xs text-gray-500 mt-2">
+                      {T.demoStripeHint || "Create a restricted key with read-only access in Stripe Dashboard → Developers → API keys → Create restricted key."}
+                    </p>
+
+                    <Button
+                      onClick={handleConnectStripe}
+                      disabled={stripeConnected}
+                      className={`mt-4 font-semibold px-5 ${stripeConnected ? "bg-green-500/20 text-green-400 hover:bg-green-500/20" : "bg-blue-500 hover:bg-blue-600 text-white"}`}
+                    >
+                      {stripeConnected ? (
+                        <span className="flex items-center gap-1.5"><Wifi className="w-4 h-4" /> {T.demoConnected || "Connected"}</span>
+                      ) : (
+                        `${T.demoConnectStripe || "Connect Stripe"} →`
+                      )}
+                    </Button>
                   </div>
-                  <div className="mt-3 h-1.5 bg-gray-800 rounded-full overflow-hidden">
-                    <div className="h-full bg-green-500 rounded-full" style={{ width: `${integrations.filter(i => i.status === "connected").length / integrations.length * 100}%` }}></div>
+
+                  {/* Прочие интеграции — скоро */}
+                  <div className="bg-gray-900/20 rounded-xl p-4 border border-gray-800 flex items-center gap-3 opacity-50">
+                    <div className="w-10 h-10 rounded-lg bg-gray-800 flex items-center justify-center flex-shrink-0">
+                      <Link className="w-5 h-5 text-gray-500" />
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-gray-400 text-sm">Shopify, QuickBooks, Meta Ads</h4>
+                      <p className="text-xs text-gray-600">{T.demoComingSoon || "Coming soon"}</p>
+                    </div>
                   </div>
-                  <p className="text-xs text-gray-500 mt-2">{integrations.filter(i => i.status === "connected").length}/{integrations.length} {T.demoIntegrationsActive || "integrations active"}</p>
                 </div>
               </div>
             )}
