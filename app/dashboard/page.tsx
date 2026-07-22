@@ -1,6 +1,7 @@
 // app/dashboard/page.tsx
 "use client";
 
+import { StripeConnectCard } from "@/components/dashboard/stripe-connect-card";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -1079,40 +1080,23 @@ if (!subInfo) {
             </div>
           )}
 
-          {/* Integrations View */}
+         {/* Integrations View */}
           {activeView === "integrations" && (
             <div className="space-y-4">
+              <StripeConnectCard email={profileEmail} />
 
-
-              <div className="space-y-3">
-                {integrations.map((integration) => (
-                  <div key={integration.id} className="bg-gray-900/30 rounded-xl p-4 flex justify-between items-center border border-gray-800">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-gray-800 flex items-center justify-center">
-                        <Link2 className="w-5 h-5 text-gray-400" />
-                      </div>
-                      <div>
-                        <h4 className="font-semibold text-white">{integration.name}</h4>
-                        <p className="text-xs text-gray-500">{integration.lastSync}</p>
-                      </div>
-                    </div>
-                    {getStatusBadge(integration.status, T)}
-                  </div>
-                ))}
-              </div>
-
-              <div className="bg-gray-900/20 rounded-xl p-4 border border-gray-800">
+              <div className="bg-gray-900/20 rounded-xl p-4 border border-gray-800 opacity-50">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Activity className="w-4 h-4 text-green-400" />
-                    <span className="text-sm text-gray-400">{T.demoDataSyncStatus || "Data Sync Status"}</span>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-gray-800 flex items-center justify-center">
+                      <Link2 className="w-5 h-5 text-gray-400" />
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-white">Shopify, QuickBooks, Meta Ads</h4>
+                      <p className="text-xs text-gray-500">Coming soon</p>
+                    </div>
                   </div>
-                  <span className="text-xs text-green-400">{T.demoAllSystemsOperational || "All systems operational"}</span>
                 </div>
-                <div className="mt-3 h-1.5 bg-gray-800 rounded-full overflow-hidden">
-                  <div className="h-full bg-green-500 rounded-full" style={{ width: `${integrations.filter(i => i.status === "connected").length / integrations.length * 100}%` }} />
-                </div>
-                <p className="text-xs text-gray-500 mt-2">{integrations.filter(i => i.status === "connected").length}/{integrations.length} {T.demoIntegrationsActive || "integrations active"}</p>
               </div>
             </div>
           )}
