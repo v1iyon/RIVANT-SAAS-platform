@@ -153,8 +153,8 @@ export function PricingSection() {
                 </div>
                 <p className="text-sm text-muted-foreground mb-6 flex-1">{addon.description}</p>
                 <Button variant="outline" className="w-full mt-auto group-hover:bg-primary group-hover:text-white group-hover:border-primary transition-all">
-                  Order Service <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
-                </Button>
+  {t.orderService || "Order Service"} <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
+</Button>
               </div>
             ))}
           </div>
