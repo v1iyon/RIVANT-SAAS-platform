@@ -104,6 +104,7 @@ export const translations = {
     settingsExportDataDesc: "Download all your business data",
     settingsExport: "Export",
     settingsLive: "Live",
+    orderService: "Order Service",
     starterFeatures: [
     "Stripe integration",
     "Daily data sync",
@@ -383,6 +384,7 @@ registerSubtitle: "Start your 14-day free trial"
     settingsExportDataDesc: "Завантажити всі дані вашого бізнесу",
     settingsExport: "Експорт",
     settingsLive: "Наживо",
+    orderService: "Замовити послугу",
    starterFeatures: [
     "Інтеграція зі Stripe",
     "Оновлення даних раз на день",
@@ -665,6 +667,7 @@ minutes: "Minuten",
     settingsExportDataDesc: "Laden Sie alle Ihre Geschäftsdaten herunter",
     settingsExport: "Exportieren",
     settingsLive: "Live",
+    orderService: "Service bestellen",
    starterFeatures: [
     "Stripe-Integration",
     "Tägliche Datensynchronisation",
