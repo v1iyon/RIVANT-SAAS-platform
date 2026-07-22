@@ -991,7 +991,7 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
             
             {/* Notification Toast */}
         {lastNotification && activeView !== "risks" && (
-          <div className="fixed bottom-20 right-4 left-4 md:left-auto md:right-4 md:w-80 bg-gray-900/95 rounded-xl p-4 border-l-4 border-blue-500 shadow-xl animate-in slide-in-from-right-5 fade-in duration-300 backdrop-blur-md z-50">
+         <div className="fixed bottom-20 right-4 left-4 md:left-auto md:right-4 md:w-80 bg-gray-900/95 rounded-xl p-4 border-l-4 border-blue-500 shadow-xl animate-in slide-in-from-right-5 fade-in duration-300 backdrop-blur-md z-[9999] pointer-events-auto">
             <div className="flex justify-between items-start">
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
