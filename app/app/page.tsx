@@ -364,7 +364,7 @@ function HeroMainSection({ onOpenCalculator, onOpenDemo }: { onOpenCalculator: (
             onClick={onOpenCalculator}
           >
             <Calculator className="w-5 h-5 mr-2" />
-            {T.calculateLosses || "Розрахувати втрати"}
+            {T.calculateLosses || "Перейти до аналізу"}
           </Button>
 
           <Button
