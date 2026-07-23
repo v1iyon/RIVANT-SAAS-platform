@@ -1020,8 +1020,9 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
                 </p>
               </div>
 
-              <button
-                onPointerDown={(e) => {
+             <button
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
                   e.stopPropagation();
                   if (notificationTimeoutRef.current)
                     clearTimeout(notificationTimeoutRef.current);
