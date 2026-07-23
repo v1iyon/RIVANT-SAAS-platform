@@ -533,6 +533,10 @@ export default function DashboardPage() {
         return;
       }
       const email = data.session.user.email || "";
+      const prefsRes = await fetch(`/api/notification-prefs?email=${encodeURIComponent(email)}`);
+      const prefs = await prefsRes.json();
+      setNotificationsEnabled(prefs.push_enabled);
+      setEmailAlerts(prefs.email_enabled);
       setProfileEmail(email);
       setEditEmail(email);
       setIsAuthenticated(true);
@@ -895,13 +899,15 @@ if (!subInfo) {
                 <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
                 <span className="text-sm text-green-400 font-medium">{T.settingsLive || "Live"}</span>
               </div>
-              <DropdownMenu>
+             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="secondary" size="icon" className="relative bg-gray-800/30 hover:bg-gray-800/50">
                     <Bell className="w-5 h-5 text-gray-400" />
-                    <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-yellow-500 text-[10px] font-bold flex items-center justify-center text-white">
-                      {alertCount}
-                    </span>
+                    {notificationsEnabled && (
+                      <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-yellow-500 text-[10px] font-bold flex items-center justify-center text-white">
+                        {alertCount}
+                      </span>
+                    )}
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="w-80 bg-gray-900 border-gray-800 p-0" align="end">
@@ -1229,13 +1235,27 @@ if (!subInfo) {
                   <BellRing className="w-4 h-4 text-primary" /> {T.settingsNotifications || "Notification Preferences"}
                 </h3>
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between py-2">
+                 <div className="flex items-center justify-between py-2">
                     <div><p className="font-medium text-foreground">{T.settingsPush || "Push Notifications"}</p><p className="text-xs text-muted-foreground">{T.settingsPushDesc || "Receive alerts in dashboard"}</p></div>
-                    <Switch checked={notificationsEnabled} onCheckedChange={setNotificationsEnabled} />
+                    <Switch checked={notificationsEnabled} onCheckedChange={(val) => {
+                      setNotificationsEnabled(val);
+                      fetch("/api/notification-prefs", {
+                        method: "PUT",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ email: profileEmail, push_enabled: val }),
+                      });
+                    }} />
                   </div>
                   <div className="flex items-center justify-between py-2">
                     <div><p className="font-medium text-foreground">{T.settingsEmail || "Email Alerts"}</p><p className="text-xs text-muted-foreground">{T.settingsEmailDesc || "Receive alerts via email"}</p></div>
-                    <Switch checked={emailAlerts} onCheckedChange={setEmailAlerts} />
+                    <Switch checked={emailAlerts} onCheckedChange={(val) => {
+                      setEmailAlerts(val);
+                      fetch("/api/notification-prefs", {
+                        method: "PUT",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ email: profileEmail, email_enabled: val }),
+                      });
+                    }} />
                   </div>
                   <div className="flex items-center justify-between py-2">
                     <div><p className="font-medium text-foreground">{T.settingsTelegram || "Telegram Notifications"}</p><p className="text-xs text-muted-foreground">{T.settingsTelegramDesc || "Connect Telegram for instant alerts"}</p></div>
@@ -1379,7 +1399,7 @@ if (!subInfo) {
           </div>
         </div>
       )}
-      
+
       {/* Edit Profile Modal */}
       {showEditProfileModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
