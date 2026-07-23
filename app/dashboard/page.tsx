@@ -503,6 +503,10 @@ export default function DashboardPage() {
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(30);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [passwordMsg, setPasswordMsg] = useState("");
+  const [passwordLoading, setPasswordLoading] = useState(false);
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
   const [profileName, setProfileName] = useState("");
   const [profileEmail, setProfileEmail] = useState("");
@@ -635,6 +639,24 @@ const isBlocked =
     }
   };
   
+  const handleChangePassword = async () => {
+    if (newPassword.length < 6) {
+      setPasswordMsg("Password must be at least 6 characters");
+      return;
+    }
+    setPasswordLoading(true);
+    setPasswordMsg("");
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    setPasswordLoading(false);
+    if (error) {
+      setPasswordMsg(error.message);
+      return;
+    }
+    setPasswordMsg("Password updated successfully");
+    setNewPassword("");
+    setTimeout(() => setShowPasswordModal(false), 1500);
+  };
+
   const saveProfile = async () => {
     const initials = editName.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
     setProfileName(editName);
@@ -1237,9 +1259,9 @@ if (!subInfo) {
                     <div><p className="font-medium text-foreground">{T.settings2FA || "Two-Factor Authentication"}</p><p className="text-xs text-muted-foreground">{T.settings2FADesc || "Add an extra layer of security"}</p></div>
                     <Switch checked={twoFactorEnabled} onCheckedChange={setTwoFactorEnabled} />
                   </div>
-                  <div className="flex items-center justify-between py-2">
+                <div className="flex items-center justify-between py-2">
                     <div><p className="font-medium text-foreground">{T.settingsChangePassword || "Change Password"}</p><p className="text-xs text-muted-foreground">{T.settingsChangePasswordDesc || "Update your password"}</p></div>
-                    <Button variant="outline" size="sm">{T.settingsUpdate || "Update"}</Button>
+                    <Button variant="outline" size="sm" onClick={() => setShowPasswordModal(true)}>{T.settingsUpdate || "Update"}</Button>
                   </div>
                   <div className="flex items-center justify-between py-2">
                     <div><p className="font-medium text-foreground">{T.settingsApiKeys || "API Keys"}</p><p className="text-xs text-muted-foreground">{T.settingsApiKeysDesc || "Manage API access tokens"}</p></div>
@@ -1325,6 +1347,39 @@ if (!subInfo) {
         </div>
       )}
 
+{/* Change Password Modal */}
+      {showPasswordModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-[380px] shadow-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-white">Change Password</h2>
+              <button onClick={() => { setShowPasswordModal(false); setPasswordMsg(""); setNewPassword(""); }} className="text-gray-500 hover:text-gray-300 p-2 -m-2">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <label className="text-xs text-gray-500 uppercase tracking-wider block mb-1">New password</label>
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              minLength={6}
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+              placeholder="••••••••"
+            />
+            {passwordMsg && (
+              <p className={`text-sm mt-2 ${passwordMsg.includes("success") ? "text-green-400" : "text-red-400"}`}>{passwordMsg}</p>
+            )}
+            <Button
+              className="w-full mt-4 bg-blue-600 hover:bg-blue-700"
+              disabled={passwordLoading}
+              onClick={handleChangePassword}
+            >
+              {passwordLoading ? "..." : "Update Password"}
+            </Button>
+          </div>
+        </div>
+      )}
+      
       {/* Edit Profile Modal */}
       {showEditProfileModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
