@@ -617,7 +617,7 @@ const isBlocked =
       body: JSON.stringify({ email: profileEmail, name: businessName, timezone }),
     });
   };
-  
+
   const saveProfile = async () => {
     const initials = editName.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
     setProfileName(editName);
@@ -1153,21 +1153,24 @@ if (!subInfo) {
                       value={businessName}
                       onChange={(e) => setBusinessName(e.target.value)}
                       onBlur={saveBusinessProfile}
-                      className="mt-1 w-full bg-secondary border border-border rounded-lg px-3 py-2 text-foreground text-sm"
+                      className="mt-1 w-full bg-secondary border border-border rounded-lg px-3 py-2 text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
                     />
                   </div>
                   <div>
                     <label className="text-xs text-muted-foreground uppercase tracking-wider">{T.settingsBusinessId || "Business ID"}</label>
-                    <p className="text-foreground font-medium mt-1">{businessId || "—"}</p>
+                    <p className="mt-1 w-full bg-secondary/50 border border-border rounded-lg px-3 py-2 text-muted-foreground text-sm cursor-not-allowed">{businessId || "—"}</p>
                   </div>
-                  <div><label className="text-xs text-muted-foreground uppercase tracking-wider">{T.settingsPhone || "Phone"}</label><p className="text-foreground font-medium mt-1">{profilePhone}</p></div>
+                  <div>
+                    <label className="text-xs text-muted-foreground uppercase tracking-wider">{T.settingsPhone || "Phone"}</label>
+                    <p className="mt-1 w-full bg-secondary/50 border border-border rounded-lg px-3 py-2 text-muted-foreground text-sm cursor-not-allowed">{profilePhone || "—"}</p>
+                  </div>
                   <div>
                     <label className="text-xs text-muted-foreground uppercase tracking-wider">{T.settingsTimezone || "Timezone"}</label>
                     <select
                       value={timezone}
                       onChange={(e) => { setTimezoneState(e.target.value); }}
                       onBlur={saveBusinessProfile}
-                      className="mt-1 w-full bg-secondary border border-border rounded-lg px-3 py-2 text-foreground text-sm"
+                      className="mt-1 w-full bg-secondary border border-border rounded-lg px-3 py-2 text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
                     >
                       <option value="America/New_York">Eastern Time (ET)</option>
                       <option value="Europe/Kyiv">EET (Kyiv)</option>
