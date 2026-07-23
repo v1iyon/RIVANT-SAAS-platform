@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { useLanguage } from "@/lib/translations";
 import { 
@@ -990,7 +991,7 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
             )}
             
             {/* Notification Toast */}
-        {lastNotification && activeView !== "risks" && (
+       {lastNotification && activeView !== "risks" && typeof document !== "undefined" && createPortal(
          <div className="fixed bottom-20 right-4 left-4 md:left-auto md:right-4 md:w-80 bg-gray-900/95 rounded-xl p-4 border-l-4 border-blue-500 shadow-xl animate-in slide-in-from-right-5 fade-in duration-300 backdrop-blur-md z-[9999] pointer-events-auto">
             <div className="flex justify-between items-start">
               <div className="flex-1">
@@ -1030,13 +1031,14 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
               </button>
             </div>
 
-            <button
+           <button
               onClick={() => setActiveView("risks")}
               className="mt-2 text-xs text-blue-400 hover:text-blue-300 font-medium"
             >
               {T.demoViewInRisks || "View in Risks →"}
             </button>
-          </div>
+          </div>,
+          document.body
         )}
             
             {/* Telegram Popup */}
