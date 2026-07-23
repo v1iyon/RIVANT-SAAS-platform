@@ -502,7 +502,6 @@ export default function DashboardPage() {
   const [emailAlerts, setEmailAlerts] = useState(true);
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(30);
-  const [timezone, setTimezone] = useState("America/New_York");
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
   const [profileName, setProfileName] = useState("");
@@ -519,6 +518,9 @@ export default function DashboardPage() {
   const addToQueue = <T,>(queue: T[], newValue: T): T[] => [...queue.slice(1), newValue];
   const supabase = createClient();
   const [subInfo, setSubInfo] = useState<{ plan: string | null; access_status: string } | null>(null);
+  const [businessName, setBusinessName] = useState("");
+  const [timezone, setTimezoneState] = useState("America/New_York");
+  const [businessId, setBusinessId] = useState("");
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data }: any) => {
@@ -530,6 +532,13 @@ export default function DashboardPage() {
       setProfileEmail(email);
       setEditEmail(email);
       setIsAuthenticated(true);
+      const bizRes = await fetch(`/api/business-profile?email=${encodeURIComponent(email)}`);
+      const bizData = await bizRes.json();
+      if (bizData.business) {
+        setBusinessName(bizData.business.name || "");
+        setTimezoneState(bizData.business.timezone || "America/New_York");
+        setBusinessId(bizData.business.id?.slice(0, 8).toUpperCase() || "");
+      }
 
       const res = await fetch(`/api/subscription-status?email=${encodeURIComponent(email)}`, { cache: "no-store" });
       const sub = await res.json();
@@ -601,6 +610,14 @@ const isBlocked =
     setShowEditProfileModal(true);
   };
 
+  const saveBusinessProfile = async () => {
+    await fetch("/api/business-profile", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: profileEmail, name: businessName, timezone }),
+    });
+  };
+  
   const saveProfile = async () => {
     const initials = editName.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
     setProfileName(editName);
@@ -1129,12 +1146,29 @@ if (!subInfo) {
                 <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
                   <Building className="w-4 h-4 text-primary" /> {T.settingsAccountInfo || "Account Information"}
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div><label className="text-xs text-muted-foreground uppercase tracking-wider">{T.settingsCompanyName || "Company Name"}</label><p className="text-foreground font-medium mt-1">RIVANT Inc.</p></div>
-                  <div><label className="text-xs text-muted-foreground uppercase tracking-wider">{T.settingsBusinessId || "Business ID"}</label><p className="text-foreground font-medium mt-1">RIV-2024-001</p></div>
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs text-muted-foreground uppercase tracking-wider">{T.settingsCompanyName || "Company Name"}</label>
+                    <input
+                      value={businessName}
+                      onChange={(e) => setBusinessName(e.target.value)}
+                      onBlur={saveBusinessProfile}
+                      className="mt-1 w-full bg-secondary border border-border rounded-lg px-3 py-2 text-foreground text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground uppercase tracking-wider">{T.settingsBusinessId || "Business ID"}</label>
+                    <p className="text-foreground font-medium mt-1">{businessId || "—"}</p>
+                  </div>
                   <div><label className="text-xs text-muted-foreground uppercase tracking-wider">{T.settingsPhone || "Phone"}</label><p className="text-foreground font-medium mt-1">{profilePhone}</p></div>
-                  <div><label className="text-xs text-muted-foreground uppercase tracking-wider">{T.settingsTimezone || "Timezone"}</label>
-                    <select value={timezone} onChange={(e) => setTimezone(e.target.value)} className="mt-1 w-full bg-secondary border border-border rounded-lg px-3 py-2 text-foreground text-sm">
+                  <div>
+                    <label className="text-xs text-muted-foreground uppercase tracking-wider">{T.settingsTimezone || "Timezone"}</label>
+                    <select
+                      value={timezone}
+                      onChange={(e) => { setTimezoneState(e.target.value); }}
+                      onBlur={saveBusinessProfile}
+                      className="mt-1 w-full bg-secondary border border-border rounded-lg px-3 py-2 text-foreground text-sm"
+                    >
                       <option value="America/New_York">Eastern Time (ET)</option>
                       <option value="Europe/Kyiv">EET (Kyiv)</option>
                       <option value="Europe/Berlin">CET (Berlin)</option>
