@@ -508,6 +508,7 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
   const [showTelegramPopup, setShowTelegramPopup] = useState(false);
   const [lastNotification, setLastNotification] = useState<Risk | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
+  const notificationRef = useRef<HTMLDivElement>(null);
   const usedAlertIdsRef = useRef<Set<string>>(new Set());
   const lastAlertTimeRef = useRef<number>(Date.now());
   const notificationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -662,8 +663,9 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
     setRisks(prev => prev.filter(r => r.integrationId !== integrationId));
   };
   
-  useEffect(() => {
+ useEffect(() => {
     const handleClickOutside = (e: MouseEvent | TouchEvent) => {
+      if (notificationRef.current && notificationRef.current.contains(e.target as Node)) return;
       if (modalRef.current && !modalRef.current.contains(e.target as Node)) onClose();
     };
     if (isOpen) {
@@ -992,7 +994,7 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
             
             {/* Notification Toast */}
        {lastNotification && activeView !== "risks" && typeof document !== "undefined" && createPortal(
-         <div className="fixed bottom-20 right-4 left-4 md:left-auto md:right-4 md:w-80 bg-gray-900/95 rounded-xl p-4 border-l-4 border-blue-500 shadow-xl animate-in slide-in-from-right-5 fade-in duration-300 backdrop-blur-md z-[9999] pointer-events-auto">
+        <div ref={notificationRef} className="fixed bottom-20 right-4 left-4 md:left-auto md:right-4 md:w-80 bg-gray-900/95 rounded-xl p-4 border-l-4 border-blue-500 shadow-xl animate-in slide-in-from-right-5 fade-in duration-300 backdrop-blur-md z-[9999] pointer-events-auto">
             <div className="flex justify-between items-start">
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
