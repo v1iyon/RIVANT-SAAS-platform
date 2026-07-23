@@ -618,6 +618,23 @@ const isBlocked =
     });
   };
 
+  const savePhone = async () => {
+    try {
+      await fetch("/api/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: profileEmail,
+          full_name: profileName,
+          phone: profilePhone,
+          avatar_url: profilePhotoUrl,
+        }),
+      });
+    } catch (e) {
+      console.error("Failed to save phone", e);
+    }
+  };
+  
   const saveProfile = async () => {
     const initials = editName.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
     setProfileName(editName);
@@ -1146,7 +1163,7 @@ if (!subInfo) {
                 <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
                   <Building className="w-4 h-4 text-primary" /> {T.settingsAccountInfo || "Account Information"}
                 </h3>
-               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="text-xs text-muted-foreground uppercase tracking-wider">{T.settingsCompanyName || "Company Name"}</label>
                     <input
@@ -1158,11 +1175,16 @@ if (!subInfo) {
                   </div>
                   <div>
                     <label className="text-xs text-muted-foreground uppercase tracking-wider">{T.settingsBusinessId || "Business ID"}</label>
-                    <p className="mt-1 w-full bg-secondary/50 border border-border rounded-lg px-3 py-2 text-muted-foreground text-sm cursor-not-allowed">{businessId || "—"}</p>
+                    <p className="mt-1 w-full bg-secondary/50 border border-border rounded-lg px-3 py-2 text-foreground text-sm cursor-not-allowed">{businessId || "—"}</p>
                   </div>
                   <div>
                     <label className="text-xs text-muted-foreground uppercase tracking-wider">{T.settingsPhone || "Phone"}</label>
-                    <p className="mt-1 w-full bg-secondary/50 border border-border rounded-lg px-3 py-2 text-muted-foreground text-sm cursor-not-allowed">{profilePhone || "—"}</p>
+                    <input
+                      value={profilePhone}
+                      onChange={(e) => { setProfilePhone(e.target.value); setEditPhone(e.target.value); }}
+                      onBlur={savePhone}
+                      className="mt-1 w-full bg-secondary border border-border rounded-lg px-3 py-2 text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    />
                   </div>
                   <div>
                     <label className="text-xs text-muted-foreground uppercase tracking-wider">{T.settingsTimezone || "Timezone"}</label>
