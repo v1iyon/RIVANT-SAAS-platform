@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { useLanguage } from "@/lib/translations";
 import { 
@@ -198,62 +197,67 @@ function TickerSparkline({ history, color, currentValue, previousValue }: { hist
 
 // Функция перевода риска
 function translateRisk(risk: Risk, t: any): Risk {
+  const lang = t._lang || "EN";
   const translatedRisk = { ...risk };
   switch (risk.alertType) {
     case "revenue_drop":
-      translatedRisk.title = t.alertRevenueDropTitle || "Revenue dropping";
-      translatedRisk.description = t.alertRevenueDropDesc || "Revenue decreased significantly in the last hour";
-      translatedRisk.action = t.alertViewDetails || "View Details";
+      translatedRisk.title = lang === "UA" ? "Падіння виручки" : lang === "DE" ? "Umsatzrückgang" : "Revenue dropping";
+      translatedRisk.description = lang === "UA" ? "Виручка суттєво знизилася за останню годину" : lang === "DE" ? "Der Umsatz ist in der letzten Stunde deutlich gesunken" : "Revenue decreased significantly in the last hour";
+      translatedRisk.action = lang === "UA" ? "Детальніше" : lang === "DE" ? "Details ansehen" : "View Details";
       break;
     case "revenue_rise":
-      translatedRisk.title = t.alertRevenueRiseTitle || "Revenue spike";
-      translatedRisk.description = t.alertRevenueRiseDesc || "Unusual revenue increase detected";
-      translatedRisk.action = t.alertViewDetails || "View Details";
+      translatedRisk.title = lang === "UA" ? "Сплеск виручки" : lang === "DE" ? "Umsatzanstieg" : "Revenue spike";
+      translatedRisk.description = lang === "UA" ? "Виявлено незвичне зростання виручки" : lang === "DE" ? "Ungewöhnlicher Umsatzanstieg festgestellt" : "Unusual revenue increase detected";
+      translatedRisk.action = lang === "UA" ? "Детальніше" : lang === "DE" ? "Details ansehen" : "View Details";
       break;
     case "profit_drop":
-      translatedRisk.title = t.alertProfitDropTitle || "Profit margin shrinking";
-      translatedRisk.description = t.alertProfitDropDesc || "Profit margin dropped below target";
-      translatedRisk.action = t.alertAnalyze || "Analyze";
+      translatedRisk.title = lang === "UA" ? "Маржа прибутку падає" : lang === "DE" ? "Gewinnmarge sinkt" : "Profit margin shrinking";
+      translatedRisk.description = lang === "UA" ? "Маржа прибутку опустилася нижче цільового рівня" : lang === "DE" ? "Die Gewinnmarge ist unter das Zielniveau gefallen" : "Profit margin dropped below target";
+      translatedRisk.action = lang === "UA" ? "Аналізувати" : lang === "DE" ? "Analysieren" : "Analyze";
       break;
     case "profit_rise":
-      translatedRisk.title = t.alertProfitRiseTitle || "Profit surge";
-      translatedRisk.description = t.alertProfitRiseDesc || "Exceptional profit margin detected";
-      translatedRisk.action = t.alertAnalyze || "Analyze";
+      translatedRisk.title = lang === "UA" ? "Стрибок прибутку" : lang === "DE" ? "Gewinnsprung" : "Profit surge";
+      translatedRisk.description = lang === "UA" ? "Виявлено виняткову маржу прибутку" : lang === "DE" ? "Außergewöhnliche Gewinnmarge festgestellt" : "Exceptional profit margin detected";
+      translatedRisk.action = lang === "UA" ? "Аналізувати" : lang === "DE" ? "Analysieren" : "Analyze";
       break;
     case "cac_increase":
-      translatedRisk.title = t.alertCacIncreaseTitle || "Customer acquisition cost rising";
-      translatedRisk.description = t.alertCacIncreaseDesc || "CAC increased - review ad performance";
-      translatedRisk.action = t.alertReviewMarketing || "Review Marketing";
+      translatedRisk.title = lang === "UA" ? "Вартість залучення клієнта зростає" : lang === "DE" ? "Kundenakquisekosten steigen" : "Customer acquisition cost rising";
+      translatedRisk.description = lang === "UA" ? "CAC зросла — перевірте ефективність реклами" : lang === "DE" ? "CAC gestiegen – Werbeleistung überprüfen" : "CAC increased - review ad performance";
+      translatedRisk.action = lang === "UA" ? "Переглянути маркетинг" : lang === "DE" ? "Marketing überprüfen" : "Review Marketing";
       break;
     case "cac_decrease":
-      translatedRisk.title = t.alertCacDecreaseTitle || "CAC decreasing";
-      translatedRisk.description = t.alertCacDecreaseDesc || "Marketing efficiency improving";
-      translatedRisk.action = t.alertReviewMarketing || "Review Marketing";
+      translatedRisk.title = lang === "UA" ? "CAC знижується" : lang === "DE" ? "CAC sinkt" : "CAC decreasing";
+      translatedRisk.description = lang === "UA" ? "Ефективність маркетингу покращується" : lang === "DE" ? "Die Marketingeffizienz verbessert sich" : "Marketing efficiency improving";
+      translatedRisk.action = lang === "UA" ? "Переглянути маркетинг" : lang === "DE" ? "Marketing überprüfen" : "Review Marketing";
       break;
     case "integration_down":
-      translatedRisk.title = t.alertIntegrationDownTitle || "Integration disconnected";
-      translatedRisk.description = (t.alertIntegrationDownDesc || "Connection to {name} has been lost").replace("{name}", risk.integrationId || "integration");
-      translatedRisk.action = t.alertReconnect || "Reconnect";
+      translatedRisk.title = lang === "UA" ? "Інтеграцію відключено" : lang === "DE" ? "Integration getrennt" : "Integration disconnected";
+      translatedRisk.description = lang === "UA"
+        ? `З'єднання з ${risk.integrationId || "інтеграцією"} втрачено`
+        : lang === "DE"
+        ? `Verbindung zu ${risk.integrationId || "Integration"} wurde unterbrochen`
+        : `Connection to ${risk.integrationId || "integration"} has been lost`;
+      translatedRisk.action = lang === "UA" ? "Перепідключити" : lang === "DE" ? "Erneut verbinden" : "Reconnect";
       break;
     case "low_stock":
-      translatedRisk.title = t.alertLowStockTitle || "Low stock alert";
-      translatedRisk.description = t.alertLowStockDesc || "Top SKU #4521 has only 3 days of stock remaining";
-      translatedRisk.action = t.alertReorder || "Reorder Now";
+      translatedRisk.title = lang === "UA" ? "Низький запас товару" : lang === "DE" ? "Niedriger Lagerbestand" : "Low stock alert";
+      translatedRisk.description = lang === "UA" ? "У топового SKU #4521 залишилось лише 3 дні запасу" : lang === "DE" ? "Top-SKU #4521 hat nur noch 3 Tage Bestand" : "Top SKU #4521 has only 3 days of stock remaining";
+      translatedRisk.action = lang === "UA" ? "Замовити зараз" : lang === "DE" ? "Jetzt nachbestellen" : "Reorder Now";
       break;
     case "shipping_delay":
-      translatedRisk.title = t.alertShippingDelayTitle || "Shipping delay detected";
-      translatedRisk.description = t.alertShippingDelayDesc || "Average delivery time increased by 1.4 days";
-      translatedRisk.action = t.alertViewOrders || "View Orders";
+      translatedRisk.title = lang === "UA" ? "Виявлено затримку доставки" : lang === "DE" ? "Lieferverzögerung festgestellt" : "Shipping delay detected";
+      translatedRisk.description = lang === "UA" ? "Середній час доставки збільшився на 1.4 дні" : lang === "DE" ? "Die durchschnittliche Lieferzeit hat sich um 1,4 Tage erhöht" : "Average delivery time increased by 1.4 days";
+      translatedRisk.action = lang === "UA" ? "Переглянути замовлення" : lang === "DE" ? "Bestellungen ansehen" : "View Orders";
       break;
     case "conversion_drop":
-      translatedRisk.title = t.alertConversionDropTitle || "Conversion rate dropping";
-      translatedRisk.description = t.alertConversionDropDesc || "Checkout completion dropped 12% in last 2 hours";
-      translatedRisk.action = t.alertCheckFunnel || "Check Funnel";
+      translatedRisk.title = lang === "UA" ? "Падіння конверсії" : lang === "DE" ? "Conversion-Rückgang" : "Conversion rate dropping";
+      translatedRisk.description = lang === "UA" ? "Завершення оформлення замовлення впало на 12% за останні 2 години" : lang === "DE" ? "Der Checkout-Abschluss ist in den letzten 2 Stunden um 12 % gesunken" : "Checkout completion dropped 12% in last 2 hours";
+      translatedRisk.action = lang === "UA" ? "Перевірити воронку" : lang === "DE" ? "Funnel prüfen" : "Check Funnel";
       break;
     case "ad_spend":
-      translatedRisk.title = t.alertAdSpendTitle || "Ad spend spike";
-      translatedRisk.description = t.alertAdSpendDesc || "Meta Ads spending 23% above daily budget";
-      translatedRisk.action = t.alertCheckCampaigns || "Check Campaigns";
+      translatedRisk.title = lang === "UA" ? "Сплеск витрат на рекламу" : lang === "DE" ? "Anstieg der Werbeausgaben" : "Ad spend spike";
+      translatedRisk.description = lang === "UA" ? "Витрати Meta Ads на 23% вищі за денний бюджет" : lang === "DE" ? "Meta-Ads-Ausgaben liegen 23 % über dem Tagesbudget" : "Meta Ads spending 23% above daily budget";
+      translatedRisk.action = lang === "UA" ? "Перевірити кампанії" : lang === "DE" ? "Kampagnen prüfen" : "Check Campaigns";
       break;
   }
   return translatedRisk;
@@ -508,7 +512,6 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
   const [showTelegramPopup, setShowTelegramPopup] = useState(false);
   const [lastNotification, setLastNotification] = useState<Risk | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
-  const notificationRef = useRef<HTMLDivElement>(null);
   const usedAlertIdsRef = useRef<Set<string>>(new Set());
   const lastAlertTimeRef = useRef<number>(Date.now());
   const notificationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -665,7 +668,6 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
   
  useEffect(() => {
     const handleClickOutside = (e: MouseEvent | TouchEvent) => {
-      if (notificationRef.current && notificationRef.current.contains(e.target as Node)) return;
       if (modalRef.current && !modalRef.current.contains(e.target as Node)) onClose();
     };
     if (isOpen) {
@@ -949,20 +951,28 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
                   {/* Карточка подключения Stripe */}
                   <div className="bg-gray-900/40 rounded-xl p-5 border border-gray-800">
                     <h4 className="font-semibold text-white text-base">Stripe</h4>
-                    <p className="text-sm text-gray-500 mt-1">
-                      {T.demoStripeDesc || "Connect your Stripe account to pull real revenue data"}
+                   <p className="text-sm text-gray-500 mt-1">
+                      {language === "UA"
+                        ? "Підключіть свій обліковий запис Stripe, щоб отримувати реальні дані про виручку"
+                        : language === "DE"
+                        ? "Verbinden Sie Ihr Stripe-Konto, um echte Umsatzdaten abzurufen"
+                        : "Connect your Stripe account to pull real revenue data"}
                     </p>
 
                     <input
                       type="text"
                       value={stripeKeyInput}
                       onChange={(e) => setStripeKeyInput(e.target.value)}
-                      placeholder={T.demoStripePlaceholder || "rk_live_... (restricted, read-only key)"}
+                      placeholder="rk_live_... (restricted, read-only key)"
                       className="w-full mt-4 bg-gray-800/60 border border-gray-700 rounded-lg px-3 py-2.5 text-sm text-gray-300 placeholder:text-gray-500 focus:outline-none focus:border-blue-500/50 transition-colors"
                     />
 
                     <p className="text-xs text-gray-500 mt-2">
-                      {T.demoStripeHint || "Create a restricted key with read-only access in Stripe Dashboard → Developers → API keys → Create restricted key."}
+                      {language === "UA"
+                        ? "Створіть обмежений ключ з доступом лише для читання в Stripe Dashboard → Developers → API keys → Create restricted key."
+                        : language === "DE"
+                        ? "Erstellen Sie einen eingeschränkten Schlüssel mit Lesezugriff in Stripe Dashboard → Developers → API keys → Create restricted key."
+                        : "Create a restricted key with read-only access in Stripe Dashboard → Developers → API keys → Create restricted key."}
                     </p>
 
                     <Button
@@ -971,9 +981,12 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
                       className={`mt-4 font-semibold px-5 ${stripeConnected ? "bg-green-500/20 text-green-400 hover:bg-green-500/20" : "bg-blue-500 hover:bg-blue-600 text-white"}`}
                     >
                       {stripeConnected ? (
-                        <span className="flex items-center gap-1.5"><Wifi className="w-4 h-4" /> {T.demoConnected || "Connected"}</span>
+                        <span className="flex items-center gap-1.5">
+                          <Wifi className="w-4 h-4" />
+                          {language === "UA" ? "Підключено" : language === "DE" ? "Verbunden" : "Connected"}
+                        </span>
                       ) : (
-                        `${T.demoConnectStripe || "Connect Stripe"} →`
+                        `${language === "UA" ? "Підключити Stripe" : language === "DE" ? "Stripe verbinden" : "Connect Stripe"} →`
                       )}
                     </Button>
                   </div>
@@ -985,16 +998,18 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
                     </div>
                     <div>
                       <h4 className="font-semibold text-gray-400 text-sm">Shopify, QuickBooks, Meta Ads</h4>
-                      <p className="text-xs text-gray-600">{T.demoComingSoon || "Coming soon"}</p>
+                      <p className="text-xs text-gray-600">
+                        {language === "UA" ? "Скоро" : language === "DE" ? "Demnächst" : "Coming soon"}
+                      </p>
                     </div>
                   </div>
                 </div>
               </div>
             )}
             
-            {/* Notification Toast */}
-       {lastNotification && activeView !== "risks" && typeof document !== "undefined" && createPortal(
-        <div ref={notificationRef} className="fixed bottom-20 right-4 left-4 md:left-auto md:right-4 md:w-80 bg-gray-900/95 rounded-xl p-4 border-l-4 border-blue-500 shadow-xl animate-in slide-in-from-right-5 fade-in duration-300 backdrop-blur-md z-[9999] pointer-events-auto">
+           {/* Notification Toast */}
+       {lastNotification && activeView !== "risks" && (
+        <div className="absolute bottom-6 right-4 w-64 sm:w-72 bg-gray-900/95 rounded-xl p-4 border-l-4 border-blue-500 shadow-xl animate-in slide-in-from-right-5 fade-in duration-300 backdrop-blur-md z-50">
             <div className="flex justify-between items-start">
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
@@ -1040,8 +1055,7 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
             >
               {T.demoViewInRisks || "View in Risks →"}
             </button>
-          </div>,
-          document.body
+          </div>
         )}
             
             {/* Telegram Popup */}
