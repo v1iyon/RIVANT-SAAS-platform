@@ -430,7 +430,7 @@ function ClaritySection() {
               <span className="text-primary text-sm font-bold">R</span>
             </div>
             <h3 className="text-2xl font-bold text-foreground mb-2">Реальні результати</h3>
-            <p className="text-muted-foreground mb-6">Приєднуйтесь до сотень компаній</p>
+            <p className="text-muted-foreground mb-6">Приєднуйтесь до інших компаній</p>
             <div className="flex flex-wrap justify-center gap-6">
               <div className="text-center">
                 <div className="text-2xl font-bold text-primary">500+</div>

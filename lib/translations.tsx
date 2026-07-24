@@ -182,7 +182,7 @@ export const translations = {
     footerAllRights: "All rights reserved.",
     footerPrecision: "Built with precision for business clarity.",
     testimonialsTitle: "Real Results from Real Businesses",
-    testimonialsSubtitle: "Join hundreds of companies",
+    testimonialsSubtitle: "Join other forward-thinking companies",
     testimonials: [
       { name: "Sarah Chen", role: "CEO, TechFlow Inc", content: "RIVANT found $47,000 in monthly losses", metric: "+340%", metricLabel: "Operational ROI" },
       { name: "Marcus Rodriguez", role: "CFO, GrowthStack", content: "We replaced 6 different tools with RIVANT", metric: "$127K", metricLabel: "Annual Savings" },
@@ -462,7 +462,7 @@ registerSubtitle: "Start your 14-day free trial"
     footerAllRights: "Всі права захищені",
     footerPrecision: "Створено для ясності бізнесу",
     testimonialsTitle: "Реальні результати",
-    testimonialsSubtitle: "Приєднуйтесь до сотень компаній",
+    testimonialsSubtitle: "Приєднуйтесь до інших компаній",
     testimonials: [
       { name: "Sarah Chen", role: "CEO, TechFlow Inc", content: "RIVANT знайшли $47,000 щомісячних втрат", metric: "+340%", metricLabel: "Операційний ROI" },
       { name: "Marcus Rodriguez", role: "CFO, GrowthStack", content: "Ми замінили 6 інструментів на RIVANT", metric: "$127K", metricLabel: "Річна економія" },
@@ -745,7 +745,7 @@ minutes: "Minuten",
     footerAllRights: "Alle Rechte vorbehalten",
     footerPrecision: "Präzision für geschäftliche Klarheit",
     testimonialsTitle: "Echte Ergebnisse",
-    testimonialsSubtitle: "Schließen Sie sich hunderten Unternehmen an",
+    testimonialsSubtitle: "Schließen Sie sich anderen Unternehmen an",
     testimonials: [
       { name: "Sarah Chen", role: "CEO, TechFlow Inc", content: "RIVANT fand monatliche Verluste von 47.000 $", metric: "+340%", metricLabel: "Operativer ROI" },
       { name: "Marcus Rodriguez", role: "CFO, GrowthStack", content: "Wir ersetzten 6 Tools durch RIVANT", metric: "$127K", metricLabel: "Jährliche Einsparungen" },
