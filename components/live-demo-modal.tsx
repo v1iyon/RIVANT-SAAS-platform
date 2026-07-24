@@ -373,7 +373,7 @@ function shuffleArray<T>(arr: T[]): T[] {
 const MIN_ALERT_INTERVAL = 15000;
 const MAX_ALERT_INTERVAL = 20000;
 // Сколько уведомление "висит" в виде тоста, прежде чем исчезнуть
-const NOTIFICATION_VISIBLE_MS = 4000;
+const NOTIFICATION_VISIBLE_MS = 3000;
 // Максимум уведомлений, которые храним во вкладке "Риски"
 const MAX_RISKS_STORED = 10;
 
@@ -637,31 +637,32 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
   }, [drawNextTemplate, showAlert]);
   
   // При первом открытии демо — сразу кладём пару уведомлений во вкладку
-  // "Риски" (не как всплывающий тост, а как будто они уже были получены ранее).
-  useEffect(() => {
-    if (isOpen && !hasInitializedRisksRef.current) {
-      hasInitializedRisksRef.current = true;
-      const now = Date.now();
-      const preloaded: Risk[] = [
-        {
-          id: now - 27 * 60000,
-          title: "", description: "",
-          time: new Date(now - 27 * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          severity: "medium", action: "", category: "shipping", alertType: "shipping_delay",
-        },
-        {
-          id: now - 52 * 60000,
-          title: "", description: "",
-          time: new Date(now - 52 * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          severity: "high", action: "", category: "inventory", alertType: "low_stock",
-        },
-      ].map(r => translateRisk(r, T));
-      setRisks(preloaded);
-      setAlertCount(preloaded.length);
-      lastTemplateTypeRef.current = "low_stock"; // чтобы эти же типы не выпали первыми в живой ротации
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen]);
+      // "Риски" (не как всплывающий тост, а как будто они уже были получены ранее).
+      useEffect(() => {
+        if (isOpen && !hasInitializedRisksRef.current) {
+          hasInitializedRisksRef.current = true;
+          const now = Date.now();
+          const rawPreloaded: Risk[] = [
+            {
+              id: now - 27 * 60000,
+              title: "", description: "",
+              time: new Date(now - 27 * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              severity: "medium", action: "", category: "shipping", alertType: "shipping_delay",
+            },
+            {
+              id: now - 52 * 60000,
+              title: "", description: "",
+              time: new Date(now - 52 * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              severity: "high", action: "", category: "inventory", alertType: "low_stock",
+            },
+          ];
+          const preloaded = rawPreloaded.map(r => translateRisk(r, T));
+          setRisks(preloaded);
+          setAlertCount(preloaded.length);
+          lastTemplateTypeRef.current = "low_stock"; // чтобы эти же типы не выпали первыми в живой ротации
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [isOpen]);
 
   // Планировщик "живых" уведомлений — раз в случайные 15-20 секунд, пока
   // демо открыто.
