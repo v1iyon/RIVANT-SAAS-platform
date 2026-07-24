@@ -39,8 +39,6 @@ interface Integration {
   errorMessage?: string;
 }
 
-const initialRisks: Risk[] = [];
-
 const BASE_REVENUE = 125608;
 const BASE_PROFIT = 34563;
 const BASE_MARGIN = 27.5;
@@ -119,6 +117,81 @@ const generateTickerData = (baseValue: number, volatility: number, trend: number
 
 const CHART_DATA = generateRealisticChartData();
 
+// ============================================================================
+// ГЛОБАЛЬНОЕ (module-level) ХРАНИЛИЩЕ МЕТРИК
+// ----------------------------------------------------------------------------
+// Раньше метрики тикали только внутри useEffect, который был завязан на
+// isOpen — то есть, пока демо закрыто, ничего не обновлялось, и при каждом
+// повторном открытии (если родитель размонтирует компонент) цифры откатывались
+// к базовым значениям. Теперь состояние живёт вне компонента и тикает раз в
+// 10 секунд всегда, независимо от того, открыта модалка или нет — так демо
+// при открытии сразу показывает "живые", а не нулевые/базовые цифры.
+// ============================================================================
+interface MetricsState {
+  currentRevenue: number; prevRevenue: number;
+  currentProfit: number; prevProfit: number;
+  currentMargin: number; prevMargin: number;
+  currentCac: number; prevCac: number;
+  revenueQueue: number[]; profitQueue: number[]; marginQueue: number[]; cacQueue: number[];
+}
+
+let metricsState: MetricsState = {
+  currentRevenue: BASE_REVENUE, prevRevenue: BASE_REVENUE,
+  currentProfit: BASE_PROFIT, prevProfit: BASE_PROFIT,
+  currentMargin: BASE_MARGIN, prevMargin: BASE_MARGIN,
+  currentCac: BASE_CAC, prevCac: BASE_CAC,
+  revenueQueue: generateTickerData(BASE_REVENUE, 400, 0.0003),
+  profitQueue: generateTickerData(BASE_PROFIT, 300, 0.0002),
+  marginQueue: generateTickerData(BASE_MARGIN, 0.4, 0.0001),
+  cacQueue: generateTickerData(BASE_CAC, 1.2, -0.0001),
+};
+
+const metricsListeners = new Set<() => void>();
+const METRICS_TICK_MS = 10000; // раз в 10 секунд, всегда, даже когда демо закрыто
+
+function tickMetrics() {
+  const revenueChange = 1 + (Math.random() - 0.48) * 0.006;
+  const profitChange = 1 + (Math.random() - 0.45) * 0.008;
+  const cacChange = 1 + (Math.random() - 0.52) * 0.007;
+
+  const newRevenue = Math.max(115000, Math.min(145000, metricsState.currentRevenue * revenueChange));
+  const newProfit = Math.max(31000, Math.min(42000, metricsState.currentProfit * profitChange));
+  const newMargin = (newProfit / newRevenue) * 100;
+  const newCac = Math.max(43, Math.min(52, metricsState.currentCac * cacChange));
+
+  metricsState = {
+    currentRevenue: newRevenue, prevRevenue: metricsState.currentRevenue,
+    currentProfit: newProfit, prevProfit: metricsState.currentProfit,
+    currentMargin: newMargin, prevMargin: metricsState.currentMargin,
+    currentCac: newCac, prevCac: metricsState.currentCac,
+    revenueQueue: [...metricsState.revenueQueue.slice(1), newRevenue],
+    profitQueue: [...metricsState.profitQueue.slice(1), newProfit],
+    marginQueue: [...metricsState.marginQueue.slice(1), newMargin],
+    cacQueue: [...metricsState.cacQueue.slice(1), newCac],
+  };
+  metricsListeners.forEach((fn) => fn());
+}
+
+// Запускаем тикер один раз при загрузке модуля — он живёт независимо от
+// того, монтирован ли компонент модалки.
+if (typeof window !== "undefined") {
+  const w = window as any;
+  if (!w.__rivantMetricsTickerStarted) {
+    w.__rivantMetricsTickerStarted = true;
+    setInterval(tickMetrics, METRICS_TICK_MS);
+  }
+}
+
+function useMetricsStore(): MetricsState {
+  const [, forceRender] = useState(0);
+  useEffect(() => {
+    const listener = () => forceRender((v) => v + 1);
+    metricsListeners.add(listener);
+    return () => { metricsListeners.delete(listener); };
+  }, []);
+  return metricsState;
+}
+
 function AnimatedNumber({ value, prefix = "", suffix = "", changePercent = 0 }: { value: number; prefix?: string; suffix?: string; changePercent?: number }) {
   const [displayValue, setDisplayValue] = useState(value);
   const prevValueRef = useRef(value);
@@ -157,7 +230,6 @@ function TickerSparkline({ history, color, currentValue, previousValue }: { hist
   const [items, setItems] = useState(history);
   const [isAnimating, setIsAnimating] = useState(false);
   const prevHistoryLengthRef = useRef(history.length);
-  const notificationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   useEffect(() => {
     if (history.length !== prevHistoryLengthRef.current) {
@@ -263,90 +335,47 @@ function translateRisk(risk: Risk, t: any): Risk {
   return translatedRisk;
 }
 
-// Генерация уведомлений
-function generateAlertFromState(
-  integrations: Integration[],
-  currentRevenue: number,
-  prevRevenue: number,
-  currentProfit: number,
-  prevProfit: number,
-  usedAlertIds: Set<string>
-): Risk | null {
-  const now = new Date();
-  const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  
-  const downIntegrations = integrations.filter(i => i.status === "error");
-  for (const integration of downIntegrations) {
-    const alertId = `integration_${integration.id}_${Math.floor(now.getTime() / 60000)}`;
-    if (!usedAlertIds.has(alertId)) {
-      return {
-        id: now.getTime(),
-        title: "",
-        description: "",
-        time: timeStr,
-        severity: "high",
-        action: "",
-        category: "integration",
-        integrationId: integration.name,
-        alertType: "integration_down"
-      };
-    }
-  }
-  
-  const revenueChange = (currentRevenue - prevRevenue) / prevRevenue;
-  if (Math.abs(revenueChange) > 0.02 && Math.random() > 0.7) {
-    const isDrop = revenueChange < 0;
-    const alertId = `revenue_${Math.floor(now.getTime() / 60000)}`;
-    if (!usedAlertIds.has(alertId)) {
-      return {
-        id: now.getTime(),
-        title: "",
-        description: "",
-        time: timeStr,
-        severity: Math.abs(revenueChange) > 0.035 ? "high" : "medium",
-        action: "",
-        category: "ads",
-        alertType: isDrop ? "revenue_drop" : "revenue_rise"
-      };
-    }
-  }
-  
-  return null;
-}
+// ============================================================================
+// РОТАЦИЯ УВЕДОМЛЕНИЙ БЕЗ ПОВТОРОВ
+// ----------------------------------------------------------------------------
+// 10 разных типов уведомлений (не считая integration_down, который триггерится
+// отдельно реальным статусом интеграций). Вместо случайного выбора с шансом
+// повтора — берём из перемешанной очереди: каждый тип гарантированно
+// показывается один раз за полный цикл, прежде чем колода перемешивается
+// заново (и следим, чтобы новый первый элемент не совпадал с последним
+// показанным на стыке циклов).
+// ============================================================================
+type AlertTemplate = { alertType: NonNullable<Risk["alertType"]>; category: Risk["category"]; severity: Risk["severity"] };
 
-// Резервные типы уведомлений — используются, если по метрикам ничего не triggered,
-// чтобы риски гарантированно приходили не реже, чем раз в 20 секунд
-const FALLBACK_ALERT_TYPES: { alertType: Risk["alertType"]; category: Risk["category"]; severity: Risk["severity"] }[] = [
+const ALERT_TEMPLATES: AlertTemplate[] = [
+  { alertType: "revenue_drop", category: "ads", severity: "high" },
+  { alertType: "revenue_rise", category: "ads", severity: "low" },
+  { alertType: "profit_drop", category: "margin", severity: "high" },
+  { alertType: "profit_rise", category: "margin", severity: "low" },
+  { alertType: "cac_increase", category: "cac", severity: "medium" },
+  { alertType: "cac_decrease", category: "cac", severity: "low" },
   { alertType: "low_stock", category: "inventory", severity: "high" },
   { alertType: "shipping_delay", category: "shipping", severity: "medium" },
   { alertType: "conversion_drop", category: "conversion", severity: "high" },
   { alertType: "ad_spend", category: "ads", severity: "medium" },
-  { alertType: "cac_increase", category: "cac", severity: "medium" },
 ];
 
-function generateFallbackAlert(usedAlertIds: Set<string>): Risk | null {
-  const now = new Date();
-  const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  const bucket = Math.floor(now.getTime() / 20000); // новый набор доступных типов каждые 20с
-  const shuffled = [...FALLBACK_ALERT_TYPES].sort(() => Math.random() - 0.5);
-
-  for (const template of shuffled) {
-    const alertId = `${template.alertType}_${bucket}`;
-    if (!usedAlertIds.has(alertId)) {
-      return {
-        id: now.getTime(),
-        title: "",
-        description: "",
-        time: timeStr,
-        severity: template.severity,
-        action: "",
-        category: template.category,
-        alertType: template.alertType,
-      };
-    }
+function shuffleArray<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
   }
-  return null;
+  return a;
 }
+
+// Интервал между уведомлениями — 15-20 секунд
+const MIN_ALERT_INTERVAL = 15000;
+const MAX_ALERT_INTERVAL = 20000;
+// Сколько уведомление "висит" в виде тоста, прежде чем исчезнуть
+const NOTIFICATION_VISIBLE_MS = 4000;
+// Максимум уведомлений, которые храним во вкладке "Риски"
+const MAX_RISKS_STORED = 10;
 
 // ГЛАВНЫЙ ГРАФИК
 function RevenueExpensesChart() {
@@ -507,16 +536,22 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
   T._lang = language;
   
   const [activeView, setActiveView] = useState<ViewType>("overview");
-  const [risks, setRisks] = useState<Risk[]>(initialRisks);
+  const [risks, setRisks] = useState<Risk[]>([]);
   const [alertCount, setAlertCount] = useState(0);
   const [showTelegramPopup, setShowTelegramPopup] = useState(false);
   const [lastNotification, setLastNotification] = useState<Risk | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
-  const usedAlertIdsRef = useRef<Set<string>>(new Set());
-  const lastAlertTimeRef = useRef<number>(Date.now());
   const notificationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Очередь уведомлений без повторов + защита от повтора на стыке циклов
+  const alertQueueRef = useRef<AlertTemplate[]>([]);
+  const lastTemplateTypeRef = useRef<Risk["alertType"] | null>(null);
+  const lastAlertIntegrationRef = useRef<string | null>(null);
+  const hasInitializedRisksRef = useRef(false);
   
   const [integrations, setIntegrations] = useState<Integration[]>(INITIAL_INTEGRATIONS);
+  const integrationsRef = useRef(integrations);
+  useEffect(() => { integrationsRef.current = integrations; }, [integrations]);
 
   // Состояние карточки подключения Stripe на вкладке "Інтеграції"
   const [stripeKeyInput, setStripeKeyInput] = useState("");
@@ -526,22 +561,10 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
     if (!stripeKeyInput.trim()) return;
     setStripeConnected(true);
   };
-  
-  const [currentRevenue, setCurrentRevenue] = useState(BASE_REVENUE);
-  const [currentProfit, setCurrentProfit] = useState(BASE_PROFIT);
-  const [currentMargin, setCurrentMargin] = useState(BASE_MARGIN);
-  const [currentCac, setCurrentCac] = useState(BASE_CAC);
-  const [prevRevenue, setPrevRevenue] = useState(BASE_REVENUE);
-  const [prevProfit, setPrevProfit] = useState(BASE_PROFIT);
-  const [prevMargin, setPrevMargin] = useState(BASE_MARGIN);
-  const [prevCac, setPrevCac] = useState(BASE_CAC);
-  
-  const [revenueQueue, setRevenueQueue] = useState<number[]>(() => generateTickerData(BASE_REVENUE, 400, 0.0003));
-  const [profitQueue, setProfitQueue] = useState<number[]>(() => generateTickerData(BASE_PROFIT, 300, 0.0002));
-  const [marginQueue, setMarginQueue] = useState<number[]>(() => generateTickerData(BASE_MARGIN, 0.4, 0.0001));
-  const [cacQueue, setCacQueue] = useState<number[]>(() => generateTickerData(BASE_CAC, 1.2, -0.0001));
-  
-  const addToQueue = <T,>(queue: T[], newValue: T): T[] => [...queue.slice(1), newValue];
+
+  // Метрики теперь берутся из глобального (module-level) стора, который
+  // тикает раз в 10 секунд всегда — не только пока демо открыто.
+  const metrics = useMetricsStore();
   
   const translateAllRisks = useCallback(() => {
     setRisks(prevRisks => prevRisks.map(risk => translateRisk(risk, T)));
@@ -550,18 +573,111 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
   
   useEffect(() => {
     if (isOpen) translateAllRisks();
-  }, [language, isOpen, translateAllRisks]);
-  
-  useEffect(() => {
-    const cleanupInterval = setInterval(() => {
-      const oneHourAgo = Date.now() - 3600000;
-      for (const id of usedAlertIdsRef.current) {
-        const timestamp = parseInt(id.split('_')[1]);
-        if (timestamp < oneHourAgo) usedAlertIdsRef.current.delete(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [language, isOpen]);
+
+  // Достаём следующий тип уведомления из перемешанной очереди, гарантируя,
+  // что все 10 типов будут показаны прежде, чем какой-либо повторится.
+  const drawNextTemplate = useCallback((): AlertTemplate => {
+    if (alertQueueRef.current.length === 0) {
+      let shuffled = shuffleArray(ALERT_TEMPLATES);
+      if (
+        lastTemplateTypeRef.current &&
+        shuffled.length > 1 &&
+        shuffled[0].alertType === lastTemplateTypeRef.current
+      ) {
+        [shuffled[0], shuffled[1]] = [shuffled[1], shuffled[0]];
       }
-    }, 60000);
-    return () => clearInterval(cleanupInterval);
+      alertQueueRef.current = shuffled;
+    }
+    const next = alertQueueRef.current.shift()!;
+    lastTemplateTypeRef.current = next.alertType;
+    return next;
   }, []);
+
+  const showAlert = useCallback((risk: Risk) => {
+    const translated = translateRisk(risk, T);
+    setRisks(prev => [translated, ...prev].slice(0, MAX_RISKS_STORED));
+    setAlertCount(prev => prev + 1);
+    setLastNotification(translated);
+    if (notificationTimeoutRef.current) clearTimeout(notificationTimeoutRef.current);
+    notificationTimeoutRef.current = setTimeout(() => setLastNotification(null), NOTIFICATION_VISIBLE_MS);
+  }, [T]);
+
+  // Генерирует и показывает одно новое уведомление: интеграционные сбои в
+  // приоритете (это реальное состояние интеграций), иначе — следующий тип
+  // из очереди без повторов.
+  const generateAndShowAlert = useCallback(() => {
+    const now = Date.now();
+    const timeStr = new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    const downIntegration = integrationsRef.current.find(i => i.status === "error");
+    let risk: Risk;
+
+    if (downIntegration && lastAlertIntegrationRef.current !== downIntegration.id) {
+      lastAlertIntegrationRef.current = downIntegration.id;
+      risk = {
+        id: now,
+        title: "", description: "", time: timeStr,
+        severity: "high", action: "", category: "integration",
+        integrationId: downIntegration.name,
+        alertType: "integration_down",
+      };
+    } else {
+      const template = drawNextTemplate();
+      risk = {
+        id: now,
+        title: "", description: "", time: timeStr,
+        severity: template.severity, action: "", category: template.category,
+        alertType: template.alertType,
+      };
+    }
+
+    showAlert(risk);
+  }, [drawNextTemplate, showAlert]);
+  
+  // При первом открытии демо — сразу кладём пару уведомлений во вкладку
+  // "Риски" (не как всплывающий тост, а как будто они уже были получены ранее).
+  useEffect(() => {
+    if (isOpen && !hasInitializedRisksRef.current) {
+      hasInitializedRisksRef.current = true;
+      const now = Date.now();
+      const preloaded: Risk[] = [
+        {
+          id: now - 27 * 60000,
+          title: "", description: "",
+          time: new Date(now - 27 * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          severity: "medium", action: "", category: "shipping", alertType: "shipping_delay",
+        },
+        {
+          id: now - 52 * 60000,
+          title: "", description: "",
+          time: new Date(now - 52 * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          severity: "high", action: "", category: "inventory", alertType: "low_stock",
+        },
+      ].map(r => translateRisk(r, T));
+      setRisks(preloaded);
+      setAlertCount(preloaded.length);
+      lastTemplateTypeRef.current = "low_stock"; // чтобы эти же типы не выпали первыми в живой ротации
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+
+  // Планировщик "живых" уведомлений — раз в случайные 15-20 секунд, пока
+  // демо открыто.
+  useEffect(() => {
+    if (!isOpen) return;
+    let timeoutId: ReturnType<typeof setTimeout>;
+    const scheduleNext = () => {
+      const delay = MIN_ALERT_INTERVAL + Math.random() * (MAX_ALERT_INTERVAL - MIN_ALERT_INTERVAL);
+      timeoutId = setTimeout(() => {
+        generateAndShowAlert();
+        scheduleNext();
+      }, delay);
+    };
+    scheduleNext();
+    return () => clearTimeout(timeoutId);
+  }, [isOpen, generateAndShowAlert]);
   
   useEffect(() => {
     if (!isOpen) return;
@@ -589,63 +705,10 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
       });
     }, 45000);
     
-    const metricsInterval = setInterval(() => {
-      const revenueChange = 1 + (Math.random() - 0.48) * 0.006;
-      const profitChange = 1 + (Math.random() - 0.45) * 0.008;
-      const cacChange = 1 + (Math.random() - 0.52) * 0.007;
-      
-      const newRevenue = Math.max(115000, Math.min(145000, currentRevenue * revenueChange));
-      const newProfit = Math.max(31000, Math.min(42000, currentProfit * profitChange));
-      const newMargin = (newProfit / newRevenue) * 100;
-      const newCac = Math.max(43, Math.min(52, currentCac * cacChange));
-      
-      const now = Date.now();
-      const timeSinceLastAlert = now - lastAlertTimeRef.current;
-      
-      if (timeSinceLastAlert > 20000 && risks.length < 8) {
-        const alert = generateAlertFromState(
-          integrations,
-          newRevenue, currentRevenue,
-          newProfit, currentProfit,
-          usedAlertIdsRef.current
-        ) || generateFallbackAlert(usedAlertIdsRef.current);
-        
-        if (alert) {
-          const alertIdKey = `${alert.alertType}_${Math.floor(now / 60000)}`;
-          if (!usedAlertIdsRef.current.has(alertIdKey)) {
-            usedAlertIdsRef.current.add(alertIdKey);
-            const translatedAlert = translateRisk(alert, T);
-            setRisks(prev => [translatedAlert, ...prev.slice(0, 7)]);
-            setAlertCount(prev => prev + 1);
-            setLastNotification(translatedAlert);
-            lastAlertTimeRef.current = now;
-            if (notificationTimeoutRef.current) clearTimeout(notificationTimeoutRef.current);
-            notificationTimeoutRef.current = setTimeout(() => setLastNotification(null), 2500);
-          }
-        }
-      }
-      
-      setPrevRevenue(currentRevenue);
-      setPrevProfit(currentProfit);
-      setPrevMargin(currentMargin);
-      setPrevCac(currentCac);
-      
-      setCurrentRevenue(newRevenue);
-      setCurrentProfit(newProfit);
-      setCurrentMargin(newMargin);
-      setCurrentCac(newCac);
-      
-      setRevenueQueue(prev => addToQueue(prev, newRevenue));
-      setProfitQueue(prev => addToQueue(prev, newProfit));
-      setMarginQueue(prev => addToQueue(prev, newMargin));
-      setCacQueue(prev => addToQueue(prev, newCac));
-    }, 4500);
-    
     return () => {
-      clearInterval(metricsInterval);
       clearInterval(integrationsInterval);
     };
-  }, [isOpen, currentRevenue, currentProfit, currentMargin, currentCac, integrations, T, risks.length]);
+  }, [isOpen]);
   
   const removeRisk = (id: number) => {
     setRisks(prev => prev.filter(r => r.id !== id));
@@ -663,6 +726,7 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
         ? { ...integ, status: "connected", lastSync: "Just now", lastSyncTime: new Date(), errorMessage: undefined }
         : integ
     ));
+    if (lastAlertIntegrationRef.current === integrationId) lastAlertIntegrationRef.current = null;
     setRisks(prev => prev.filter(r => r.integrationId !== integrationId));
   };
   
@@ -684,6 +748,7 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
   
   if (!isOpen) return null;
   
+  const { currentRevenue, prevRevenue, currentProfit, prevProfit, currentMargin, prevMargin, currentCac, prevCac, revenueQueue, profitQueue, marginQueue, cacQueue } = metrics;
   const revenueChange = ((currentRevenue - prevRevenue) / prevRevenue * 100).toFixed(1);
   const profitChange = ((currentProfit - prevProfit) / prevProfit * 100).toFixed(1);
   const marginChange = (currentMargin - prevMargin).toFixed(1);
