@@ -620,7 +620,7 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
             setLastNotification(translatedAlert);
             lastAlertTimeRef.current = now;
             if (notificationTimeoutRef.current) clearTimeout(notificationTimeoutRef.current);
-            notificationTimeoutRef.current = setTimeout(() => setLastNotification(null), 4000);
+            notificationTimeoutRef.current = setTimeout(() => setLastNotification(null), 2500);
           }
         }
       }
@@ -1007,56 +1007,47 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
               </div>
             )}
             
-           {/* Notification Toast */}
-       {lastNotification && activeView !== "risks" && (
-        <div className="absolute bottom-6 right-4 w-64 sm:w-72 bg-gray-900/95 rounded-xl p-4 border-l-4 border-blue-500 shadow-xl animate-in slide-in-from-right-5 fade-in duration-300 backdrop-blur-md z-50">
-            <div className="flex justify-between items-start">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1">
+          {/* Notification Toast */}
+            {lastNotification && activeView !== "risks" && (
+              <div
+                key={lastNotification.id}
+                className={`absolute bottom-6 left-4 right-4 sm:left-auto sm:right-6 sm:w-[380px] bg-gray-900/95 backdrop-blur-md rounded-2xl shadow-2xl border p-5 animate-in slide-in-from-bottom-3 fade-in duration-300 z-50 ${
+                  lastNotification.severity === "high"
+                    ? "border-red-500/30"
+                    : lastNotification.severity === "medium"
+                    ? "border-yellow-500/30"
+                    : "border-blue-500/30"
+                }`}
+              >
+                <div className="flex items-start gap-3.5">
                   <div
-                    className={`p-1 rounded ${
+                    className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${
                       lastNotification.severity === "high"
-                        ? "bg-red-500/20"
+                        ? "bg-red-500/20 text-red-400"
                         : lastNotification.severity === "medium"
-                        ? "bg-yellow-500/20"
-                        : "bg-blue-500/20"
+                        ? "bg-yellow-500/20 text-yellow-400"
+                        : "bg-blue-500/20 text-blue-400"
                     }`}
                   >
                     {getCategoryIcon(lastNotification.category)}
                   </div>
-
-                  <p className="text-sm font-semibold text-white">
-                    {lastNotification.title}
-                  </p>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-white leading-snug">
+                      {lastNotification.title}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-1 leading-relaxed">
+                      {lastNotification.description}
+                    </p>
+                    <button
+                      onClick={() => setActiveView("risks")}
+                      className="mt-2.5 text-xs text-blue-400 hover:text-blue-300 font-medium transition-colors"
+                    >
+                      {T.demoViewInRisks || "View in Risks →"}
+                    </button>
+                  </div>
                 </div>
-
-                <p className="text-xs text-gray-400 mt-0.5">
-                  {lastNotification.description}
-                </p>
               </div>
-
-             <button
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (notificationTimeoutRef.current)
-                    clearTimeout(notificationTimeoutRef.current);
-                  setLastNotification(null);
-                }}
-                className="w-10 h-10 flex items-center justify-center rounded-lg text-gray-500 hover:text-white touch-manipulation"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-           <button
-              onClick={() => setActiveView("risks")}
-              className="mt-2 text-xs text-blue-400 hover:text-blue-300 font-medium"
-            >
-              {T.demoViewInRisks || "View in Risks →"}
-            </button>
-          </div>
-        )}
+            )}
             
             {/* Telegram Popup */}
             {showTelegramPopup && (
