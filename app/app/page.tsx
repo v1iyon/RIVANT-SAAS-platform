@@ -381,7 +381,7 @@ function HeroMainSection({ onOpenCalculator, onOpenDemo }: { onOpenCalculator: (
         </div>
         
         <div className="mt-8 flex items-center justify-center gap-2 text-sm text-muted-foreground">
-          <span>🔒 Нам довіряють 500+ компаній</span>
+          <span>🔒 Новий рівень контролю над фінансами</span>
           <span className="w-1 h-1 rounded-full bg-muted-foreground" />
           <span>⭐ 4.9 / 5</span>
         </div>
