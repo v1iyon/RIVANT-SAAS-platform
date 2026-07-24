@@ -1462,16 +1462,26 @@ if (!subInfo) {
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-[380px] shadow-2xl">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-white">Enable Two-Factor Auth</h2>
+              <h2 className="text-lg font-semibold text-white">
+                {language === "UA" ? "Увімкнути двофакторну автентифікацію" : language === "DE" ? "Zwei-Faktor-Authentifizierung aktivieren" : "Enable Two-Factor Auth"}
+              </h2>
               <button onClick={() => { setShow2FAModal(false); setMfaCode(""); setMfaMsg(""); }} className="text-gray-500 hover:text-gray-300 p-2 -m-2">
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <p className="text-sm text-gray-400 mb-3">Scan this QR code with Google Authenticator or Authy:</p>
+            <p className="text-sm text-gray-400 mb-3">
+              {language === "UA"
+                ? "Відскануйте цей QR-код у Google Authenticator або Authy:"
+                : language === "DE"
+                ? "Scannen Sie diesen QR-Code mit Google Authenticator oder Authy:"
+                : "Scan this QR code with Google Authenticator or Authy:"}
+            </p>
             {mfaQrCode && (
-              <div className="bg-white rounded-lg p-3 mb-4" dangerouslySetInnerHTML={{ __html: mfaQrCode }} />
+              <div className="bg-white rounded-lg p-3 mb-4 flex justify-center" dangerouslySetInnerHTML={{ __html: mfaQrCode }} />
             )}
-            <label className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Enter 6-digit code</label>
+            <label className="text-xs text-gray-500 uppercase tracking-wider block mb-1">
+              {language === "UA" ? "Введіть 6-значний код" : language === "DE" ? "6-stelligen Code eingeben" : "Enter 6-digit code"}
+            </label>
             <input
               value={mfaCode}
               onChange={(e) => setMfaCode(e.target.value)}
@@ -1483,7 +1493,7 @@ if (!subInfo) {
               <p className={`text-sm mt-2 ${mfaMsg.includes("enabled") ? "text-green-400" : "text-red-400"}`}>{mfaMsg}</p>
             )}
             <Button className="w-full mt-4 bg-blue-600 hover:bg-blue-700" disabled={mfaLoading} onClick={confirmEnroll2FA}>
-              {mfaLoading ? "..." : "Confirm"}
+              {mfaLoading ? "..." : language === "UA" ? "Підтвердити" : language === "DE" ? "Bestätigen" : "Confirm"}
             </Button>
           </div>
         </div>

@@ -22,6 +22,9 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
   const [authError, setAuthError] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
+  const [mfaStep, setMfaStep] = useState(false);
+  const [mfaCode, setMfaCode] = useState("");
+  const [mfaFactorId, setMfaFactorId] = useState("");
   const supabase = createClient();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { language, setLanguage, t } = useLanguage();
@@ -134,7 +137,7 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
         setAuthLoading(false);
         return;
       }
-    } else {
+   } else {
       const { error } = await supabase.auth.signInWithPassword({
         email: loginEmail,
         password: loginPassword,
@@ -144,10 +147,49 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
         setAuthError(error.message);
         return;
       }
+
+      const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+      if (aal && aal.nextLevel === "aal2" && aal.nextLevel !== aal.currentLevel) {
+        const { data: factors } = await supabase.auth.mfa.listFactors();
+        const factor = factors?.totp?.[0];
+        if (factor) {
+          setMfaFactorId(factor.id);
+          setMfaStep(true);
+          return;
+        }
+      }
     }
 
     setIsLoggedIn(true);
     setIsLoginModalOpen(false);
+    setLoginEmail("");
+    setLoginPassword("");
+    router.push("/dashboard");
+  };
+
+  const handleVerifyMfa = async () => {
+    setAuthLoading(true);
+    setAuthError("");
+    const { data: challenge, error: chErr } = await supabase.auth.mfa.challenge({ factorId: mfaFactorId });
+    if (chErr) {
+      setAuthLoading(false);
+      setAuthError(chErr.message);
+      return;
+    }
+    const { error: verErr } = await supabase.auth.mfa.verify({
+      factorId: mfaFactorId,
+      challengeId: challenge.id,
+      code: mfaCode,
+    });
+    setAuthLoading(false);
+    if (verErr) {
+      setAuthError(verErr.message);
+      return;
+    }
+    setIsLoggedIn(true);
+    setIsLoginModalOpen(false);
+    setMfaStep(false);
+    setMfaCode("");
     setLoginEmail("");
     setLoginPassword("");
     router.push("/dashboard");
@@ -331,6 +373,32 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
               <X className="w-5 h-5" />
             </button>
 
+           {mfaStep ? (
+              <>
+                <h2 className="text-2xl font-bold text-white mb-2">
+                  {language === "UA" ? "Введіть код 2FA" : language === "DE" ? "2FA-Code eingeben" : "Enter 2FA code"}
+                </h2>
+                <p className="text-gray-400 text-sm mb-6">
+                  {language === "UA" ? "Відкрийте застосунок-автентифікатор" : language === "DE" ? "Öffnen Sie Ihre Authenticator-App" : "Open your authenticator app"}
+                </p>
+                <input
+                  value={mfaCode}
+                  onChange={(e) => setMfaCode(e.target.value)}
+                  maxLength={6}
+                  className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white text-base text-center tracking-widest focus:outline-none focus:ring-2 focus:ring-blue-600"
+                  placeholder="000000"
+                />
+                {authError && <p className="text-red-400 text-sm mt-2">{authError}</p>}
+                <button
+                  onClick={handleVerifyMfa}
+                  disabled={authLoading}
+                  className="w-full mt-4 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {authLoading ? "..." : language === "UA" ? "Підтвердити" : language === "DE" ? "Bestätigen" : "Verify"}
+                </button>
+              </>
+            ) : (
+            <>
             <h2 className="text-2xl font-bold text-white mb-2">
   {authMode === "signup" ? t.registerTitle : t.loginTitle}
 </h2>
@@ -398,6 +466,8 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
     </>
   )}
 </p>
+            </>
+            )}
 
           </div>
         </div>
