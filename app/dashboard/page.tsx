@@ -706,7 +706,7 @@ const startEnroll2FA = async () => {
     setMfaQrCode(data.totp.qr_code);
     setShow2FAModal(true);
   };
-  
+
   const confirmEnroll2FA = async () => {
     setMfaLoading(true);
     setMfaMsg("");
@@ -1499,8 +1499,10 @@ if (!subInfo) {
                 ? "Scannen Sie diesen QR-Code mit Google Authenticator oder Authy:"
                 : "Scan this QR code with Google Authenticator or Authy:"}
             </p>
-            {mfaQrCode && (
-              <div className="bg-white rounded-lg p-3 mb-4 flex justify-center" dangerouslySetInnerHTML={{ __html: mfaQrCode }} />
+          {mfaQrCode && (
+              <div className="bg-white rounded-lg p-3 mb-4 mx-auto w-[220px] h-[220px] flex items-center justify-center">
+                <img src={mfaQrCode} alt="2FA QR code" className="w-full h-full" />
+              </div>
             )}
             <label className="text-xs text-gray-500 uppercase tracking-wider block mb-1">
               {language === "UA" ? "Введіть 6-значний код" : language === "DE" ? "6-stelligen Code eingeben" : "Enter 6-digit code"}
