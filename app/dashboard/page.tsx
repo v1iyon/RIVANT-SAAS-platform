@@ -203,6 +203,7 @@ function TickerSparkline({ history, color, currentValue, previousValue }: { hist
   const minValue = Math.min(...items);
   const range = maxValue - minValue;
   const isPositive = currentValue >= previousValue;
+  
 
   return (
     <div className="flex items-end gap-0.5 h-8 mt-2 w-full overflow-hidden">
@@ -504,6 +505,12 @@ export default function DashboardPage() {
   const [autoRefresh, setAutoRefresh] = useState(30);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [show2FAModal, setShow2FAModal] = useState(false);
+  const [mfaFactorId, setMfaFactorId] = useState("");
+  const [mfaQrCode, setMfaQrCode] = useState("");
+  const [mfaCode, setMfaCode] = useState("");
+  const [mfaMsg, setMfaMsg] = useState("");
+  const [mfaLoading, setMfaLoading] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [passwordMsg, setPasswordMsg] = useState("");
   const [passwordLoading, setPasswordLoading] = useState(false);
@@ -552,6 +559,10 @@ export default function DashboardPage() {
       const sub = await res.json();
       setSubInfo(sub);
 
+      const { data: factorsData } = await supabase.auth.mfa.listFactors();
+      const verifiedFactor = factorsData?.totp?.find((f: any) => f.status === "verified");
+      setTwoFactorEnabled(!!verifiedFactor);
+      if (verifiedFactor) setMfaFactorId(verifiedFactor.id);
       // Подтягиваем сохранённые имя/телефон/фото, если они уже есть в базе
       const profileRes = await fetch(`/api/profile?email=${encodeURIComponent(email)}`, { cache: "no-store" });
       const profile = await profileRes.json();
@@ -659,6 +670,49 @@ const isBlocked =
     setPasswordMsg("Password updated successfully");
     setNewPassword("");
     setTimeout(() => setShowPasswordModal(false), 1500);
+  };
+
+  const startEnroll2FA = async () => {
+    setMfaMsg("");
+    const { data, error } = await supabase.auth.mfa.enroll({ factorType: "totp" });
+    if (error) {
+      setMfaMsg(error.message);
+      return;
+    }
+    setMfaFactorId(data.id);
+    setMfaQrCode(data.totp.qr_code);
+    setShow2FAModal(true);
+  };
+
+  const confirmEnroll2FA = async () => {
+    setMfaLoading(true);
+    setMfaMsg("");
+    const { data: challenge, error: chErr } = await supabase.auth.mfa.challenge({ factorId: mfaFactorId });
+    if (chErr) {
+      setMfaLoading(false);
+      setMfaMsg(chErr.message);
+      return;
+    }
+    const { error: verErr } = await supabase.auth.mfa.verify({
+      factorId: mfaFactorId,
+      challengeId: challenge.id,
+      code: mfaCode,
+    });
+    setMfaLoading(false);
+    if (verErr) {
+      setMfaMsg(verErr.message);
+      return;
+    }
+    setTwoFactorEnabled(true);
+    setMfaMsg("2FA enabled!");
+    setTimeout(() => { setShow2FAModal(false); setMfaCode(""); setMfaMsg(""); }, 1200);
+  };
+
+  const disable2FA = async () => {
+    if (!mfaFactorId) return;
+    await supabase.auth.mfa.unenroll({ factorId: mfaFactorId });
+    setTwoFactorEnabled(false);
+    setMfaFactorId("");
   };
 
   const saveProfile = async () => {
@@ -1277,7 +1331,10 @@ if (!subInfo) {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between py-2">
                     <div><p className="font-medium text-foreground">{T.settings2FA || "Two-Factor Authentication"}</p><p className="text-xs text-muted-foreground">{T.settings2FADesc || "Add an extra layer of security"}</p></div>
-                    <Switch checked={twoFactorEnabled} onCheckedChange={setTwoFactorEnabled} />
+                    <Switch
+                      checked={twoFactorEnabled}
+                      onCheckedChange={(val) => { val ? startEnroll2FA() : disable2FA(); }}
+                    />
                   </div>
                 <div className="flex items-center justify-between py-2">
                     <div><p className="font-medium text-foreground">{T.settingsChangePassword || "Change Password"}</p><p className="text-xs text-muted-foreground">{T.settingsChangePasswordDesc || "Update your password"}</p></div>
@@ -1395,6 +1452,38 @@ if (!subInfo) {
               onClick={handleChangePassword}
             >
               {passwordLoading ? "..." : "Update Password"}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* 2FA Setup Modal */}
+      {show2FAModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-[380px] shadow-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-white">Enable Two-Factor Auth</h2>
+              <button onClick={() => { setShow2FAModal(false); setMfaCode(""); setMfaMsg(""); }} className="text-gray-500 hover:text-gray-300 p-2 -m-2">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-sm text-gray-400 mb-3">Scan this QR code with Google Authenticator or Authy:</p>
+            {mfaQrCode && (
+              <div className="bg-white rounded-lg p-3 mb-4" dangerouslySetInnerHTML={{ __html: mfaQrCode }} />
+            )}
+            <label className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Enter 6-digit code</label>
+            <input
+              value={mfaCode}
+              onChange={(e) => setMfaCode(e.target.value)}
+              maxLength={6}
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 tracking-widest text-center"
+              placeholder="000000"
+            />
+            {mfaMsg && (
+              <p className={`text-sm mt-2 ${mfaMsg.includes("enabled") ? "text-green-400" : "text-red-400"}`}>{mfaMsg}</p>
+            )}
+            <Button className="w-full mt-4 bg-blue-600 hover:bg-blue-700" disabled={mfaLoading} onClick={confirmEnroll2FA}>
+              {mfaLoading ? "..." : "Confirm"}
             </Button>
           </div>
         </div>
