@@ -678,9 +678,18 @@ const isBlocked =
 
   const startEnroll2FA = async () => {
     setMfaMsg("");
+
+    // Убираем незавершённые попытки прошлого раза (если закрыли модалку крестиком, не подтвердив код)
+    const { data: existing } = await supabase.auth.mfa.listFactors();
+    const unverified = existing?.totp?.filter((f: any) => f.status !== "verified") || [];
+    for (const f of unverified) {
+      await supabase.auth.mfa.unenroll({ factorId: f.id });
+    }
+
     const { data, error } = await supabase.auth.mfa.enroll({ factorType: "totp" });
     if (error) {
       setMfaMsg(error.message);
+      setShow2FAModal(true); // показываем модалку, чтобы ошибка была видна, а не пропадала молча
       return;
     }
     setMfaFactorId(data.id);
