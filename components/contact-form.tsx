@@ -8,7 +8,7 @@ import { Send, CheckCircle } from "lucide-react";
 import { useLanguage } from "@/lib/translations";
 
 export function ContactForm() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
@@ -62,25 +62,44 @@ export function ContactForm() {
                 <div className="w-16 h-16 rounded-full bg-green-500/10 flex items-center justify-center mb-4">
                   <CheckCircle className="w-8 h-8 text-green-500" />
                 </div>
-                <h3 className="text-xl font-semibold text-foreground mb-2">Thank you!</h3>
-                <p className="text-muted-foreground">We'll be in touch within 24 hours.</p>
+                <h3 className="text-xl font-semibold text-foreground mb-2">
+                  {language === "UA" ? "Дякуємо!" : language === "DE" ? "Vielen Dank!" : "Thank you!"}
+                </h3>
+                <p className="text-muted-foreground">
+                  {language === "UA"
+                    ? "Ми зв'яжемося з вами протягом 24 годин."
+                    : language === "DE"
+                    ? "Wir melden uns innerhalb von 24 Stunden bei Ihnen."
+                    : "We'll be in touch within 24 hours."}
+                </p>
               </div>
             ) : (
               <form onSubmit={handleSubmit} className="space-y-6">
                 <div className="space-y-1">
-                  <Label htmlFor="name">Full Name</Label>
+                  <Label htmlFor="name">
+                    {language === "UA" ? "Повне ім'я" : language === "DE" ? "Vollständiger Name" : "Full Name"}
+                  </Label>
                   <Input id="name" placeholder="John Smith" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} required className="bg-input border-border" />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="company">Company Name</Label>
+                  <Label htmlFor="company">
+                    {language === "UA" ? "Назва компанії" : language === "DE" ? "Firmenname" : "Company Name"}
+                  </Label>
                   <Input id="company" placeholder="Acme Inc" value={formData.company} onChange={(e) => setFormData({...formData, company: e.target.value})} required className="bg-input border-border" />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="email">Work Email</Label>
+                  <Label htmlFor="email">
+                    {language === "UA" ? "Робоча електронна пошта" : language === "DE" ? "Geschäftliche E-Mail" : "Work Email"}
+                  </Label>
                   <Input id="email" type="email" placeholder="john@acme.com" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} required className="bg-input border-border" />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="telegram">Telegram Username <span className="text-muted-foreground">(optional)</span></Label>
+                  <Label htmlFor="telegram">
+                    {language === "UA" ? "Ім'я користувача в Telegram" : language === "DE" ? "Telegram-Benutzername" : "Telegram Username"}{" "}
+                    <span className="text-muted-foreground">
+                      ({language === "UA" ? "необов'язково" : language === "DE" ? "optional" : "optional"})
+                    </span>
+                  </Label>
                   <Input id="telegram" placeholder="@username" value={formData.telegram} onChange={(e) => setFormData({...formData, telegram: e.target.value})} className="bg-input border-border" />
                 </div>
                 <Button type="submit" size="lg" className="w-full bg-primary hover:bg-primary/90 text-primary-foreground">
