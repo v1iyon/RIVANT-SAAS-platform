@@ -675,10 +675,10 @@ const isBlocked =
       }),
     });
     if (res.ok) {
-      setReviewMsg("Thanks! Your review is pending approval.");
+      setReviewMsg("success");
       setReviewComment("");
     } else {
-      setReviewMsg("Something went wrong, try again.");
+      setReviewMsg("error");
     }
   };
 
@@ -1415,7 +1415,9 @@ if (!subInfo) {
               </div>
 
 <div className="bg-card rounded-xl p-6 border border-border">
-                <h3 className="font-semibold text-foreground mb-4">Leave a Review</h3>
+                <h3 className="font-semibold text-foreground mb-4">
+                  {language === "UA" ? "Залишити відгук" : language === "DE" ? "Bewertung abgeben" : "Leave a Review"}
+                </h3>
                 <div className="flex gap-1 mb-3">
                   {[1, 2, 3, 4, 5].map((n) => (
                     <button key={n} onClick={() => setReviewRating(n)} className="text-2xl">
@@ -1426,15 +1428,27 @@ if (!subInfo) {
                 <textarea
                   value={reviewComment}
                   onChange={(e) => setReviewComment(e.target.value)}
-                  placeholder="Share your experience with RIVANT..."
+                  placeholder={
+                    language === "UA"
+                      ? "Поділіться своїм досвідом використання RIVANT..."
+                      : language === "DE"
+                      ? "Teilen Sie Ihre Erfahrung mit RIVANT..."
+                      : "Share your experience with RIVANT..."
+                  }
                   className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-foreground text-sm min-h-[80px]"
                 />
-                {reviewMsg && <p className="text-sm text-primary mt-2">{reviewMsg}</p>}
+                {reviewMsg && (
+                  <p className="text-sm text-primary mt-2">
+                    {reviewMsg === "success"
+                      ? (language === "UA" ? "Дякуємо! Ваш відгук очікує на модерацію." : language === "DE" ? "Danke! Ihre Bewertung wird geprüft." : "Thanks! Your review is pending approval.")
+                      : (language === "UA" ? "Щось пішло не так, спробуйте ще раз." : language === "DE" ? "Etwas ist schiefgelaufen, versuchen Sie es erneut." : "Something went wrong, try again.")}
+                  </p>
+                )}
                 <Button className="mt-3" onClick={submitReview} disabled={!reviewComment.trim()}>
-                  Submit Review
+                  {language === "UA" ? "Надіслати відгук" : language === "DE" ? "Bewertung senden" : "Submit Review"}
                 </Button>
               </div>
-              
+
               <div className="bg-card rounded-xl p-6 border border-border">
                 <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 text-primary" /> {T.settingsDangerZone || "Danger Zone"}

@@ -12,7 +12,7 @@ interface Review {
 }
 
 export function Testimonials() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const T = t as any;
   const [reviews, setReviews] = useState<Review[]>([]);
   const [loading, setLoading] = useState(true);
@@ -42,7 +42,11 @@ export function Testimonials() {
           <div className="text-center py-12">
             <Quote className="w-10 h-10 text-primary/30 mx-auto mb-4" />
             <p className="text-muted-foreground">
-              {T.testimonialsEmpty || "Be the first to share your experience with RIVANT."}
+              {language === "UA"
+                ? "Станьте першими, хто поділиться своїм досвідом використання RIVANT."
+                : language === "DE"
+                ? "Seien Sie der Erste, der seine Erfahrung mit RIVANT teilt."
+                : "Be the first to share your experience with RIVANT."}
             </p>
           </div>
         ) : (
