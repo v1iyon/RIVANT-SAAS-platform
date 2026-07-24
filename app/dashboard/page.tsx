@@ -654,6 +654,10 @@ const isBlocked =
     }
   };
   
+  const handleExportData = () => {
+    window.open(`/api/export-data?email=${encodeURIComponent(profileEmail)}`, "_blank");
+  };
+
   const handleChangePassword = async () => {
     if (newPassword.length < 6) {
       setPasswordMsg("Password must be at least 6 characters");
@@ -1378,7 +1382,7 @@ if (!subInfo) {
                   </div>
                   <div className="flex items-center justify-between pt-2 border-t border-border">
                     <div><p className="font-medium text-foreground">{T.settingsExportData || "Export All Data"}</p><p className="text-xs text-muted-foreground">{T.settingsExportDataDesc || "Download all your business data"}</p></div>
-                    <Button variant="outline" size="sm">{T.settingsExport || "Export"}</Button>
+                    <Button variant="outline" size="sm" onClick={handleExportData}>{T.settingsExport || "Export"}</Button>
                   </div>
                 </div>
               </div>
