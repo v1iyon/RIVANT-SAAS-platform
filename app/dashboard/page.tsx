@@ -510,6 +510,9 @@ export default function DashboardPage() {
   const [mfaQrCode, setMfaQrCode] = useState("");
   const [mfaCode, setMfaCode] = useState("");
   const [mfaMsg, setMfaMsg] = useState("");
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState("");
+  const [reviewMsg, setReviewMsg] = useState("");
   const [mfaLoading, setMfaLoading] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [passwordMsg, setPasswordMsg] = useState("");
@@ -656,6 +659,27 @@ const isBlocked =
   
   const handleExportData = () => {
     window.open(`/api/export-data?email=${encodeURIComponent(profileEmail)}`, "_blank");
+  };
+
+  const submitReview = async () => {
+    setReviewMsg("");
+    const res = await fetch("/api/reviews", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: profileEmail,
+        author_name: profileName,
+        business_name: businessName,
+        rating: reviewRating,
+        comment: reviewComment,
+      }),
+    });
+    if (res.ok) {
+      setReviewMsg("Thanks! Your review is pending approval.");
+      setReviewComment("");
+    } else {
+      setReviewMsg("Something went wrong, try again.");
+    }
   };
 
   const handleChangePassword = async () => {
@@ -1390,6 +1414,27 @@ if (!subInfo) {
                 </div>
               </div>
 
+<div className="bg-card rounded-xl p-6 border border-border">
+                <h3 className="font-semibold text-foreground mb-4">Leave a Review</h3>
+                <div className="flex gap-1 mb-3">
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <button key={n} onClick={() => setReviewRating(n)} className="text-2xl">
+                      {n <= reviewRating ? "★" : "☆"}
+                    </button>
+                  ))}
+                </div>
+                <textarea
+                  value={reviewComment}
+                  onChange={(e) => setReviewComment(e.target.value)}
+                  placeholder="Share your experience with RIVANT..."
+                  className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-foreground text-sm min-h-[80px]"
+                />
+                {reviewMsg && <p className="text-sm text-primary mt-2">{reviewMsg}</p>}
+                <Button className="mt-3" onClick={submitReview} disabled={!reviewComment.trim()}>
+                  Submit Review
+                </Button>
+              </div>
+              
               <div className="bg-card rounded-xl p-6 border border-border">
                 <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 text-primary" /> {T.settingsDangerZone || "Danger Zone"}
