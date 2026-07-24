@@ -676,27 +676,37 @@ const isBlocked =
     setTimeout(() => setShowPasswordModal(false), 1500);
   };
 
-  const startEnroll2FA = async () => {
+const startEnroll2FA = async () => {
     setMfaMsg("");
 
-    // Убираем незавершённые попытки прошлого раза (если закрыли модалку крестиком, не подтвердив код)
     const { data: existing } = await supabase.auth.mfa.listFactors();
+    const verified = existing?.totp?.find((f: any) => f.status === "verified");
+    if (verified) {
+      // уже подключено на сервере — просто синхронизируем состояние на экране
+      setTwoFactorEnabled(true);
+      setMfaFactorId(verified.id);
+      return;
+    }
+
     const unverified = existing?.totp?.filter((f: any) => f.status !== "verified") || [];
     for (const f of unverified) {
       await supabase.auth.mfa.unenroll({ factorId: f.id });
     }
 
-    const { data, error } = await supabase.auth.mfa.enroll({ factorType: "totp" });
+    const { data, error } = await supabase.auth.mfa.enroll({
+      factorType: "totp",
+      friendlyName: `rivant-${Date.now()}`,
+    });
     if (error) {
       setMfaMsg(error.message);
-      setShow2FAModal(true); // показываем модалку, чтобы ошибка была видна, а не пропадала молча
+      setShow2FAModal(true);
       return;
     }
     setMfaFactorId(data.id);
     setMfaQrCode(data.totp.qr_code);
     setShow2FAModal(true);
   };
-
+  
   const confirmEnroll2FA = async () => {
     setMfaLoading(true);
     setMfaMsg("");
