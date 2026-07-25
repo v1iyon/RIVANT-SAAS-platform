@@ -54,7 +54,9 @@ export function Testimonials() {
     el.scrollBy({ left: direction * distance, behavior: "smooth" });
   };
 
-  if (loading) return null;
+  if (loading) {
+    return <section className="py-8 relative min-h-[400px]" />;
+  }
 
   return (
     <section className="py-8 relative">
