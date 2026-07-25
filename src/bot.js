@@ -12,7 +12,8 @@ function mainMenu(lang) {
     .text(d.menu.metrics, "metrics").row()
     .text(d.menu.problems, "problems").row()
     .text(d.menu.subscription, "subscription").row()
-    .text(d.menu.integrations, "integrations");
+    .text(d.menu.integrations, "integrations").row()
+    .url(d.menu.support || "💬 Support", "https://t.me/official_rivant");
 }
 
 // ---------------------------------------------------------------------------
@@ -22,7 +23,6 @@ bot.command("start", async (ctx) => {
   const token = ctx.match?.trim();
 
   if (!token) {
-    // язык ещё неизвестен (пользователь не найден) — отвечаем на английском по умолчанию
     return ctx.reply(getDict("EN").welcomeNoToken, { link_preview_options: { is_disabled: true } });
   }
 
