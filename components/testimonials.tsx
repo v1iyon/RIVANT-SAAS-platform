@@ -102,7 +102,9 @@ export function Testimonials() {
 
             <div
               ref={scrollRef}
-              className="flex gap-6 overflow-x-auto no-scrollbar snap-x snap-mandatory scroll-smooth pb-2 -mx-4 px-4 sm:mx-0 sm:px-0"
+              className={`flex gap-6 overflow-x-auto no-scrollbar snap-x snap-mandatory scroll-smooth pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 ${
+                !canScrollLeft && !canScrollRight ? "justify-center" : ""
+              }`}
             >
               {reviews.map((item, index) => (
                 <div
