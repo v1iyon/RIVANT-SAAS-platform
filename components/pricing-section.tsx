@@ -102,7 +102,7 @@ export function PricingSection() {
   ];
 
   return (
-    <section id="pricing" className="py-6 relative overflow-hidden scroll-mt-40">
+   <section className="py-6 relative overflow-hidden">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-16">
           <h2 className="text-4xl font-bold text-foreground mb-4">
@@ -111,7 +111,7 @@ export function PricingSection() {
         </div>
 
         {/* Pricing Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div id="pricing" className="grid grid-cols-1 md:grid-cols-3 gap-8 scroll-mt-24">
           {plans.map((plan) => (
             <div
               key={plan.name}
