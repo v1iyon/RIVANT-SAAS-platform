@@ -1075,9 +1075,9 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
             
           {/* Notification Toast */}
             {lastNotification && activeView !== "risks" && (
-              <div
+             <div
                 key={lastNotification.id}
-                className={`absolute bottom-6 left-4 right-4 sm:left-auto sm:right-6 sm:w-[380px] bg-gray-900/95 backdrop-blur-md rounded-2xl shadow-2xl border p-5 animate-in slide-in-from-bottom-3 fade-in duration-300 z-50 ${
+                className={`absolute bottom-20 md:bottom-6 left-3 right-3 sm:left-auto sm:right-6 sm:w-[380px] bg-gray-900/95 backdrop-blur-md rounded-2xl shadow-2xl border p-4 sm:p-5 animate-in slide-in-from-bottom-3 fade-in duration-300 z-50 ${
                   lastNotification.severity === "high"
                     ? "border-red-500/30"
                     : lastNotification.severity === "medium"
@@ -1101,7 +1101,7 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
                     <p className="text-sm font-semibold text-white leading-snug">
                       {lastNotification.title}
                     </p>
-                    <p className="text-xs text-gray-400 mt-1 leading-relaxed">
+                    <p className="text-xs text-gray-400 mt-1 leading-relaxed line-clamp-2">
                       {lastNotification.description}
                     </p>
                     <button
