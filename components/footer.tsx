@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Mail, Send } from "lucide-react";
-import { Instagram } from "lucide-react";
+import { Linkedin } from "lucide-react";
 import { useLanguage } from "@/lib/translations";
 
 export function Footer() {
@@ -15,9 +15,9 @@ export function Footer() {
       { name: "Contact", href: "#contact" },
     ],
     social: [
-      { name: "Telegram", href: "https://t.me/rivant_os_bot", icon: Send },
-      { name: "Instagram", href: "https://instagram.com/your_handle", icon: Instagram },
-      { name: "Email", href: "mailto:hello@RIVANT.com", icon: Mail },
+      { name: "Telegram", href: "https://t.me/official_rivant", icon: Send },
+      { name: "LinkedIn", href: "#", icon: Linkedin },
+      { name: "Email", href: "mailto:official.rivant@gmail.com", icon: Mail },
     ],
     legal: [
       { name: "Privacy Policy", href: "/privacy" },
