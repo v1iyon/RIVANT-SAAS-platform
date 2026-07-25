@@ -136,10 +136,10 @@ interface MetricsState {
 }
 
 let metricsState: MetricsState = {
-  currentRevenue: BASE_REVENUE, prevRevenue: BASE_REVENUE,
-  currentProfit: BASE_PROFIT, prevProfit: BASE_PROFIT,
-  currentMargin: BASE_MARGIN, prevMargin: BASE_MARGIN,
-  currentCac: BASE_CAC, prevCac: BASE_CAC,
+  currentRevenue: BASE_REVENUE, prevRevenue: BASE_REVENUE * 0.997,
+  currentProfit: BASE_PROFIT, prevProfit: BASE_PROFIT * 1.004,
+  currentMargin: BASE_MARGIN, prevMargin: BASE_MARGIN * 1.006,
+  currentCac: BASE_CAC, prevCac: BASE_CAC * 0.992,
   revenueQueue: generateTickerData(BASE_REVENUE, 400, 0.0003),
   profitQueue: generateTickerData(BASE_PROFIT, 300, 0.0002),
   marginQueue: generateTickerData(BASE_MARGIN, 0.4, 0.0001),
