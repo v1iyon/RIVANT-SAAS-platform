@@ -53,6 +53,16 @@ export default function AdminReviewsPage() {
     loadReviews(secret);
   };
 
+  const deleteReview = async (id: string, author: string) => {
+    if (!confirm(`Delete review from "${author}" permanently? This can't be undone.`)) return;
+    await fetch("/api/admin/reviews", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json", "x-admin-secret": secret },
+      body: JSON.stringify({ id }),
+    });
+    loadReviews(secret);
+  };
+
   if (!unlocked) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center p-4">
@@ -111,6 +121,12 @@ export default function AdminReviewsPage() {
               >
                 Reject
               </button>
+              <button
+                onClick={() => deleteReview(r.id, r.author_name)}
+                className="px-4 py-1.5 bg-gray-700 text-gray-300 text-sm rounded-lg hover:bg-gray-600 ml-auto"
+              >
+                Delete
+              </button>
             </div>
           </div>
         ))}
@@ -119,13 +135,36 @@ export default function AdminReviewsPage() {
       <h2 className="text-white font-semibold mb-3">History ({other.length})</h2>
       <div className="space-y-2">
         {other.map((r) => (
-          <div key={r.id} className="bg-gray-900/50 border border-gray-800 rounded-xl p-3 flex justify-between items-center">
-            <div>
-              <p className="text-gray-300 text-sm">{r.author_name} — {r.comment.slice(0, 60)}...</p>
+          <div key={r.id} className="bg-gray-900/50 border border-gray-800 rounded-xl p-3 flex justify-between items-center gap-3">
+            <div className="min-w-0">
+              <p className="text-gray-300 text-sm truncate">{r.author_name} — {r.comment.slice(0, 60)}...</p>
             </div>
-            <span className={`text-xs px-2 py-0.5 rounded-full ${r.status === "approved" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>
-              {r.status}
-            </span>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className={`text-xs px-2 py-0.5 rounded-full ${r.status === "approved" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>
+                {r.status}
+              </span>
+              {r.status === "approved" ? (
+                <button
+                  onClick={() => updateStatus(r.id, "rejected")}
+                  className="px-2.5 py-1 bg-gray-800 text-gray-300 text-xs rounded-lg hover:bg-gray-700"
+                >
+                  Unapprove
+                </button>
+              ) : (
+                <button
+                  onClick={() => updateStatus(r.id, "approved")}
+                  className="px-2.5 py-1 bg-gray-800 text-gray-300 text-xs rounded-lg hover:bg-gray-700"
+                >
+                  Approve
+                </button>
+              )}
+              <button
+                onClick={() => deleteReview(r.id, r.author_name)}
+                className="px-2.5 py-1 bg-red-900/40 text-red-300 text-xs rounded-lg hover:bg-red-900/70"
+              >
+                Delete
+              </button>
+            </div>
           </div>
         ))}
       </div>

@@ -34,3 +34,15 @@ export async function PUT(req) {
 
   return Response.json({ ok: true });
 }
+
+export async function DELETE(req) {
+  if (!checkAuth(req)) return Response.json({ error: "unauthorized" }, { status: 401 });
+
+  const { id } = await req.json();
+  if (!id) return Response.json({ error: "invalid input" }, { status: 400 });
+
+  const { error } = await admin.from("reviews").delete().eq("id", id);
+  if (error) return Response.json({ error: error.message }, { status: 500 });
+
+  return Response.json({ ok: true });
+}
