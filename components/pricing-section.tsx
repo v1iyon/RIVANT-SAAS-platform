@@ -36,7 +36,9 @@ export function PricingSection() {
   const handleGetStarted = async (planName: string) => {
     const { data } = await supabase.auth.getSession();
     if (!data.session) {
-      alert(T.pleaseSignInFirst ?? "Please sign in first");
+      // Не авторизован — открываем модалку регистрации в навбаре,
+      // чтобы человек мог сразу начать пробный период.
+      window.dispatchEvent(new CustomEvent("rivant:open-signup"));
       return;
     }
     const planKey = planKeyMap[planName];
@@ -81,6 +83,17 @@ export function PricingSection() {
       popular: false,
     },
   ];
+
+  const handleOrderService = async () => {
+    const { data } = await supabase.auth.getSession();
+    if (!data.session) {
+      window.dispatchEvent(new CustomEvent("rivant:open-signup"));
+      return;
+    }
+    // Уже зарегистрирован — пока нет отдельного чекаута под допуслуги,
+    // ведём в кабинет, реальную оплату услуг добавим отдельно.
+    window.location.href = "/dashboard";
+  };
 
   const addons = [
     { icon: Settings, name: T.businessSetup ?? "Business Setup", price: 199, priceType: T.oneTime ?? "One-time", description: T.businessSetupDesc ?? "Professional setup service" },
@@ -152,7 +165,11 @@ export function PricingSection() {
                   <span className="text-sm font-normal text-muted-foreground"> {addon.priceType}</span>
                 </div>
                 <p className="text-sm text-muted-foreground mb-6 flex-1">{addon.description}</p>
-                <Button variant="outline" className="w-full mt-auto group-hover:bg-primary group-hover:text-white group-hover:border-primary transition-all">
+                <Button
+                  variant="outline"
+                  className="w-full mt-auto group-hover:bg-primary group-hover:text-white group-hover:border-primary transition-all"
+                  onClick={handleOrderService}
+                >
   {t.orderService || "Order Service"} <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
 </Button>
               </div>

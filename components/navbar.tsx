@@ -51,6 +51,20 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  // Позволяет другим компонентам (например, кнопкам тарифов в
+  // pricing-section) открыть модалку регистрации, не поднимая стейт
+  // модалки на уровень страницы: window.dispatchEvent(new CustomEvent("rivant:open-signup"))
+  useEffect(() => {
+    const handleOpenSignup = () => {
+      setAuthMode("signup");
+      setAuthError("");
+      setIsLoginModalOpen(true);
+      setIsMobileMenuOpen(false);
+    };
+    window.addEventListener("rivant:open-signup", handleOpenSignup);
+    return () => window.removeEventListener("rivant:open-signup", handleOpenSignup);
+  }, []);
+
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent | TouchEvent) => {
       if (modalRef.current && !modalRef.current.contains(e.target as Node)) {
