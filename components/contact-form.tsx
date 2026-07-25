@@ -17,12 +17,44 @@ export function ContactForm() {
     telegram: "",
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
-    setIsSubmitted(true);
-    setTimeout(() => {
-      setIsSubmitted(false);
-      setFormData({ name: "", company: "", email: "", telegram: "" });
-    }, 3000);
+  const [submitError, setSubmitError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitError("");
+    setIsSubmitting(true);
+
+    try {
+      const res = await fetch("/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      });
+      setIsSubmitting(false);
+
+      if (!res.ok) {
+        setSubmitError(
+          language === "UA" ? "Щось пішло не так. Спробуйте ще раз." :
+          language === "DE" ? "Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut." :
+          "Something went wrong. Please try again."
+        );
+        return;
+      }
+
+      setIsSubmitted(true);
+      setTimeout(() => {
+        setIsSubmitted(false);
+        setFormData({ name: "", company: "", email: "", telegram: "" });
+      }, 3000);
+    } catch {
+      setIsSubmitting(false);
+      setSubmitError(
+        language === "UA" ? "Помилка мережі. Перевірте з'єднання." :
+        language === "DE" ? "Netzwerkfehler. Überprüfen Sie Ihre Verbindung." :
+        "Network error. Check your connection."
+      );
+    }
   };
 
   return (
@@ -102,9 +134,10 @@ export function ContactForm() {
                   </Label>
                   <Input id="telegram" placeholder="@username" value={formData.telegram} onChange={(e) => setFormData({...formData, telegram: e.target.value})} className="bg-input border-border" />
                 </div>
-                <Button type="submit" size="lg" className="w-full bg-primary hover:bg-primary/90 text-primary-foreground">
+                {submitError && <p className="text-sm text-red-500 text-center">{submitError}</p>}
+                <Button type="submit" size="lg" disabled={isSubmitting} className="w-full bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-50">
                   <Send className="w-4 h-4 mr-2" />
-                  {t.requestDemoBtn}
+                  {isSubmitting ? "..." : t.requestDemoBtn}
                 </Button>
                 <p className="text-xs text-muted-foreground text-center">{t.privacyNotice}</p>
               </form>
