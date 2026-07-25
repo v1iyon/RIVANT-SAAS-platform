@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Star, Quote } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Star, Quote, ChevronLeft, ChevronRight } from "lucide-react";
 import { useLanguage } from "@/lib/translations";
 
 interface Review {
@@ -16,6 +16,9 @@ export function Testimonials() {
   const T = t as any;
   const [reviews, setReviews] = useState<Review[]>([]);
   const [loading, setLoading] = useState(true);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
 
   useEffect(() => {
     fetch("/api/reviews")
@@ -24,18 +27,68 @@ export function Testimonials() {
       .finally(() => setLoading(false));
   }, []);
 
+  const updateScrollButtons = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 4);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+  };
+
+  useEffect(() => {
+    updateScrollButtons();
+    const el = scrollRef.current;
+    if (!el) return;
+    el.addEventListener("scroll", updateScrollButtons);
+    window.addEventListener("resize", updateScrollButtons);
+    return () => {
+      el.removeEventListener("scroll", updateScrollButtons);
+      window.removeEventListener("resize", updateScrollButtons);
+    };
+  }, [reviews]);
+
+  const scrollByCards = (direction: 1 | -1) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const card = el.querySelector("[data-review-card]") as HTMLElement | null;
+    const distance = card ? card.offsetWidth + 24 : 360;
+    el.scrollBy({ left: direction * distance, behavior: "smooth" });
+  };
+
   if (loading) return null;
 
   return (
     <section className="py-8 relative">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-16">
-          <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">
-            {T.testimonialsTitle}
-          </h2>
-          <p className="text-muted-foreground max-w-2xl mx-auto">
-            {T.testimonialsSubtitle}
-          </p>
+        <div className="flex items-end justify-between gap-4 mb-16">
+          <div className="text-center sm:text-left flex-1">
+            <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">
+              {T.testimonialsTitle}
+            </h2>
+            <p className="text-muted-foreground max-w-2xl">
+              {T.testimonialsSubtitle}
+            </p>
+          </div>
+
+          {reviews.length > 0 && (
+            <div className="hidden sm:flex gap-2 shrink-0">
+              <button
+                onClick={() => scrollByCards(-1)}
+                disabled={!canScrollLeft}
+                aria-label="Previous reviews"
+                className="w-10 h-10 rounded-full border border-white/10 flex items-center justify-center text-muted-foreground hover:text-foreground hover:border-white/30 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => scrollByCards(1)}
+                disabled={!canScrollRight}
+                aria-label="Next reviews"
+                className="w-10 h-10 rounded-full border border-white/10 flex items-center justify-center text-muted-foreground hover:text-foreground hover:border-white/30 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </div>
+          )}
         </div>
 
         {reviews.length === 0 ? (
@@ -50,11 +103,15 @@ export function Testimonials() {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div
+            ref={scrollRef}
+            className="flex gap-6 overflow-x-auto no-scrollbar snap-x snap-mandatory scroll-smooth pb-2 -mx-4 px-4 sm:mx-0 sm:px-0"
+          >
             {reviews.map((item, index) => (
               <div
                 key={index}
-                className="glass rounded-2xl p-8 flex flex-col h-full group hover:bg-white/[0.08] transition-all duration-300"
+                data-review-card
+                className="glass rounded-2xl p-8 flex flex-col shrink-0 w-[300px] sm:w-[360px] snap-start group hover:bg-white/[0.08] transition-all duration-300"
               >
                 <Quote className="w-10 h-10 text-primary/30 mb-4" />
                 <p className="text-muted-foreground leading-relaxed flex-1 mb-6">
@@ -71,7 +128,7 @@ export function Testimonials() {
                 </div>
 
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                  <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                     <span className="text-sm font-semibold text-primary">
                       {item.author_name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
                     </span>
