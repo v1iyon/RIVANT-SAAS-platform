@@ -67,6 +67,7 @@ export function LossCalculator() {
           name: "Loss Calculator Lead",
           company: "—",
           email,
+          source: "loss_calculator",
           message: `Estimated monthly loss: ${formatCurrency(estimatedLoss)}\n\nInputs:\n- Monthly Revenue: ${formatCurrency(revenue[0])}\n- Team Size: ${teamSize[0]}\n- Tech Stack Efficiency: ${techEfficiency[0]}%\n- Marketing Channels: ${marketingChannels[0]}`,
         }),
       });

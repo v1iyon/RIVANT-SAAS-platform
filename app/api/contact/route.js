@@ -1,7 +1,32 @@
+import { createClient } from "@supabase/supabase-js";
+
+const admin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_KEY
+);
+
 export async function POST(req) {
-  const { name, company, email, telegram, message } = await req.json();
+  const { name, company, email, telegram, message, source } = await req.json();
   if (!name || !email) {
     return Response.json({ error: "missing fields" }, { status: 400 });
+  }
+
+  // Пишем лид в базу до отправки писем — так заявка не теряется,
+  // даже если Resend временно недоступен.
+  try {
+    const { error: insertError } = await admin.from("leads").insert({
+      name,
+      company: company || null,
+      email,
+      telegram: telegram || null,
+      message: message || null,
+      source: source || "contact_form",
+    });
+    if (insertError) {
+      console.error("leads insert failed:", insertError.message);
+    }
+  } catch (e) {
+    console.error("leads insert error:", e);
   }
 
   const res = await fetch("https://api.resend.com/emails", {

@@ -15,6 +15,7 @@ export function ContactForm() {
     company: "",
     email: "",
     telegram: "",
+    source: "contact_form",
   });
 
   const [submitError, setSubmitError] = useState("");
@@ -45,7 +46,7 @@ export function ContactForm() {
       setIsSubmitted(true);
       setTimeout(() => {
         setIsSubmitted(false);
-        setFormData({ name: "", company: "", email: "", telegram: "" });
+        setFormData({ name: "", company: "", email: "", telegram: "", source: "contact_form" });
       }, 3000);
     } catch {
       setIsSubmitting(false);
