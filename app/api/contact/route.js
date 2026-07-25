@@ -24,5 +24,32 @@ export async function POST(req) {
     return Response.json({ error: "email send failed", details: err }, { status: 500 });
   }
 
+  // Автоответ самому отправителю. Не должен ронять основной запрос —
+  // лид уже доставлен вам письмом выше, это просто вежливое "получили".
+  // Пока домен в Resend не подтверждён (см. пункт 1.8 плана), это письмо
+  // может не долетать до реального ящика человека — Resend в тестовом
+  // режиме шлёт только на адрес, зарегистрированный в самом Resend.
+  try {
+    const autoReplyRes = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: "RIVANT <onboarding@resend.dev>",
+        to: email,
+        subject: "We've received your request — RIVANT",
+        text: `Hi,\n\nThanks for reaching out to RIVANT. We've received your request and will get back to you within 24 hours.\n\nIf it's urgent, you can also message us directly on Telegram: https://t.me/official_rivant\n\n— RIVANT Team`,
+      }),
+    });
+    if (!autoReplyRes.ok) {
+      const err = await autoReplyRes.text();
+      console.error("auto-reply email failed:", err);
+    }
+  } catch (e) {
+    console.error("auto-reply email error:", e);
+  }
+
   return Response.json({ ok: true });
 }
