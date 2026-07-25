@@ -8,6 +8,7 @@ import { useLanguage } from "@/lib/translations";
 
 export function LossCalculator() {
   const { t } = useLanguage();
+  const T = t as any;
   const [isMobile, setIsMobile] = useState(true); // По умолчанию скрыт
 
   useEffect(() => {
@@ -23,6 +24,8 @@ export function LossCalculator() {
   const [teamSize, setTeamSize] = useState([25]);
   const [techEfficiency, setTechEfficiency] = useState([60]);
   const [marketingChannels, setMarketingChannels] = useState([4]);
+  const [email, setEmail] = useState("");
+  const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
 
   const calculateLoss = () => {
     const r = revenue[0];
@@ -52,6 +55,26 @@ export function LossCalculator() {
   if (isMobile) {
     return null;
   }
+
+  const handleSend = async () => {
+    if (!email.trim()) return;
+    setStatus("sending");
+    try {
+      const res = await fetch("/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Loss Calculator Lead",
+          company: "—",
+          email,
+          message: `Estimated monthly loss: ${formatCurrency(estimatedLoss)}\n\nInputs:\n- Monthly Revenue: ${formatCurrency(revenue[0])}\n- Team Size: ${teamSize[0]}\n- Tech Stack Efficiency: ${techEfficiency[0]}%\n- Marketing Channels: ${marketingChannels[0]}`,
+        }),
+      });
+      setStatus(res.ok ? "sent" : "error");
+    } catch {
+      setStatus("error");
+    }
+  };
 
   return (
     <section id="calculator" className="py-12 relative px-4">
@@ -108,10 +131,34 @@ export function LossCalculator() {
           </div>
         </div>
 
-        <div className="mt-10">
-          <Button className="w-full py-6 text-lg font-bold shadow-lg hover:shadow-primary/20" onClick={() => alert("Request sent!")}>
-            {t.requestDemoBtn || "Send Request"}
-          </Button>
+        <div className="mt-10 space-y-3">
+          {status === "sent" ? (
+            <p className="text-center text-green-500 font-medium py-4">
+              {T.thankYou || "Thanks! We'll be in touch within 24 hours."}
+            </p>
+          ) : (
+            <>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder={T.workEmail || "Your work email"}
+                className="w-full px-4 py-3 bg-input border border-border rounded-lg text-foreground"
+              />
+              {status === "error" && (
+                <p className="text-sm text-destructive text-center">
+                  {T.somethingWrong || "Something went wrong. Please try again."}
+                </p>
+              )}
+              <Button
+                className="w-full py-6 text-lg font-bold shadow-lg hover:shadow-primary/20"
+                onClick={handleSend}
+                disabled={status === "sending" || !email.trim()}
+              >
+                {status === "sending" ? "..." : (T.requestDemoBtn || "Send Request")}
+              </Button>
+            </>
+          )}
         </div>
       </div>
     </section>
