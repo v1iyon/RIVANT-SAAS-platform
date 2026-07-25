@@ -135,15 +135,30 @@ interface MetricsState {
   revenueQueue: number[]; profitQueue: number[]; marginQueue: number[]; cacQueue: number[];
 }
 
+// Гарантирует, что последние два значения в очереди графика совпадают
+// с currentValue/prevValue — иначе столбик может визуально "расти",
+// а процент рядом при этом показывать минус (и наоборот).
+function seedQueue(current: number, prev: number, volatility: number, trend: number): number[] {
+  const q = generateTickerData(current, volatility, trend);
+  q[q.length - 2] = prev;
+  q[q.length - 1] = current;
+  return q;
+}
+
+const SEED_PREV_REVENUE = BASE_REVENUE * 0.997;
+const SEED_PREV_PROFIT = BASE_PROFIT * 1.004;
+const SEED_PREV_MARGIN = BASE_MARGIN * 1.006;
+const SEED_PREV_CAC = BASE_CAC * 0.992;
+
 let metricsState: MetricsState = {
-  currentRevenue: BASE_REVENUE, prevRevenue: BASE_REVENUE * 0.997,
-  currentProfit: BASE_PROFIT, prevProfit: BASE_PROFIT * 1.004,
-  currentMargin: BASE_MARGIN, prevMargin: BASE_MARGIN * 1.006,
-  currentCac: BASE_CAC, prevCac: BASE_CAC * 0.992,
-  revenueQueue: generateTickerData(BASE_REVENUE, 400, 0.0003),
-  profitQueue: generateTickerData(BASE_PROFIT, 300, 0.0002),
-  marginQueue: generateTickerData(BASE_MARGIN, 0.4, 0.0001),
-  cacQueue: generateTickerData(BASE_CAC, 1.2, -0.0001),
+  currentRevenue: BASE_REVENUE, prevRevenue: SEED_PREV_REVENUE,
+  currentProfit: BASE_PROFIT, prevProfit: SEED_PREV_PROFIT,
+  currentMargin: BASE_MARGIN, prevMargin: SEED_PREV_MARGIN,
+  currentCac: BASE_CAC, prevCac: SEED_PREV_CAC,
+  revenueQueue: seedQueue(BASE_REVENUE, SEED_PREV_REVENUE, 400, 0.0003),
+  profitQueue: seedQueue(BASE_PROFIT, SEED_PREV_PROFIT, 300, 0.0002),
+  marginQueue: seedQueue(BASE_MARGIN, SEED_PREV_MARGIN, 0.4, 0.0001),
+  cacQueue: seedQueue(BASE_CAC, SEED_PREV_CAC, 1.2, -0.0001),
 };
 
 const metricsListeners = new Set<() => void>();
