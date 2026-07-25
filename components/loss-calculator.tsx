@@ -7,7 +7,7 @@ import { DollarSign, Users, Cpu, Megaphone, TrendingDown } from "lucide-react";
 import { useLanguage } from "@/lib/translations";
 
 export function LossCalculator() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const T = t as any;
   const [isMobile, setIsMobile] = useState(true); // По умолчанию скрыт
 
@@ -77,9 +77,9 @@ export function LossCalculator() {
   };
 
   return (
-    <section id="calculator" className="py-12 relative px-4">
-      <div className="max-w-4xl mx-auto bg-card rounded-2xl p-6 sm:p-10 mb-6 border border-border shadow-sm">
-        <div className="text-center mb-8 p-6 bg-secondary/50 rounded-xl select-none">
+    <section id="calculator" className="py-6 relative px-4">
+      <div className="max-w-4xl mx-auto bg-card rounded-2xl p-5 sm:p-7 mb-6 border border-border shadow-sm">
+        <div className="text-center mb-5 p-4 bg-secondary/50 rounded-xl select-none">
           <p className="text-sm text-muted-foreground uppercase tracking-wider mb-2">{t.estimatedLoss || "Estimated Monthly Loss"}</p>
           <div className="flex items-center justify-center gap-2">
             <TrendingDown className="w-8 h-8 text-destructive" />
@@ -89,7 +89,7 @@ export function LossCalculator() {
           </div>
         </div>
 
-        <div className="space-y-8">
+        <div className="space-y-5">
           <div className="space-y-3">
             <div className="flex justify-between items-center">
               <label className="font-medium flex items-center gap-2 select-none">
@@ -131,10 +131,10 @@ export function LossCalculator() {
           </div>
         </div>
 
-        <div className="mt-10 space-y-3">
+        <div className="mt-6 space-y-3">
           {status === "sent" ? (
             <p className="text-center text-green-500 font-medium py-4">
-              {T.thankYou || "Thanks! We'll be in touch within 24 hours."}
+              {language === "UA" ? "Дякуємо! Ми зв'яжемося з вами протягом 24 годин." : language === "DE" ? "Danke! Wir melden uns innerhalb von 24 Stunden." : "Thanks! We'll be in touch within 24 hours."}
             </p>
           ) : (
             <>
@@ -142,12 +142,12 @@ export function LossCalculator() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder={T.workEmail || "Your work email"}
+                placeholder={language === "UA" ? "Ваша робоча пошта" : language === "DE" ? "Ihre geschäftliche E-Mail" : "Your work email"}
                 className="w-full px-4 py-3 bg-input border border-border rounded-lg text-foreground"
               />
               {status === "error" && (
                 <p className="text-sm text-destructive text-center">
-                  {T.somethingWrong || "Something went wrong. Please try again."}
+                  {language === "UA" ? "Щось пішло не так. Спробуйте ще раз." : language === "DE" ? "Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut." : "Something went wrong. Please try again."}
                 </p>
               )}
               <Button
