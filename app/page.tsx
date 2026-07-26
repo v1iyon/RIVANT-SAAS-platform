@@ -80,8 +80,8 @@ export default function Home() {
       </div>
 
       <ProblemSolutionGrid />
-      <Testimonials />
       <PricingSection />
+      <Testimonials />
       <ContactForm />
       <Footer />
 
