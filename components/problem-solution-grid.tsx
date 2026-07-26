@@ -41,7 +41,7 @@ export function ProblemSolutionGrid() {
     <section id="features" className="py-8 relative">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Section Header */}
-        <div className="text-center mb-16">
+        <div className="text-center mb-10">
           <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">
             {t.problemsWeSolve.split(" ").slice(0, -1).join(" ")}{" "}
             <span className="text-primary">{t.problemsWeSolve.split(" ").pop()}</span>
@@ -87,7 +87,7 @@ export function ProblemSolutionGrid() {
         </div>
 
         {/* Solution Banner */}
-        <div className="mt-16 glass-strong rounded-2xl p-8 sm:p-12 text-center">
+        <div className="mt-10 glass-strong rounded-2xl p-8 sm:p-12 text-center">
           <h3 className="text-2xl sm:text-3xl font-bold text-foreground mb-4">
             {t.solutionBannerTitle || "RIVANT turns chaos into clarity"}
           </h3>
