@@ -14,13 +14,27 @@ interface Review {
   text?: string | null;
   message?: string | null;
   review_text?: string | null;
+  body?: string | null;
+  content?: string | null;
   status: string;
   created_at: string;
 }
 
 // Достаём текст отзыва независимо от того, как называется колонка в БД.
 function getReviewText(r: Review) {
-  return r.comment || r.text || r.message || r.review_text || "";
+  return r.comment || r.text || r.message || r.review_text || r.body || r.content || "";
+}
+
+function statusLabel(status: string) {
+  if (status === "approved") return "Принят";
+  if (status === "rejected") return "Отклонён";
+  return status;
+}
+
+function statusBadgeClass(status: string) {
+  if (status === "approved") return "bg-green-500/20 text-green-400";
+  if (status === "rejected") return "bg-red-500/20 text-red-400";
+  return "bg-gray-500/20 text-gray-400";
 }
 
 export default function AdminReviewsPage() {
@@ -113,45 +127,45 @@ export default function AdminReviewsPage() {
       </div>
 
       <h2 className="mb-3 font-semibold text-white">История ({other.length})</h2>
-      <div className="space-y-2">
+      <div className="space-y-3">
+        {other.length === 0 && <p className="text-sm text-gray-500">Пока пусто.</p>}
         {other.map((r) => (
-          <div
-            key={r.id}
-            className="flex items-center justify-between gap-3 rounded-xl border border-gray-800 bg-gray-900/50 p-3"
-          >
-            <div className="min-w-0">
-              <p className="truncate text-sm text-gray-300">
-                {r.author_name} — {getReviewText(r).slice(0, 60)}...
-              </p>
+          <div key={r.id} className="rounded-xl border border-gray-800 bg-gray-900/50 p-4">
+            <div className="mb-2 flex items-start justify-between">
+              <div>
+                <p className="font-medium text-white">{r.author_name}</p>
+                {r.business_name && <p className="text-xs text-gray-500">{r.business_name}</p>}
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-yellow-400">
+                  {"★".repeat(r.rating)}
+                  {"☆".repeat(5 - r.rating)}
+                </span>
+                <span className={`rounded-full px-2 py-0.5 text-xs ${statusBadgeClass(r.status)}`}>
+                  {statusLabel(r.status)}
+                </span>
+              </div>
             </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <span
-                className={`rounded-full px-2 py-0.5 text-xs ${
-                  r.status === "approved"
-                    ? "bg-green-500/20 text-green-400"
-                    : "bg-red-500/20 text-red-400"
-                }`}
-              >
-                {r.status === "approved" ? "Принят" : r.status === "rejected" ? "Отклонён" : r.status}
-              </span>
+            <p className="mb-3 text-sm text-gray-300">{getReviewText(r)}</p>
+            <div className="flex gap-2">
               {r.status === "approved" ? (
                 <button
                   onClick={() => updateStatus(r.id, "rejected")}
-                  className="rounded-lg bg-gray-800 px-2.5 py-1 text-xs text-gray-300 hover:bg-gray-700"
+                  className="rounded-lg bg-gray-800 px-3 py-1.5 text-sm text-gray-300 hover:bg-gray-700"
                 >
                   Отменить
                 </button>
               ) : (
                 <button
                   onClick={() => updateStatus(r.id, "approved")}
-                  className="rounded-lg bg-gray-800 px-2.5 py-1 text-xs text-gray-300 hover:bg-gray-700"
+                  className="rounded-lg bg-gray-800 px-3 py-1.5 text-sm text-gray-300 hover:bg-gray-700"
                 >
                   Принять
                 </button>
               )}
               <button
                 onClick={() => deleteReview(r.id, r.author_name)}
-                className="rounded-lg bg-red-900/40 px-2.5 py-1 text-xs text-red-300 hover:bg-red-900/70"
+                className="ml-auto rounded-lg bg-red-900/40 px-3 py-1.5 text-sm text-red-300 hover:bg-red-900/70"
               >
                 Удалить
               </button>
