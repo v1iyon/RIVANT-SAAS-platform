@@ -1,167 +1,164 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useAdminAuth } from "./admin-auth-provider";
-import {
-  LayoutDashboard,
-  Users,
-  Star,
-  AlertTriangle,
-  MessageSquare,
-  CreditCard,
-  Bell,
-  LineChart,
-  LogOut,
-  Menu,
-  X,
-} from "lucide-react";
+import { useState, useEffect } from "react";
+import { useAdminAuth } from "@/components/admin/admin-auth-provider";
 
-// Единственное место, где нужно дописать пункт меню при добавлении раздела.
-const NAV_ITEMS = [
-  { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/admin/users", label: "Пользователи", icon: Users },
-  { href: "/admin/reviews", label: "Отзывы", icon: Star },
-  { href: "/admin/errors", label: "Ошибки", icon: AlertTriangle },
-  { href: "/admin/feedback", label: "Обратная связь", icon: MessageSquare },
-  { href: "/admin/subscriptions", label: "Подписки", icon: CreditCard },
-  { href: "/admin/notifications", label: "Уведомления", icon: Bell },
-  { href: "/admin/analytics", label: "Аналитика продукта", icon: LineChart },
-] as const;
-
-function isActivePath(pathname: string | null, href: string) {
-  return pathname === href || pathname?.startsWith(href + "/");
+interface Review {
+  id: string;
+  author_name: string;
+  business_name: string | null;
+  rating: number;
+  comment?: string | null;
+  // На случай, если в вашей таблице поле с текстом называется иначе —
+  // берём первое непустое из возможных вариантов.
+  text?: string | null;
+  message?: string | null;
+  review_text?: string | null;
+  status: string;
+  created_at: string;
 }
 
-export function AdminSidebar() {
-  const pathname = usePathname();
-  const { logout } = useAdminAuth();
-  const [mobileOpen, setMobileOpen] = useState(false);
+// Достаём текст отзыва независимо от того, как называется колонка в БД.
+function getReviewText(r: Review) {
+  return r.comment || r.text || r.message || r.review_text || "";
+}
+
+export default function AdminReviewsPage() {
+  const { adminFetch } = useAdminAuth();
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const loadReviews = async () => {
+    setLoading(true);
+    const res = await adminFetch("/api/admin/reviews");
+    setLoading(false);
+    if (!res.ok) return;
+    const data = await res.json();
+    setReviews(data.reviews || []);
+  };
+
+  useEffect(() => {
+    loadReviews();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const updateStatus = async (id: string, status: "approved" | "rejected") => {
+    await adminFetch("/api/admin/reviews", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, status }),
+    });
+    loadReviews();
+  };
+
+  const deleteReview = async (id: string, author: string) => {
+    if (!confirm(`Удалить отзыв от "${author}" навсегда? Это действие необратимо.`)) return;
+    await adminFetch("/api/admin/reviews", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    loadReviews();
+  };
+
+  if (loading && reviews.length === 0) {
+    return <p className="p-6 text-sm text-gray-500">Загрузка...</p>;
+  }
+
+  const pending = reviews.filter((r) => r.status === "pending");
+  const other = reviews.filter((r) => r.status !== "pending");
 
   return (
-    <>
-      {/* ТЕЛЕФОН: тонкая полоска только с иконками, всегда видна */}
-      <aside className="sticky top-0 z-30 flex h-screen w-14 shrink-0 flex-col items-center border-r border-gray-800 bg-gray-950 py-4 md:hidden">
-        <button
-          onClick={() => setMobileOpen(true)}
-          className="mb-4 rounded-lg p-2 text-gray-400 hover:bg-gray-900 hover:text-white"
-          aria-label="Открыть меню"
-        >
-          <Menu className="h-5 w-5" />
-        </button>
-        <nav className="flex flex-1 flex-col items-center gap-1 overflow-y-auto">
-          {NAV_ITEMS.map((item) => {
-            const active = isActivePath(pathname, item.href);
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                title={item.label}
-                className={`flex h-10 w-10 items-center justify-center rounded-lg ${
-                  active
-                    ? "bg-blue-600/20 text-blue-400"
-                    : "text-gray-400 hover:bg-gray-900 hover:text-white"
-                }`}
-              >
-                <Icon className="h-5 w-5" />
-              </Link>
-            );
-          })}
-        </nav>
-      </aside>
+    <div className="p-6">
+      <h1 className="mb-6 text-2xl font-bold text-white">Модерация отзывов</h1>
 
-      {/* ДЕСКТОП: полная панель с текстом, как раньше */}
-      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-gray-800 bg-gray-950 md:flex">
-        <div className="flex h-16 items-center border-b border-gray-800 px-5">
-          <span className="font-semibold text-white">Rivant Admin</span>
-        </div>
-        <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-          {NAV_ITEMS.map((item) => {
-            const active = isActivePath(pathname, item.href);
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
-                  active
-                    ? "bg-blue-600/20 text-blue-400"
-                    : "text-gray-400 hover:bg-gray-900 hover:text-white"
-                }`}
+      <h2 className="mb-3 font-semibold text-white">На рассмотрении ({pending.length})</h2>
+      <div className="mb-10 space-y-3">
+        {pending.length === 0 && <p className="text-sm text-gray-500">Нет отзывов на рассмотрении.</p>}
+        {pending.map((r) => (
+          <div key={r.id} className="rounded-xl border border-gray-800 bg-gray-900 p-4">
+            <div className="mb-2 flex items-start justify-between">
+              <div>
+                <p className="font-medium text-white">{r.author_name}</p>
+                {r.business_name && <p className="text-xs text-gray-500">{r.business_name}</p>}
+              </div>
+              <span className="text-sm text-yellow-400">
+                {"★".repeat(r.rating)}
+                {"☆".repeat(5 - r.rating)}
+              </span>
+            </div>
+            <p className="mb-3 text-sm text-gray-300">{getReviewText(r)}</p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => updateStatus(r.id, "approved")}
+                className="rounded-lg bg-green-600 px-4 py-1.5 text-sm text-white hover:bg-green-700"
               >
-                <Icon className="h-4 w-4 shrink-0" />
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
-        <div className="border-t border-gray-800 p-3">
-          <button
-            onClick={logout}
-            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-500 hover:bg-gray-900 hover:text-red-400"
-          >
-            <LogOut className="h-4 w-4" />
-            Выйти
-          </button>
-        </div>
-      </aside>
+                Принять
+              </button>
+              <button
+                onClick={() => updateStatus(r.id, "rejected")}
+                className="rounded-lg bg-red-600/80 px-4 py-1.5 text-sm text-white hover:bg-red-700"
+              >
+                Отклонить
+              </button>
+              <button
+                onClick={() => deleteReview(r.id, r.author_name)}
+                className="ml-auto rounded-lg bg-gray-700 px-4 py-1.5 text-sm text-gray-300 hover:bg-gray-600"
+              >
+                Удалить
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
 
-      {/* ТЕЛЕФОН: выезжающая панель с текстом поверх контента, открывается по тапу на Menu */}
-      {mobileOpen && (
-        <div className="fixed inset-0 z-40 md:hidden">
+      <h2 className="mb-3 font-semibold text-white">История ({other.length})</h2>
+      <div className="space-y-2">
+        {other.map((r) => (
           <div
-            className="absolute inset-0 bg-black/60"
-            onClick={() => setMobileOpen(false)}
-          />
-          <aside className="absolute left-0 top-0 flex h-full w-64 flex-col border-r border-gray-800 bg-gray-950">
-            <div className="flex h-16 items-center justify-between border-b border-gray-800 px-5">
-              <span className="font-semibold text-white">Rivant Admin</span>
-              <button
-                onClick={() => setMobileOpen(false)}
-                className="text-gray-400 hover:text-white"
-                aria-label="Закрыть меню"
+            key={r.id}
+            className="flex items-center justify-between gap-3 rounded-xl border border-gray-800 bg-gray-900/50 p-3"
+          >
+            <div className="min-w-0">
+              <p className="truncate text-sm text-gray-300">
+                {r.author_name} — {getReviewText(r).slice(0, 60)}...
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <span
+                className={`rounded-full px-2 py-0.5 text-xs ${
+                  r.status === "approved"
+                    ? "bg-green-500/20 text-green-400"
+                    : "bg-red-500/20 text-red-400"
+                }`}
               >
-                <X className="h-5 w-5" />
+                {r.status === "approved" ? "Принят" : r.status === "rejected" ? "Отклонён" : r.status}
+              </span>
+              {r.status === "approved" ? (
+                <button
+                  onClick={() => updateStatus(r.id, "rejected")}
+                  className="rounded-lg bg-gray-800 px-2.5 py-1 text-xs text-gray-300 hover:bg-gray-700"
+                >
+                  Отменить
+                </button>
+              ) : (
+                <button
+                  onClick={() => updateStatus(r.id, "approved")}
+                  className="rounded-lg bg-gray-800 px-2.5 py-1 text-xs text-gray-300 hover:bg-gray-700"
+                >
+                  Принять
+                </button>
+              )}
+              <button
+                onClick={() => deleteReview(r.id, r.author_name)}
+                className="rounded-lg bg-red-900/40 px-2.5 py-1 text-xs text-red-300 hover:bg-red-900/70"
+              >
+                Удалить
               </button>
             </div>
-            <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-              {NAV_ITEMS.map((item) => {
-                const active = isActivePath(pathname, item.href);
-                const Icon = item.icon;
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    onClick={() => setMobileOpen(false)}
-                    className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
-                      active
-                        ? "bg-blue-600/20 text-blue-400"
-                        : "text-gray-400 hover:bg-gray-900 hover:text-white"
-                    }`}
-                  >
-                    <Icon className="h-4 w-4 shrink-0" />
-                    {item.label}
-                  </Link>
-                );
-              })}
-            </nav>
-            <div className="border-t border-gray-800 p-3">
-              <button
-                onClick={() => {
-                  setMobileOpen(false);
-                  logout();
-                }}
-                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-500 hover:bg-gray-900 hover:text-red-400"
-              >
-                <LogOut className="h-4 w-4" />
-                Выйти
-              </button>
-            </div>
-          </aside>
-        </div>
-      )}
-    </>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
