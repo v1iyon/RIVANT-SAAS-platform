@@ -403,7 +403,7 @@ function ClaritySection() {
   ];
   
   return (
-    <section className="py-16 relative">
+    <section className="py-10 relative">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
           <div className="relative">
@@ -475,7 +475,7 @@ function StepsAndFormSection() {
   ];
   
   return (
-    <section className="py-16 relative">
+    <section className="py-10 relative">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
           {/* Steps */}
@@ -570,7 +570,7 @@ function LiveDashboardPreview() {
   const cacChange = ((metrics.cac - 47) / 47 * 100).toFixed(1);
   
   return (
-    <section className="py-16 relative">
+    <section className="py-10 relative">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="bg-gradient-to-br from-gray-950 to-black rounded-2xl border border-gray-800 p-4 sm:p-6 relative">
           {/* Логотипы RIVANT по углам дашборда */}
@@ -666,7 +666,7 @@ function OrgNavigationSection() {
   ];
   
   return (
-    <section className="py-16 relative">
+    <section className="py-10 relative">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="bg-gradient-to-br from-gray-900/50 to-black rounded-2xl border border-gray-800 p-4 sm:p-6 relative">
           {/* Логотип RIVANT в углу */}
@@ -825,12 +825,14 @@ export default function Home() {
       
       {/* Секция 7: Навигация "Орган, метрики, риски, прогноз" */}
       <OrgNavigationSection />
-      
-      {/* Секция 8: Отзывы */}
+
+      {/* Секция 8: Цены */}
+      <PricingSection />
+
+      {/* Секция 9: Отзывы */}
       <Testimonials />
       
-      {/* Секция 9: Цены */}
-      <PricingSection />
+      
       
       {/* Секция 10: Контактная форма */}
       <ContactForm />

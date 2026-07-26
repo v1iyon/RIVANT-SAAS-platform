@@ -112,19 +112,19 @@ export function ContactForm() {
                   <Label htmlFor="name">
                     {language === "UA" ? "Повне ім'я" : language === "DE" ? "Vollständiger Name" : "Full Name"}
                   </Label>
-                  <Input id="name" placeholder="John Smith" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} required className="bg-input border-border" />
+                  <Input id="name" placeholder="Your name" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} required className="bg-input border-border" />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="company">
                     {language === "UA" ? "Назва компанії" : language === "DE" ? "Firmenname" : "Company Name"}
                   </Label>
-                  <Input id="company" placeholder="Acme Inc" value={formData.company} onChange={(e) => setFormData({...formData, company: e.target.value})} required className="bg-input border-border" />
+                  <Input id="company" placeholder="Company name" value={formData.company} onChange={(e) => setFormData({...formData, company: e.target.value})} required className="bg-input border-border" />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="email">
                     {language === "UA" ? "Робоча електронна пошта" : language === "DE" ? "Geschäftliche E-Mail" : "Work Email"}
                   </Label>
-                  <Input id="email" type="email" placeholder="john@acme.com" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} required className="bg-input border-border" />
+                  <Input id="email" type="email" placeholder="name@company.com" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} required className="bg-input border-border" />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="telegram">
