@@ -1,0 +1,45 @@
+import { createClient } from "@supabase/supabase-js";
+
+const admin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_KEY
+);
+
+export async function GET(req) {
+  const email = new URL(req.url).searchParams.get("email");
+  if (!email) return Response.json({ error: "email required" }, { status: 400 });
+
+  const { data: user } = await admin
+    .from("users")
+    .select("last_seen_broadcast_at")
+    .eq("email", email)
+    .maybeSingle();
+
+  const { data: latest } = await admin
+    .from("broadcast_notifications")
+    .select("id, message, created_at")
+    .eq("sent_inapp", true)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!latest) return Response.json({ notification: null });
+
+  const alreadySeen =
+    user?.last_seen_broadcast_at &&
+    new Date(user.last_seen_broadcast_at) >= new Date(latest.created_at);
+
+  return Response.json({ notification: alreadySeen ? null : latest });
+}
+
+export async function POST(req) {
+  const { email } = await req.json();
+  if (!email) return Response.json({ error: "email required" }, { status: 400 });
+
+  await admin
+    .from("users")
+    .update({ last_seen_broadcast_at: new Date().toISOString() })
+    .eq("email", email);
+
+  return Response.json({ success: true });
+}

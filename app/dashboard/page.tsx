@@ -536,6 +536,7 @@ export default function DashboardPage() {
   const [businessName, setBusinessName] = useState("");
   const [timezone, setTimezoneState] = useState("America/New_York");
   const [businessId, setBusinessId] = useState("");
+  const [broadcastNotif, setBroadcastNotif] = useState<{ id: string; message: string } | null>(null);
 
   useEffect(() => {
   const refreshTelegramStatus = async () => {
@@ -590,6 +591,10 @@ export default function DashboardPage() {
       const res = await fetch(`/api/subscription-status?email=${encodeURIComponent(email)}`, { cache: "no-store" });
       const sub = await res.json();
       setSubInfo(sub);
+
+      const notifRes = await fetch(`/api/notifications/latest?email=${encodeURIComponent(email)}`, { cache: "no-store" });
+      const notifData = await notifRes.json();
+      if (notifData.notification) setBroadcastNotif(notifData.notification);
 
       const { data: factorsData } = await supabase.auth.mfa.listFactors();
       const verifiedFactor = factorsData?.totp?.find((f: any) => f.status === "verified");
@@ -719,6 +724,15 @@ const handleDisconnectTelegram = async () => {
       setReviewMsg("error");
     }
   };
+
+  const dismissBroadcast = async () => {
+  setBroadcastNotif(null);
+  await fetch("/api/notifications/latest", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: profileEmail }),
+  });
+};
 
   const handleChangePassword = async () => {
     if (newPassword.length < 6) {
@@ -1105,6 +1119,15 @@ if (!subInfo) {
             </div>
           </div>
         </header>
+
+{broadcastNotif && (
+  <div className="bg-blue-600/20 border-b border-blue-500/30 px-4 py-3 flex items-center justify-between gap-3">
+    <p className="text-sm text-blue-300">{broadcastNotif.message}</p>
+    <button onClick={dismissBroadcast} className="text-blue-300 hover:text-white shrink-0 p-1">
+      <X className="w-4 h-4" />
+    </button>
+  </div>
+)}
 
         {/* Content */}
        <div className="flex-1 p-4 lg:p-6 overflow-auto">
