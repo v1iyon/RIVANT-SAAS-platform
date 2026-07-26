@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useAdminAuth } from "@/components/admin/admin-auth-provider";
 
 interface Review {
   id: string;
@@ -13,117 +14,86 @@ interface Review {
 }
 
 export default function AdminReviewsPage() {
-  const [secret, setSecret] = useState("");
-  const [unlocked, setUnlocked] = useState(false);
+  const { adminFetch } = useAdminAuth();
   const [reviews, setReviews] = useState<Review[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
 
-  const loadReviews = async (key: string) => {
+  const loadReviews = async () => {
     setLoading(true);
-    setError("");
-    const res = await fetch("/api/admin/reviews", {
-      headers: { "x-admin-secret": key },
-    });
+    const res = await adminFetch("/api/admin/reviews");
     setLoading(false);
-    if (!res.ok) {
-      setError("Invalid secret or server error");
-      return;
-    }
+    if (!res.ok) return;
     const data = await res.json();
     setReviews(data.reviews || []);
-    setUnlocked(true);
-    sessionStorage.setItem("admin_secret", key);
   };
 
   useEffect(() => {
-    const saved = sessionStorage.getItem("admin_secret");
-    if (saved) {
-      setSecret(saved);
-      loadReviews(saved);
-    }
+    loadReviews();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const updateStatus = async (id: string, status: "approved" | "rejected") => {
-    await fetch("/api/admin/reviews", {
+    await adminFetch("/api/admin/reviews", {
       method: "PUT",
-      headers: { "Content-Type": "application/json", "x-admin-secret": secret },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, status }),
     });
-    loadReviews(secret);
+    loadReviews();
   };
 
   const deleteReview = async (id: string, author: string) => {
     if (!confirm(`Delete review from "${author}" permanently? This can't be undone.`)) return;
-    await fetch("/api/admin/reviews", {
+    await adminFetch("/api/admin/reviews", {
       method: "DELETE",
-      headers: { "Content-Type": "application/json", "x-admin-secret": secret },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id }),
     });
-    loadReviews(secret);
+    loadReviews();
   };
 
-  if (!unlocked) {
-    return (
-      <div className="min-h-screen bg-black flex items-center justify-center p-4">
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 w-full max-w-sm">
-          <h1 className="text-lg font-semibold text-white mb-4">Admin Access</h1>
-          <input
-            type="password"
-            value={secret}
-            onChange={(e) => setSecret(e.target.value)}
-            placeholder="Admin secret"
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm mb-3"
-          />
-          {error && <p className="text-red-400 text-sm mb-3">{error}</p>}
-          <button
-            onClick={() => loadReviews(secret)}
-            disabled={loading}
-            className="w-full py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50"
-          >
-            {loading ? "..." : "Unlock"}
-          </button>
-        </div>
-      </div>
-    );
+  if (loading && reviews.length === 0) {
+    return <p className="p-6 text-sm text-gray-500">Loading...</p>;
   }
 
   const pending = reviews.filter((r) => r.status === "pending");
   const other = reviews.filter((r) => r.status !== "pending");
 
   return (
-    <div className="min-h-screen bg-black p-6">
-      <h1 className="text-2xl font-bold text-white mb-6">Review Moderation</h1>
+    <div className="p-6">
+      <h1 className="mb-6 text-2xl font-bold text-white">Review Moderation</h1>
 
-      <h2 className="text-white font-semibold mb-3">Pending ({pending.length})</h2>
-      <div className="space-y-3 mb-10">
-        {pending.length === 0 && <p className="text-gray-500 text-sm">No pending reviews.</p>}
+      <h2 className="mb-3 font-semibold text-white">Pending ({pending.length})</h2>
+      <div className="mb-10 space-y-3">
+        {pending.length === 0 && <p className="text-sm text-gray-500">No pending reviews.</p>}
         {pending.map((r) => (
-          <div key={r.id} className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-            <div className="flex justify-between items-start mb-2">
+          <div key={r.id} className="rounded-xl border border-gray-800 bg-gray-900 p-4">
+            <div className="mb-2 flex items-start justify-between">
               <div>
-                <p className="text-white font-medium">{r.author_name}</p>
-                {r.business_name && <p className="text-gray-500 text-xs">{r.business_name}</p>}
+                <p className="font-medium text-white">{r.author_name}</p>
+                {r.business_name && <p className="text-xs text-gray-500">{r.business_name}</p>}
               </div>
-              <span className="text-yellow-400 text-sm">{"★".repeat(r.rating)}{"☆".repeat(5 - r.rating)}</span>
+              <span className="text-sm text-yellow-400">
+                {"★".repeat(r.rating)}
+                {"☆".repeat(5 - r.rating)}
+              </span>
             </div>
-            <p className="text-gray-300 text-sm mb-3">{r.comment}</p>
+            <p className="mb-3 text-sm text-gray-300">{r.comment}</p>
             <div className="flex gap-2">
               <button
                 onClick={() => updateStatus(r.id, "approved")}
-                className="px-4 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700"
+                className="rounded-lg bg-green-600 px-4 py-1.5 text-sm text-white hover:bg-green-700"
               >
                 Approve
               </button>
               <button
                 onClick={() => updateStatus(r.id, "rejected")}
-                className="px-4 py-1.5 bg-red-600/80 text-white text-sm rounded-lg hover:bg-red-700"
+                className="rounded-lg bg-red-600/80 px-4 py-1.5 text-sm text-white hover:bg-red-700"
               >
                 Reject
               </button>
               <button
                 onClick={() => deleteReview(r.id, r.author_name)}
-                className="px-4 py-1.5 bg-gray-700 text-gray-300 text-sm rounded-lg hover:bg-gray-600 ml-auto"
+                className="ml-auto rounded-lg bg-gray-700 px-4 py-1.5 text-sm text-gray-300 hover:bg-gray-600"
               >
                 Delete
               </button>
@@ -132,35 +102,46 @@ export default function AdminReviewsPage() {
         ))}
       </div>
 
-      <h2 className="text-white font-semibold mb-3">History ({other.length})</h2>
+      <h2 className="mb-3 font-semibold text-white">History ({other.length})</h2>
       <div className="space-y-2">
         {other.map((r) => (
-          <div key={r.id} className="bg-gray-900/50 border border-gray-800 rounded-xl p-3 flex justify-between items-center gap-3">
+          <div
+            key={r.id}
+            className="flex items-center justify-between gap-3 rounded-xl border border-gray-800 bg-gray-900/50 p-3"
+          >
             <div className="min-w-0">
-              <p className="text-gray-300 text-sm truncate">{r.author_name} — {r.comment.slice(0, 60)}...</p>
+              <p className="truncate text-sm text-gray-300">
+                {r.author_name} — {r.comment.slice(0, 60)}...
+              </p>
             </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <span className={`text-xs px-2 py-0.5 rounded-full ${r.status === "approved" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>
+            <div className="flex shrink-0 items-center gap-2">
+              <span
+                className={`rounded-full px-2 py-0.5 text-xs ${
+                  r.status === "approved"
+                    ? "bg-green-500/20 text-green-400"
+                    : "bg-red-500/20 text-red-400"
+                }`}
+              >
                 {r.status}
               </span>
               {r.status === "approved" ? (
                 <button
                   onClick={() => updateStatus(r.id, "rejected")}
-                  className="px-2.5 py-1 bg-gray-800 text-gray-300 text-xs rounded-lg hover:bg-gray-700"
+                  className="rounded-lg bg-gray-800 px-2.5 py-1 text-xs text-gray-300 hover:bg-gray-700"
                 >
                   Unapprove
                 </button>
               ) : (
                 <button
                   onClick={() => updateStatus(r.id, "approved")}
-                  className="px-2.5 py-1 bg-gray-800 text-gray-300 text-xs rounded-lg hover:bg-gray-700"
+                  className="rounded-lg bg-gray-800 px-2.5 py-1 text-xs text-gray-300 hover:bg-gray-700"
                 >
                   Approve
                 </button>
               )}
               <button
                 onClick={() => deleteReview(r.id, r.author_name)}
-                className="px-2.5 py-1 bg-red-900/40 text-red-300 text-xs rounded-lg hover:bg-red-900/70"
+                className="rounded-lg bg-red-900/40 px-2.5 py-1 text-xs text-red-300 hover:bg-red-900/70"
               >
                 Delete
               </button>
