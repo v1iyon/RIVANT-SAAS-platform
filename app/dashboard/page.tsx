@@ -1436,7 +1436,9 @@ if (!subInfo) {
                     {subInfo?.plan === "scale" ? (
                       <Button variant="outline" size="sm">{T.settingsManage || "Manage"}</Button>
                     ) : (
-                      <Button variant="outline" size="sm" onClick={() => router.push("/#pricing")}>Scale plan only</Button>
+                      <Button variant="outline" size="sm" onClick={() => router.push("/#pricing")}>
+                    {language === "UA" ? "Лише на тарифі Scale" : language === "DE" ? "Nur im Scale-Tarif" : "Scale plan only"}
+                 </Button>
                     )}
                   </div>
                 </div>

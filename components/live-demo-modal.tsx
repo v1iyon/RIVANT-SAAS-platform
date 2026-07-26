@@ -571,11 +571,20 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
   // Состояние карточки подключения Stripe на вкладке "Інтеграції"
   const [stripeKeyInput, setStripeKeyInput] = useState("");
   const [stripeConnected, setStripeConnected] = useState(false);
+  const [stripeKeyPreview, setStripeKeyPreview] = useState("");
 
   const handleConnectStripe = () => {
     if (!stripeKeyInput.trim()) return;
+    const key = stripeKeyInput.trim();
+    setStripeKeyPreview(key.slice(0, 12) + "..." + key.slice(-4));
     setStripeConnected(true);
+    setStripeKeyInput("");
   };
+
+  const handleDisconnectStripe = () => {
+   setStripeConnected(false);
+   setStripeKeyPreview("");
+ };
 
   // Метрики теперь берутся из глобального (module-level) стора, который
   // тикает раз в 10 секунд всегда — не только пока демо открыто.
@@ -1031,46 +1040,64 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
                 <div className="space-y-4">
                   {/* Карточка подключения Stripe */}
                   <div className="bg-gray-900/40 rounded-xl p-5 border border-gray-800">
-                    <h4 className="font-semibold text-white text-base">Stripe</h4>
-                   <p className="text-sm text-gray-500 mt-1">
-                      {language === "UA"
-                        ? "Підключіть свій обліковий запис Stripe, щоб отримувати реальні дані про виручку"
-                        : language === "DE"
-                        ? "Verbinden Sie Ihr Stripe-Konto, um echte Umsatzdaten abzurufen"
-                        : "Connect your Stripe account to pull real revenue data"}
-                    </p>
+  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+    <div className="min-w-0">
+      <h4 className="font-semibold text-white text-base">Stripe</h4>
+      <p className="text-sm text-gray-500 mt-1">
+        {stripeConnected
+          ? (language === "UA" ? "Підключено, очікуємо першу синхронізацію" : language === "DE" ? "Verbunden, wartet auf erste Synchronisierung" : "Connected, waiting for first sync")
+          : (language === "UA" ? "Підключіть свій обліковий запис Stripe, щоб отримувати реальні дані про виручку" : language === "DE" ? "Verbinden Sie Ihr Stripe-Konto, um echte Umsatzdaten abzurufen" : "Connect your Stripe account to pull real revenue data")}
+      </p>
+    </div>
+    {stripeConnected && (
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs px-2 py-1 rounded-full font-semibold bg-green-500/20 text-green-400 flex items-center gap-1 font-mono whitespace-nowrap">
+          <Wifi className="w-3 h-3 shrink-0" />
+          {language === "UA" ? "Підключено" : language === "DE" ? "Verbunden" : "Connected"} · {stripeKeyPreview}
+        </span>
+        <Button
+          size="sm"
+          variant="outline"
+          className="text-red-400 border-red-400/30 hover:bg-red-500/10 shrink-0"
+          onClick={handleDisconnectStripe}
+        >
+          {language === "UA" ? "Відключити" : language === "DE" ? "Trennen" : "Disconnect"}
+        </Button>
+      </div>
+    )}
+  </div>
 
-                    <input
-                      type="text"
-                      value={stripeKeyInput}
-                      onChange={(e) => setStripeKeyInput(e.target.value)}
-                      placeholder="rk_live_... (restricted, read-only key)"
-                      className="w-full mt-4 bg-gray-800/60 border border-gray-700 rounded-lg px-3 py-2.5 text-sm text-gray-300 placeholder:text-gray-500 focus:outline-none focus:border-blue-500/50 transition-colors"
-                    />
-
-                    <p className="text-xs text-gray-500 mt-2">
-                      {language === "UA"
-                        ? "Створіть обмежений ключ з доступом лише для читання в Stripe Dashboard → Developers → API keys → Create restricted key."
-                        : language === "DE"
-                        ? "Erstellen Sie einen eingeschränkten Schlüssel mit Lesezugriff in Stripe Dashboard → Developers → API keys → Create restricted key."
-                        : "Create a restricted key with read-only access in Stripe Dashboard → Developers → API keys → Create restricted key."}
-                    </p>
-
-                    <Button
-                      onClick={handleConnectStripe}
-                      disabled={stripeConnected}
-                      className={`mt-4 font-semibold px-5 ${stripeConnected ? "bg-green-500/20 text-green-400 hover:bg-green-500/20" : "bg-blue-500 hover:bg-blue-600 text-white"}`}
-                    >
-                      {stripeConnected ? (
-                        <span className="flex items-center gap-1.5">
-                          <Wifi className="w-4 h-4" />
-                          {language === "UA" ? "Підключено" : language === "DE" ? "Verbunden" : "Connected"}
-                        </span>
-                      ) : (
-                        `${language === "UA" ? "Підключити Stripe" : language === "DE" ? "Stripe verbinden" : "Connect Stripe"} →`
-                      )}
-                    </Button>
-                  </div>
+  {!stripeConnected && (
+    <>
+      <input
+        type="text"
+        value={stripeKeyInput}
+        onChange={(e) => setStripeKeyInput(e.target.value)}
+        placeholder="rk_test_... / rk_live_..."
+        autoComplete="off"
+        autoCorrect="off"
+        autoCapitalize="off"
+        spellCheck={false}
+        data-lpignore="true"
+        data-1p-ignore="true"
+        className="w-full mt-4 bg-gray-800/60 border border-gray-700 rounded-lg px-3 py-2.5 text-sm text-gray-300 font-mono placeholder:text-gray-500 focus:outline-none focus:border-blue-500/50 transition-colors"
+      />
+      <p className="text-xs text-gray-500 mt-2">
+        {language === "UA"
+          ? "Створіть обмежений ключ з доступом лише для читання в Stripe Dashboard → Developers → API keys → Create restricted key."
+          : language === "DE"
+          ? "Erstellen Sie einen eingeschränkten Schlüssel mit Lesezugriff in Stripe Dashboard → Developers → API keys → Create restricted key."
+          : "Create a restricted key with read-only access in Stripe Dashboard → Developers → API keys → Create restricted key."}
+      </p>
+      <Button
+        onClick={handleConnectStripe}
+        className="mt-4 font-semibold px-5 bg-blue-500 hover:bg-blue-600 text-white"
+      >
+        {`${language === "UA" ? "Підключити Stripe" : language === "DE" ? "Stripe verbinden" : "Connect Stripe"} →`}
+      </Button>
+    </>
+  )}
+</div>
 
                   {/* Прочие интеграции — скоро */}
                   <div className="bg-gray-900/20 rounded-xl p-4 border border-gray-800 flex items-center gap-3 opacity-50">
