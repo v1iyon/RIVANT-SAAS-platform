@@ -512,6 +512,9 @@ export default function DashboardPage() {
   const [mfaMsg, setMfaMsg] = useState("");
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState("");
+  const [feedbackType, setFeedbackType] = useState<"bug" | "feature">("bug");
+  const [feedbackMessage, setFeedbackMessage] = useState("");
+  const [feedbackMsg, setFeedbackMsg] = useState("");
   const [reviewMsg, setReviewMsg] = useState("");
   const [mfaLoading, setMfaLoading] = useState(false);
   const [newPassword, setNewPassword] = useState("");
@@ -724,6 +727,21 @@ const handleDisconnectTelegram = async () => {
       setReviewMsg("error");
     }
   };
+
+  const submitFeedback = async () => {
+  setFeedbackMsg("");
+  const res = await fetch("/api/feedback", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: profileEmail, type: feedbackType, message: feedbackMessage }),
+  });
+  if (res.ok) {
+    setFeedbackMsg("success");
+    setFeedbackMessage("");
+  } else {
+    setFeedbackMsg("error");
+  }
+};
 
   const dismissBroadcast = async () => {
   setBroadcastNotif(null);
@@ -1543,6 +1561,52 @@ if (!subInfo) {
                   {language === "UA" ? "Надіслати відгук" : language === "DE" ? "Bewertung senden" : "Submit Review"}
                 </Button>
               </div>
+
+<div className="bg-card rounded-xl p-6 border border-border">
+  <h3 className="font-semibold text-foreground mb-4">
+    {language === "UA" ? "Повідомити про проблему" : language === "DE" ? "Problem melden" : "Report an issue"}
+  </h3>
+  <div className="flex gap-2 mb-3">
+    <button
+      onClick={() => setFeedbackType("bug")}
+      className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-colors ${
+        feedbackType === "bug" ? "bg-red-500/20 text-red-400" : "bg-secondary text-muted-foreground hover:bg-secondary/80"
+      }`}
+    >
+      {language === "UA" ? "Проблема" : language === "DE" ? "Fehler" : "Bug"}
+    </button>
+    <button
+      onClick={() => setFeedbackType("feature")}
+      className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-colors ${
+        feedbackType === "feature" ? "bg-blue-500/20 text-blue-400" : "bg-secondary text-muted-foreground hover:bg-secondary/80"
+      }`}
+    >
+      {language === "UA" ? "Пропозиція функції" : language === "DE" ? "Funktionsvorschlag" : "Feature request"}
+    </button>
+  </div>
+  <textarea
+    value={feedbackMessage}
+    onChange={(e) => setFeedbackMessage(e.target.value)}
+    placeholder={
+      language === "UA"
+        ? "Опишіть проблему або ідею..."
+        : language === "DE"
+        ? "Beschreiben Sie das Problem oder die Idee..."
+        : "Describe the issue or idea..."
+    }
+    className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-foreground text-sm min-h-[80px]"
+  />
+  {feedbackMsg && (
+    <p className="text-sm text-primary mt-2">
+      {feedbackMsg === "success"
+        ? (language === "UA" ? "Дякуємо! Ми розглянемо це найближчим часом." : language === "DE" ? "Danke! Wir prüfen das zeitnah." : "Thanks! We'll look into it soon.")
+        : (language === "UA" ? "Щось пішло не так, спробуйте ще раз." : language === "DE" ? "Etwas ist schiefgelaufen, versuchen Sie es erneut." : "Something went wrong, try again.")}
+    </p>
+  )}
+  <Button className="mt-3" onClick={submitFeedback} disabled={!feedbackMessage.trim()}>
+    {language === "UA" ? "Надіслати" : language === "DE" ? "Senden" : "Submit"}
+  </Button>
+</div>
 
               <div className="bg-card rounded-xl p-6 border border-border">
                 <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
