@@ -181,7 +181,7 @@ export const translations = {
     footerCookie: "Cookie Policy",
     footerAllRights: "All rights reserved.",
     footerPrecision: "Built with precision for business clarity.",
-    testimonialsTitle: "Real Results from Real Businesses",
+    testimonialsTitle: "What Our Customers Say",
     testimonialsSubtitle: "Join other forward-thinking companies",
     testimonials: [
       { name: "Sarah Chen", role: "CEO, TechFlow Inc", content: "RIVANT found $47,000 in monthly losses", metric: "+340%", metricLabel: "Operational ROI" },
@@ -461,7 +461,7 @@ registerSubtitle: "Start your 14-day free trial"
     footerCookie: "Політика cookie",
     footerAllRights: "Всі права захищені",
     footerPrecision: "Створено для ясності бізнесу",
-    testimonialsTitle: "Реальні результати",
+    testimonialsTitle: "Що кажуть наші клієнти",
     testimonialsSubtitle: "Приєднуйтесь до інших компаній",
     testimonials: [
       { name: "Sarah Chen", role: "CEO, TechFlow Inc", content: "RIVANT знайшли $47,000 щомісячних втрат", metric: "+340%", metricLabel: "Операційний ROI" },
@@ -744,7 +744,7 @@ minutes: "Minuten",
     footerCookie: "Cookie-Richtlinie",
     footerAllRights: "Alle Rechte vorbehalten",
     footerPrecision: "Präzision für geschäftliche Klarheit",
-    testimonialsTitle: "Echte Ergebnisse",
+    testimonialsTitle: "Das sagen unsere Kunden",
     testimonialsSubtitle: "Schließen Sie sich anderen Unternehmen an",
     testimonials: [
       { name: "Sarah Chen", role: "CEO, TechFlow Inc", content: "RIVANT fand monatliche Verluste von 47.000 $", metric: "+340%", metricLabel: "Operativer ROI" },
