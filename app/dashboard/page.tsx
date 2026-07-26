@@ -904,7 +904,7 @@ if (!subInfo) {
                 : "Your access is paused, but your data is safe. Renew your plan to continue.")}
         </p>
         {adminBlocked ? (
-          
+          <a
             href="https://t.me/official_rivant"
             target="_blank"
             rel="noopener noreferrer"
