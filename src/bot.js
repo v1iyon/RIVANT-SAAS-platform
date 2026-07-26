@@ -63,8 +63,14 @@ async function loadUserContext(ctx, next) {
 
   const lang = user?.language || "EN";
   const d = getDict(lang);
+  ctx.rivant = { user, lang, d };
 
-  if (user?.is_blocked) {
+  if (!user) {
+    await ctx.reply(d.accountNotFound(SITE_URL));
+    return;
+  }
+
+  if (user.is_blocked) {
     await ctx.reply(
       lang === "UA"
         ? "🔒 Ваш акаунт заблоковано. Зверніться в підтримку, якщо вважаєте це помилкою."
@@ -74,10 +80,6 @@ async function loadUserContext(ctx, next) {
     );
     return;
   }
-
-  ctx.rivant = { user, lang, d };
-
-  if (!user) {
 
   const { data: sub } = await supabase
     .from("subscriptions")
@@ -245,5 +247,3 @@ bot.on("message", async (ctx) => {
 });
 
 module.exports = { bot };
-
-}
