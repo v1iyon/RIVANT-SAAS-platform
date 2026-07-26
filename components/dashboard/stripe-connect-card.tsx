@@ -8,7 +8,7 @@ import { useLanguage } from "@/lib/translations";
 export function StripeConnectCard({ email }: { email: string }) {
   const { language } = useLanguage();
   const [apiKey, setApiKey] = useState("");
-  const [status, setStatus] = useState<"idle" | "loading" | "connected" | "error">("idle");
+  const [status, setStatus] = useState<"checking" | "idle" | "loading" | "connected" | "error">("checking");
   const [errorMsg, setErrorMsg] = useState("");
   const [lastSynced, setLastSynced] = useState<string | null>(null);
   const [keyPreview, setKeyPreview] = useState<string | null>(null);
@@ -25,7 +25,8 @@ export function StripeConnectCard({ email }: { email: string }) {
         } else {
           setStatus("idle");
         }
-      });
+      })
+      .catch(() => setStatus("idle"));
   };
 
   useEffect(() => {
@@ -64,6 +65,7 @@ export function StripeConnectCard({ email }: { email: string }) {
     });
     setStatus("idle");
     setLastSynced(null);
+    setKeyPreview(null);
   };
 
   const texts = {
@@ -94,10 +96,22 @@ export function StripeConnectCard({ email }: { email: string }) {
     placeholder: "rk_test_... / rk_live_...",
   };
 
+  // Пока не знаем реальный статус — ничего не рисуем, чтобы не было "мигания"
+  if (status === "checking") {
+    return (
+      <div className="bg-gray-900/30 rounded-xl p-5 border border-gray-800">
+        <div className="flex items-center justify-between mb-1">
+          <h4 className="font-semibold text-white">Stripe</h4>
+        </div>
+        <div className="h-4 w-40 bg-gray-800 rounded animate-pulse" />
+      </div>
+    );
+  }
+
   return (
     <div className="bg-gray-900/30 rounded-xl p-5 border border-gray-800">
-      <div className="flex items-center justify-between mb-3">
-        <div>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
+        <div className="min-w-0">
           <h4 className="font-semibold text-white">Stripe</h4>
           <p className="text-xs text-gray-500">
             {status === "connected"
@@ -108,14 +122,14 @@ export function StripeConnectCard({ email }: { email: string }) {
           </p>
         </div>
         {status === "connected" && (
-          <div className="flex items-center gap-2">
-            <span className="text-xs px-2 py-1 rounded-full font-semibold bg-green-500/20 text-green-400 flex items-center gap-1 font-mono">
-  <CheckCircle className="w-3 h-3" /> {texts.connected}{keyPreview ? ` · ${keyPreview}` : ""}
-</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs px-2 py-1 rounded-full font-semibold bg-green-500/20 text-green-400 flex items-center gap-1 font-mono whitespace-nowrap">
+              <CheckCircle className="w-3 h-3 shrink-0" /> {texts.connected}{keyPreview ? ` · ${keyPreview}` : ""}
+            </span>
             <Button
               size="sm"
               variant="outline"
-              className="text-red-400 border-red-400/30 hover:bg-red-500/10"
+              className="text-red-400 border-red-400/30 hover:bg-red-500/10 shrink-0"
               onClick={handleDisconnect}
             >
               {texts.disconnectBtn}
