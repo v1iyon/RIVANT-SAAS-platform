@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAdminAuth } from "./admin-auth-provider";
@@ -38,6 +38,21 @@ export function AdminSidebar() {
   const pathname = usePathname();
   const { logout } = useAdminAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { adminFetch } = useAdminAuth();
+const [errorCount, setErrorCount] = useState(0);
+
+useEffect(() => {
+  const loadCount = async () => {
+    const res = await adminFetch("/api/admin/errors/count");
+    if (res.ok) {
+      const data = await res.json();
+      setErrorCount(data.count || 0);
+    }
+  };
+  loadCount();
+  const interval = setInterval(loadCount, 30000);
+  return () => clearInterval(interval);
+}, []);
 
   return (
     <>
@@ -92,7 +107,12 @@ export function AdminSidebar() {
                 }`}
               >
                 <Icon className="h-4 w-4 shrink-0" />
-                {item.label}
+{item.label}
+{item.href === "/admin/errors" && errorCount > 0 && (
+  <span className="ml-auto flex h-5 min-w-5 animate-pulse items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white">
+    {errorCount}
+  </span>
+)}
               </Link>
             );
           })}
@@ -142,7 +162,12 @@ export function AdminSidebar() {
                     }`}
                   >
                     <Icon className="h-4 w-4 shrink-0" />
-                    {item.label}
+{item.label}
+{item.href === "/admin/errors" && errorCount > 0 && (
+  <span className="ml-auto flex h-5 min-w-5 animate-pulse items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white">
+    {errorCount}
+  </span>
+)}
                   </Link>
                 );
               })}

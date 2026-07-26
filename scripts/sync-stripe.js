@@ -1,5 +1,6 @@
 const { createClient } = require("@supabase/supabase-js");
 const crypto = require("crypto");
+const { logError } = require("../lib/log-error");
 
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
@@ -141,8 +142,14 @@ async function main() {
 
       console.log(`Synced business ${business.id}: ${Object.keys(byDate).length} day(s) updated`);
     } catch (err) {
-      console.error(`Failed to sync integration ${integ.id}:`, err.message);
-    }
+  console.error(`Failed to sync integration ${integ.id}:`, err.message);
+  await logError({
+    source: "stripe",
+    message: `Sync failed for integration ${integ.id}`,
+    details: err.message,
+    businessId: integ.business_id,
+  });
+}
   }
 }
 
