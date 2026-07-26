@@ -28,11 +28,14 @@ export async function GET(req) {
     .eq("provider", "stripe")
     .maybeSingle();
 
+  const { data: user } = await admin.from("users").select("telegram_id").eq("email", email).maybeSingle();
+
   return Response.json({
     business: {
       ...business,
       stripe_connected: integration?.status === "connected",
       last_synced_at: integration?.last_synced_at || null,
     },
+    telegram_connected: !!user?.telegram_id,
   });
 }

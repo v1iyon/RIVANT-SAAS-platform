@@ -532,6 +532,7 @@ export default function DashboardPage() {
   const addToQueue = <T,>(queue: T[], newValue: T): T[] => [...queue.slice(1), newValue];
   const supabase = createClient();
   const [subInfo, setSubInfo] = useState<{ plan: string | null; access_status: string } | null>(null);
+  const [telegramConnected, setTelegramConnected] = useState(false);
   const [businessName, setBusinessName] = useState("");
   const [timezone, setTimezoneState] = useState("America/New_York");
   const [businessId, setBusinessId] = useState("");
@@ -557,6 +558,10 @@ export default function DashboardPage() {
         setTimezoneState(bizData.business.timezone || "America/New_York");
         setBusinessId(bizData.business.id?.slice(0, 8).toUpperCase() || "");
       }
+
+      const bizStatusRes = await fetch(`/api/business-status?email=${encodeURIComponent(email)}`);
+      const bizStatus = await bizStatusRes.json();
+      setTelegramConnected(!!bizStatus.telegram_connected);
 
       const res = await fetch(`/api/subscription-status?email=${encodeURIComponent(email)}`, { cache: "no-store" });
       const sub = await res.json();
@@ -615,6 +620,15 @@ const isBlocked =
   }
 };
 
+const handleDisconnectTelegram = async () => {
+    await fetch("/api/telegram-disconnect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: profileEmail }),
+    });
+    setTelegramConnected(false);
+  };
+  
   const handleLogout = () => {
     setShowLogoutModal(true);
   };
@@ -1361,7 +1375,13 @@ if (!subInfo) {
                   <div className="flex items-center justify-between py-2">
                     <div><p className="font-medium text-foreground">{T.settingsTelegram || "Telegram Notifications"}</p><p className="text-xs text-muted-foreground">{T.settingsTelegramDesc || "Connect Telegram for instant alerts"}</p></div>
                     {hasGrowthAccess ? (
-                      <Button variant="outline" size="sm" onClick={handleConnectTelegram}>{T.settingsConnect || "Connect"}</Button>
+                      telegramConnected ? (
+                        <Button variant="outline" size="sm" className="text-red-400 border-red-400/30 hover:bg-red-500/10" onClick={handleDisconnectTelegram}>
+                          {language === "UA" ? "Відключити" : language === "DE" ? "Trennen" : "Disconnect"}
+                        </Button>
+                      ) : (
+                        <Button variant="outline" size="sm" onClick={handleConnectTelegram}>{T.settingsConnect || "Connect"}</Button>
+                      )
                     ) : (
                       <Button variant="outline" size="sm" onClick={() => router.push("/#pricing")}>
                         Upgrade to connect
