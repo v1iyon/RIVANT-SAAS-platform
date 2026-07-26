@@ -10,9 +10,14 @@ function checkAuth(req) {
   return secret === process.env.ADMIN_SECRET;
 }
 
-// ВНИМАНИЕ: названия таблиц/полей ниже — предположение (users, subscriptions
-// со status "active"/"trialing", subscriptions.plan_amount_cents).
-// Пришлите реальную структуру таблицы subscriptions — поправлю запросы точно.
+// Цены тарифов в USD/мес — если у вас другие суммы, поправьте здесь.
+// Это единственное место, где MRR зависит от предположения, а не от реальных данных.
+const PLAN_PRICES_USD = {
+  starter: 19,
+  growth: 49,
+  scale: 99,
+};
+
 export async function GET(req) {
   if (!checkAuth(req)) return Response.json({ error: "unauthorized" }, { status: 401 });
 
@@ -27,13 +32,16 @@ export async function GET(req) {
     { count: errorsToday },
   ] = await Promise.all([
     admin.from("users").select("*", { count: "exact", head: true }),
-    admin.from("subscriptions").select("*", { count: "exact", head: true }).eq("status", "active"),
-    admin.from("subscriptions").select("*", { count: "exact", head: true }).eq("status", "trialing"),
-    admin.from("subscriptions").select("plan_amount_cents").eq("status", "active"),
+    admin.from("subscriptions").select("*", { count: "exact", head: true }).eq("access_status", "active"),
+    admin.from("subscriptions").select("*", { count: "exact", head: true }).eq("access_status", "trial"),
+    admin.from("subscriptions").select("plan").eq("access_status", "active"),
     admin.from("error_logs").select("*", { count: "exact", head: true }).gte("created_at", startOfToday.toISOString()),
   ]);
 
-  const mrrCents = (activePlans || []).reduce((sum, row) => sum + (row.plan_amount_cents || 0), 0);
+  const mrrCents = (activePlans || []).reduce((sum, row) => {
+    const price = PLAN_PRICES_USD[row.plan] || 0;
+    return sum + price * 100;
+  }, 0);
 
   return Response.json({
     totalUsers: totalUsers || 0,
