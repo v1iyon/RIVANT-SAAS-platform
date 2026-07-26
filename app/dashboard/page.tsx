@@ -538,6 +538,30 @@ export default function DashboardPage() {
   const [businessId, setBusinessId] = useState("");
 
   useEffect(() => {
+  const refreshTelegramStatus = async () => {
+    if (document.visibilityState === "visible" && profileEmail) {
+      try {
+        const res = await fetch(
+          `/api/business-status?email=${encodeURIComponent(profileEmail)}`,
+          { cache: "no-store" }
+        );
+        const data = await res.json();
+        setTelegramConnected(!!data.telegram_connected);
+      } catch (e) {
+        console.error("Failed to refresh telegram status", e);
+      }
+    }
+  };
+
+  document.addEventListener("visibilitychange", refreshTelegramStatus);
+  window.addEventListener("focus", refreshTelegramStatus);
+  return () => {
+    document.removeEventListener("visibilitychange", refreshTelegramStatus);
+    window.removeEventListener("focus", refreshTelegramStatus);
+  };
+}, [profileEmail]);
+
+  useEffect(() => {
     supabase.auth.getSession().then(async ({ data }: any) => {
       if (!data.session) {
         router.push("/");
@@ -628,7 +652,7 @@ const handleDisconnectTelegram = async () => {
     });
     setTelegramConnected(false);
   };
-  
+
   const handleLogout = () => {
     setShowLogoutModal(true);
   };
@@ -1384,7 +1408,7 @@ if (!subInfo) {
                       )
                     ) : (
                       <Button variant="outline" size="sm" onClick={() => router.push("/#pricing")}>
-                        Upgrade to connect
+                        {language === "UA" ? "Оновити для підключення" : language === "DE" ? "Upgrade zum Verbinden" : "Upgrade to connect"}
                       </Button>
                     )}
                   </div>

@@ -43,7 +43,7 @@ export function Footer() {
       <div className="px-6 md:px-12 lg:px-20">
         
         {/* Первый ряд */}
-        <div className="flex justify-between items-center">
+        <div className="flex flex-wrap justify-between items-center gap-y-3">
           {/* Левая часть: RIVANT + описание */}
           <div className="flex flex-col gap-0.5">
             <Link href="/" className="flex items-center gap-1">
@@ -70,8 +70,8 @@ export function Footer() {
           </div>
 
           {/* Правая часть: иконки соцсетей */}
-          <div className="flex gap-2">
-            {footerLinks.social.map((link) => (
+         <div className="flex gap-2 mt-1 sm:mt-0">
+  {footerLinks.social.map((link) => (
               <Link
                 key={link.name}
                 href={link.href}
