@@ -104,7 +104,7 @@ export function PricingSection() {
   return (
    <section className="py-6 relative overflow-hidden">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-16">
+        <div className="text-center mb-10">
           <h2 className="text-4xl font-bold text-foreground mb-4">
             {T.pricingTitle ?? "Pricing"} <span className="text-primary">{T.pricingTitleHighlight ?? "Plans"}</span>
           </h2>
@@ -153,7 +153,7 @@ export function PricingSection() {
           ))}
         </div>
 
-        <div className="mt-24">
+        <div className="mt-12">
           <h3 className="text-2xl font-bold text-center mb-12">{t.addOnsTitle}</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {addons.map((addon) => (

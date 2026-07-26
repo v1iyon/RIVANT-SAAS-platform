@@ -832,8 +832,6 @@ export default function Home() {
       {/* Секция 9: Отзывы */}
       <Testimonials />
       
-      
-      
       {/* Секция 10: Контактная форма */}
       <ContactForm />
       
