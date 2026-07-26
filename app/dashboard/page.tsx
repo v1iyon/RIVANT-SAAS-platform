@@ -886,20 +886,39 @@ if (!subInfo) {
           <AlertCircle className="w-8 h-8 text-red-400" />
         </div>
         <h2 className="text-xl font-bold text-white mb-2">
-          {adminBlocked ? "Account suspended" : "Subscription expired"}
+          {adminBlocked
+            ? (language === "UA" ? "Акаунт заблоковано" : language === "DE" ? "Konto gesperrt" : "Account suspended")
+            : (language === "UA" ? "Підписка закінчилась" : language === "DE" ? "Abonnement abgelaufen" : "Subscription expired")}
         </h2>
         <p className="text-gray-400 text-sm mb-6">
           {adminBlocked
-            ? "Your account has been suspended. Contact support if you think this is a mistake."
-            : "Your access is paused, but your data is safe. Renew your plan to continue."}
+            ? (language === "UA"
+                ? "Ваш акаунт заблоковано. Зверніться в підтримку, якщо вважаєте це помилкою."
+                : language === "DE"
+                ? "Ihr Konto wurde gesperrt. Kontaktieren Sie den Support, falls dies ein Fehler ist."
+                : "Your account has been suspended. Contact support if you think this is a mistake.")
+            : (language === "UA"
+                ? "Ваш доступ призупинено, але дані в безпеці. Поновіть план, щоб продовжити."
+                : language === "DE"
+                ? "Ihr Zugang ist pausiert, Ihre Daten sind aber sicher. Erneuern Sie Ihren Plan, um fortzufahren."
+                : "Your access is paused, but your data is safe. Renew your plan to continue.")}
         </p>
-        {!adminBlocked && (
+        {adminBlocked ? (
+          
+            href="https://t.me/official_rivant"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-block bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+          >
+            {language === "UA" ? "Написати в підтримку" : language === "DE" ? "Support kontaktieren" : "Contact support"}
+          </a>
+        ) : (
           <Button className="bg-blue-600 hover:bg-blue-700" onClick={() => router.push("/#pricing")}>
-            View plans
+            {language === "UA" ? "Переглянути тарифи" : language === "DE" ? "Pläne ansehen" : "View plans"}
           </Button>
         )}
         <button onClick={confirmLogout} className="block mx-auto mt-4 text-sm text-gray-500 hover:text-gray-300">
-          Sign out
+          {language === "UA" ? "Вийти" : language === "DE" ? "Abmelden" : "Sign out"}
         </button>
       </div>
     </div>
