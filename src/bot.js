@@ -57,18 +57,27 @@ bot.command("start", async (ctx) => {
 async function loadUserContext(ctx, next) {
   const { data: user } = await supabase
     .from("users")
-    .select("id, email, language")
+    .select("id, email, language, is_blocked")
     .eq("telegram_id", ctx.from.id)
     .maybeSingle();
 
   const lang = user?.language || "EN";
   const d = getDict(lang);
+
+  if (user?.is_blocked) {
+    await ctx.reply(
+      lang === "UA"
+        ? "🔒 Ваш акаунт заблоковано. Зверніться в підтримку, якщо вважаєте це помилкою."
+        : lang === "DE"
+        ? "🔒 Ihr Konto wurde gesperrt. Kontaktieren Sie den Support, falls dies ein Fehler ist."
+        : "🔒 Your account has been suspended. Contact support if you think this is a mistake."
+    );
+    return;
+  }
+
   ctx.rivant = { user, lang, d };
 
   if (!user) {
-    await ctx.reply(d.accountNotFound(SITE_URL));
-    return;
-  }
 
   const { data: sub } = await supabase
     .from("subscriptions")
@@ -236,3 +245,5 @@ bot.on("message", async (ctx) => {
 });
 
 module.exports = { bot };
+
+}

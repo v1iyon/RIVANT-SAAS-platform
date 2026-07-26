@@ -531,7 +531,7 @@ export default function DashboardPage() {
 
   const addToQueue = <T,>(queue: T[], newValue: T): T[] => [...queue.slice(1), newValue];
   const supabase = createClient();
-  const [subInfo, setSubInfo] = useState<{ plan: string | null; access_status: string } | null>(null);
+  const [subInfo, setSubInfo] = useState<{ plan: string | null; access_status: string; is_blocked?: boolean } | null>(null);
   const [telegramConnected, setTelegramConnected] = useState(false);
   const [businessName, setBusinessName] = useState("");
   const [timezone, setTimezoneState] = useState("America/New_York");
@@ -878,26 +878,33 @@ if (!subInfo) {
   }
 
   if (isBlocked) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <div className="text-center max-w-md">
-          <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-4">
-            <AlertCircle className="w-8 h-8 text-red-400" />
-          </div>
-          <h2 className="text-xl font-bold text-white mb-2">Subscription expired</h2>
-          <p className="text-gray-400 text-sm mb-6">
-            Your access is paused, but your data is safe. Renew your plan to continue.
-          </p>
+  const adminBlocked = subInfo?.is_blocked === true;
+  return (
+    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+      <div className="text-center max-w-md">
+        <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-4">
+          <AlertCircle className="w-8 h-8 text-red-400" />
+        </div>
+        <h2 className="text-xl font-bold text-white mb-2">
+          {adminBlocked ? "Account suspended" : "Subscription expired"}
+        </h2>
+        <p className="text-gray-400 text-sm mb-6">
+          {adminBlocked
+            ? "Your account has been suspended. Contact support if you think this is a mistake."
+            : "Your access is paused, but your data is safe. Renew your plan to continue."}
+        </p>
+        {!adminBlocked && (
           <Button className="bg-blue-600 hover:bg-blue-700" onClick={() => router.push("/#pricing")}>
             View plans
           </Button>
-          <button onClick={confirmLogout} className="block mx-auto mt-4 text-sm text-gray-500 hover:text-gray-300">
-            Sign out
-          </button>
-        </div>
+        )}
+        <button onClick={confirmLogout} className="block mx-auto mt-4 text-sm text-gray-500 hover:text-gray-300">
+          Sign out
+        </button>
       </div>
-    );
-  }
+    </div>
+  );
+}
 
   return (
     <div className="h-screen bg-background flex flex-col lg:flex-row overflow-hidden pb-16 lg:pb-0">
