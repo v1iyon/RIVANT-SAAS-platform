@@ -11,6 +11,7 @@ export function StripeConnectCard({ email }: { email: string }) {
   const [status, setStatus] = useState<"idle" | "loading" | "connected" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const [lastSynced, setLastSynced] = useState<string | null>(null);
+  const [keyPreview, setKeyPreview] = useState<string | null>(null);
 
   const loadStatus = () => {
     if (!email) return;
@@ -18,6 +19,7 @@ export function StripeConnectCard({ email }: { email: string }) {
       .then((r) => r.json())
       .then((d) => {
         if (d.business?.stripe_connected) {
+          setKeyPreview(d.business.key_preview);
           setStatus("connected");
           setLastSynced(d.business.last_synced_at);
         } else {
@@ -107,9 +109,9 @@ export function StripeConnectCard({ email }: { email: string }) {
         </div>
         {status === "connected" && (
           <div className="flex items-center gap-2">
-            <span className="text-xs px-2 py-1 rounded-full font-semibold bg-green-500/20 text-green-400 flex items-center gap-1">
-              <CheckCircle className="w-3 h-3" /> {texts.connected}
-            </span>
+            <span className="text-xs px-2 py-1 rounded-full font-semibold bg-green-500/20 text-green-400 flex items-center gap-1 font-mono">
+  <CheckCircle className="w-3 h-3" /> {texts.connected}{keyPreview ? ` · ${keyPreview}` : ""}
+</span>
             <Button
               size="sm"
               variant="outline"

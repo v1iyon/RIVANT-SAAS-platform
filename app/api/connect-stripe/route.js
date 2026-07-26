@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 
-export const runtime = "nodejs"; // обязательно: crypto не работает в Edge Runtime
+export const runtime = "nodejs";
 
 const admin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -12,7 +12,6 @@ function getKey() {
   return crypto.createHash("sha256").update(process.env.ENCRYPTION_KEY || "").digest();
 }
 
-// Та же схема, что decrypt() в sync-stripe.js, только в обратную сторону
 function encrypt(text) {
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv("aes-256-gcm", getKey(), iv);
@@ -21,7 +20,6 @@ function encrypt(text) {
   return Buffer.concat([iv, authTag, encrypted]).toString("base64");
 }
 
-// Проверяем ключ прямым запросом к Stripe, прежде чем вообще его сохранять
 async function verifyStripeKey(apiKey) {
   const res = await fetch("https://api.stripe.com/v1/charges?limit=1", {
     headers: { Authorization: `Bearer ${apiKey}` },
@@ -37,10 +35,6 @@ export async function POST(req) {
       return Response.json({ error: "Email and API key are required" }, { status: 400 });
     }
 
-    // Разрешаем только restricted keys (rk_...), не полные секретные (sk_...)
-    // Это осознанное ограничение безопасности: если ограниченный ключ утечёт,
-    // максимум что можно сделать — читать charges. Полный sk_ ключ дал бы
-    // доступ ко всему аккаунту Stripe.
     if (!apiKey.startsWith("rk_")) {
       return Response.json(
         { error: "Please use a restricted key (starts with rk_test_ or rk_live_), not a full secret key" },
@@ -80,6 +74,7 @@ export async function POST(req) {
     }
 
     const encrypted = encrypt(apiKey);
+    const keyPreview = apiKey.slice(0, 12) + "..." + apiKey.slice(-4);
 
     const { data: existing } = await admin
       .from("integrations")
@@ -91,7 +86,7 @@ export async function POST(req) {
     if (existing) {
       await admin
         .from("integrations")
-        .update({ api_key_encrypted: encrypted, status: "connected" })
+        .update({ api_key_encrypted: encrypted, status: "connected", key_preview: keyPreview })
         .eq("id", existing.id);
     } else {
       await admin.from("integrations").insert({
@@ -99,6 +94,7 @@ export async function POST(req) {
         provider: "stripe",
         api_key_encrypted: encrypted,
         status: "connected",
+        key_preview: keyPreview,
       });
     }
 

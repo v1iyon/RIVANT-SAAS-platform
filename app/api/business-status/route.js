@@ -23,7 +23,7 @@ export async function GET(req) {
 
   const { data: integration } = await admin
     .from("integrations")
-    .select("status, last_synced_at")
+    .select("status, last_synced_at, key_preview")
     .eq("business_id", business.id)
     .eq("provider", "stripe")
     .maybeSingle();
@@ -35,6 +35,7 @@ export async function GET(req) {
       ...business,
       stripe_connected: integration?.status === "connected",
       last_synced_at: integration?.last_synced_at || null,
+      key_preview: integration?.key_preview || null,
     },
     telegram_connected: !!user?.telegram_id,
   });
