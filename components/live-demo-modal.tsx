@@ -1073,7 +1073,7 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
         type="text"
         value={stripeKeyInput}
         onChange={(e) => setStripeKeyInput(e.target.value)}
-        placeholder="rk_test_... / rk_live_..."
+        placeholder="rk_live_..."
         autoComplete="off"
         autoCorrect="off"
         autoCapitalize="off"
