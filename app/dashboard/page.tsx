@@ -139,6 +139,48 @@ const generateTickerData = (baseValue: number, volatility: number, trend: number
   return data;
 };
 
+// Полный список часовых поясов IANA — то же самое, что использует ОС.
+// Fallback на случай очень старых браузеров без поддержки Intl.supportedValuesOf.
+const FALLBACK_TIMEZONES = [
+  "UTC", "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
+  "America/Sao_Paulo", "Europe/London", "Europe/Berlin", "Europe/Kyiv", "Europe/Moscow",
+  "Africa/Cairo", "Asia/Dubai", "Asia/Kolkata", "Asia/Singapore", "Asia/Tokyo",
+  "Asia/Shanghai", "Australia/Sydney", "Pacific/Auckland",
+];
+
+function getAllTimezones(): string[] {
+  try {
+    // @ts-ignore — поддерживается в большинстве современных браузеров
+    if (typeof Intl.supportedValuesOf === "function") {
+      // @ts-ignore
+      return Intl.supportedValuesOf("timeZone");
+    }
+  } catch {
+    // игнорируем, используем fallback
+  }
+  return FALLBACK_TIMEZONES;
+}
+
+function getTimezoneOffset(tz: string): string {
+  try {
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      timeZoneName: "shortOffset",
+    });
+    const parts = formatter.formatToParts(new Date());
+    const offsetPart = parts.find((p) => p.type === "timeZoneName");
+    return offsetPart?.value || "";
+  } catch {
+    return "";
+  }
+}
+
+function formatTimezoneLabel(tz: string): string {
+  const offset = getTimezoneOffset(tz);
+  const cityName = tz.split("/").pop()?.replace(/_/g, " ") || tz;
+  return offset ? `${cityName} (${offset})` : tz;
+}
+
 const CHART_DATA = generateRealisticChartData();
 
 const sidebarItems = [
@@ -542,6 +584,7 @@ const [deleteError, setDeleteError] = useState("");
   const [telegramConnected, setTelegramConnected] = useState(false);
   const [businessName, setBusinessName] = useState("");
   const [timezone, setTimezoneState] = useState("America/New_York");
+  const [allTimezones] = useState<string[]>(() => getAllTimezones().sort());
   const [businessId, setBusinessId] = useState("");
   const [broadcastNotif, setBroadcastNotif] = useState<{ id: string; message: string } | null>(null);
 
@@ -713,6 +756,14 @@ const handleDisconnectTelegram = async () => {
     });
   };
 
+  const saveBusinessProfileWithTimezone = async (tz: string) => {
+  await fetch("/api/business-profile", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: profileEmail, name: businessName, timezone: tz }),
+  });
+};
+
   const savePhone = async () => {
     try {
       await fetch("/api/profile", {
@@ -779,23 +830,27 @@ const handleDisconnectTelegram = async () => {
   });
 };
 
-  const handleChangePassword = async () => {
-    if (newPassword.length < 6) {
-      setPasswordMsg("Password must be at least 6 characters");
-      return;
-    }
-    setPasswordLoading(true);
-    setPasswordMsg("");
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
-    setPasswordLoading(false);
-    if (error) {
-      setPasswordMsg(error.message);
-      return;
-    }
-    setPasswordMsg("Password updated successfully");
-    setNewPassword("");
-    setTimeout(() => setShowPasswordModal(false), 1500);
-  };
+ const handleChangePassword = async () => {
+  if (newPassword.length < 6) {
+    setPasswordMsg(
+      language === "UA" ? "Пароль має містити щонайменше 6 символів" : language === "DE" ? "Das Passwort muss mindestens 6 Zeichen lang sein" : "Password must be at least 6 characters"
+    );
+    return;
+  }
+  setPasswordLoading(true);
+  setPasswordMsg("");
+  const { error } = await supabase.auth.updateUser({ password: newPassword });
+  setPasswordLoading(false);
+  if (error) {
+    setPasswordMsg(error.message);
+    return;
+  }
+  setPasswordMsg(
+    language === "UA" ? "Пароль успішно оновлено" : language === "DE" ? "Passwort erfolgreich aktualisiert" : "Password updated successfully"
+  );
+  setNewPassword("");
+  setTimeout(() => setShowPasswordModal(false), 1500);
+};
 
 const startEnroll2FA = async () => {
     setMfaMsg("");
@@ -1459,19 +1514,20 @@ if (!subInfo) {
                       className="mt-1 w-full bg-secondary border border-border rounded-lg px-3 py-2 text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
                     />
                   </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground uppercase tracking-wider">{T.settingsTimezone || "Timezone"}</label>
-                    <select
-                      value={timezone}
-                      onChange={(e) => { setTimezoneState(e.target.value); }}
-                      onBlur={saveBusinessProfile}
-                      className="mt-1 w-full bg-secondary border border-border rounded-lg px-3 py-2 text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                    >
-                      <option value="America/New_York">Eastern Time (ET)</option>
-                      <option value="Europe/Kyiv">EET (Kyiv)</option>
-                      <option value="Europe/Berlin">CET (Berlin)</option>
-                    </select>
-                  </div>
+                 <div>
+  <label className="text-xs text-muted-foreground uppercase tracking-wider">{T.settingsTimezone || "Timezone"}</label>
+  <select
+    value={timezone}
+    onChange={(e) => { setTimezoneState(e.target.value); saveBusinessProfileWithTimezone(e.target.value); }}
+    className="mt-1 w-full bg-secondary border border-border rounded-lg px-3 py-2 text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+  >
+    {allTimezones.map((tz) => (
+      <option key={tz} value={tz}>
+        {formatTimezoneLabel(tz)} — {tz}
+      </option>
+    ))}
+  </select>
+</div>
                 </div>
               </div>
 
@@ -1750,36 +1806,42 @@ if (!subInfo) {
 
 {/* Change Password Modal */}
       {showPasswordModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-[380px] shadow-2xl">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-white">Change Password</h2>
-              <button onClick={() => { setShowPasswordModal(false); setPasswordMsg(""); setNewPassword(""); }} className="text-gray-500 hover:text-gray-300 p-2 -m-2">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <label className="text-xs text-gray-500 uppercase tracking-wider block mb-1">New password</label>
-            <input
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              minLength={6}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
-              placeholder="••••••••"
-            />
-            {passwordMsg && (
-              <p className={`text-sm mt-2 ${passwordMsg.includes("success") ? "text-green-400" : "text-red-400"}`}>{passwordMsg}</p>
-            )}
-            <Button
-              className="w-full mt-4 bg-blue-600 hover:bg-blue-700"
-              disabled={passwordLoading}
-              onClick={handleChangePassword}
-            >
-              {passwordLoading ? "..." : "Update Password"}
-            </Button>
-          </div>
-        </div>
+  <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+    <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-[380px] shadow-2xl">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-semibold text-white">
+          {language === "UA" ? "Змінити пароль" : language === "DE" ? "Passwort ändern" : "Change Password"}
+        </h2>
+        <button onClick={() => { setShowPasswordModal(false); setPasswordMsg(""); setNewPassword(""); }} className="text-gray-500 hover:text-gray-300 p-2 -m-2">
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+      <label className="text-xs text-gray-500 uppercase tracking-wider block mb-1">
+        {language === "UA" ? "Новий пароль" : language === "DE" ? "Neues Passwort" : "New password"}
+      </label>
+      <input
+        type="password"
+        value={newPassword}
+        onChange={(e) => setNewPassword(e.target.value)}
+        minLength={6}
+        className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+        placeholder="••••••••"
+      />
+      {passwordMsg && (
+        <p className={`text-sm mt-2 ${passwordMsg.includes("success") || passwordMsg.includes("успіш") || passwordMsg.includes("erfolgreich") ? "text-green-400" : "text-red-400"}`}>
+          {passwordMsg}
+        </p>
       )}
+      <Button
+        className="w-full mt-4 bg-blue-600 hover:bg-blue-700"
+        disabled={passwordLoading}
+        onClick={handleChangePassword}
+      >
+        {passwordLoading ? "..." : (language === "UA" ? "Оновити пароль" : language === "DE" ? "Passwort aktualisieren" : "Update Password")}
+      </Button>
+    </div>
+  </div>
+)}
 
       {/* 2FA Setup Modal */}
       {show2FAModal && (
