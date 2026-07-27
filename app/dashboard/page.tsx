@@ -1652,14 +1652,14 @@ if (!subInfo) {
                   <AlertCircle className="w-4 h-4 text-primary" /> {T.settingsDangerZone || "Danger Zone"}
                 </h3>
                <div className="space-y-3">
-  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-    <div className="min-w-0">
+ <div className="flex items-center justify-between gap-3">
+  <div className="min-w-0">
     <p className="font-medium text-foreground">
       {language === "UA" ? "Видалити акаунт" : language === "DE" ? "Konto löschen" : "Delete account"}
     </p>
     <p className="text-xs text-muted-foreground">{T.settingsDeleteAccountDesc || "Permanently delete your account and all data"}</p>
   </div>
-  <Button variant="destructive" size="sm" className="shrink-0 w-full sm:w-auto" onClick={() => setShowDeleteAccountModal(true)}>
+  <Button variant="destructive" size="sm" className="shrink-0" onClick={() => setShowDeleteAccountModal(true)}>
     {language === "UA" ? "Видалити" : language === "DE" ? "Löschen" : "Delete"}
   </Button>
 </div>
