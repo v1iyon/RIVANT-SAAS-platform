@@ -34,7 +34,7 @@ async function sendTelegramToAll(message) {
 export async function POST(req) {
   if (!checkAuth(req)) return Response.json({ error: "unauthorized" }, { status: 401 });
 
-  const { message, viaTelegram, viaInApp } = await req.json();
+  const { message, viaTelegram, viaInApp, expireDays } = await req.json();
   if (!message || !message.trim()) {
     return Response.json({ error: "message required" }, { status: 400 });
   }
@@ -47,12 +47,15 @@ export async function POST(req) {
     telegramSentCount = await sendTelegramToAll(message.trim());
   }
 
-  const { error } = await admin.from("broadcast_notifications").insert({
-    message: message.trim(),
-    sent_telegram: !!viaTelegram,
-    sent_inapp: !!viaInApp,
-    telegram_sent_count: telegramSentCount,
-  });
+ const expiresAt = expireDays ? new Date(Date.now() + expireDays * 24 * 60 * 60 * 1000).toISOString() : null;
+
+const { error } = await admin.from("broadcast_notifications").insert({
+  message: message.trim(),
+  sent_telegram: !!viaTelegram,
+  sent_inapp: !!viaInApp,
+  telegram_sent_count: telegramSentCount,
+  expires_at: expiresAt,
+});
 
   if (error) return Response.json({ error: error.message }, { status: 500 });
 

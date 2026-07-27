@@ -21,6 +21,7 @@ export default function AdminNotificationsPage() {
   const [resultMsg, setResultMsg] = useState("");
   const [history, setHistory] = useState<BroadcastItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [expireDays, setExpireDays] = useState<string>("");
 
   const loadHistory = async () => {
     setLoading(true);
@@ -47,7 +48,7 @@ export default function AdminNotificationsPage() {
     const res = await adminFetch("/api/admin/notifications/send", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message, viaTelegram, viaInApp }),
+      body: JSON.stringify({ message, viaTelegram, viaInApp, expireDays: expireDays ? Number(expireDays) : null }),
     });
     setSending(false);
     if (res.ok) {
@@ -95,6 +96,20 @@ export default function AdminNotificationsPage() {
           {sending ? "Отправка..." : "Отправить"}
         </button>
       </div>
+
+      <div className="mb-3">
+  <label className="text-xs text-gray-500 block mb-1">
+    Показывать N дней (необязательно, оставьте пустым — бессрочно)
+  </label>
+  <input
+    type="number"
+    min="1"
+    value={expireDays}
+    onChange={(e) => setExpireDays(e.target.value)}
+    placeholder="Например: 7"
+    className="w-32 rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-white"
+  />
+</div>
 
       <h2 className="mb-3 font-semibold text-white">История рассылок</h2>
       {loading && <p className="text-sm text-gray-500">Загрузка...</p>}

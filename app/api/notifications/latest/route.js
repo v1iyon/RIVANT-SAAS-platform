@@ -16,12 +16,13 @@ export async function GET(req) {
     .maybeSingle();
 
   const { data: latest } = await admin
-    .from("broadcast_notifications")
-    .select("id, message, created_at")
-    .eq("sent_inapp", true)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  .from("broadcast_notifications")
+  .select("id, message, created_at, expires_at")
+  .eq("sent_inapp", true)
+  .or(`expires_at.is.null,expires_at.gte.${new Date().toISOString()}`)
+  .order("created_at", { ascending: false })
+  .limit(1)
+  .maybeSingle();
 
   if (!latest) return Response.json({ notification: null });
 
