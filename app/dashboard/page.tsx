@@ -150,26 +150,20 @@ const FALLBACK_TIMEZONES = [
 
 function getAllTimezones(): string[] {
   try {
-    // @ts-ignore — поддерживается в большинстве современных браузеров
+    // @ts-ignore
     if (typeof Intl.supportedValuesOf === "function") {
       // @ts-ignore
       return Intl.supportedValuesOf("timeZone");
     }
-  } catch {
-    // игнорируем, используем fallback
-  }
+  } catch {}
   return FALLBACK_TIMEZONES;
 }
 
 function getTimezoneOffset(tz: string): string {
   try {
-    const formatter = new Intl.DateTimeFormat("en-US", {
-      timeZone: tz,
-      timeZoneName: "shortOffset",
-    });
+    const formatter = new Intl.DateTimeFormat("en-US", { timeZone: tz, timeZoneName: "shortOffset" });
     const parts = formatter.formatToParts(new Date());
-    const offsetPart = parts.find((p) => p.type === "timeZoneName");
-    return offsetPart?.value || "";
+    return parts.find((p) => p.type === "timeZoneName")?.value || "";
   } catch {
     return "";
   }
@@ -179,6 +173,38 @@ function formatTimezoneLabel(tz: string): string {
   const offset = getTimezoneOffset(tz);
   const cityName = tz.split("/").pop()?.replace(/_/g, " ") || tz;
   return offset ? `${cityName} (${offset})` : tz;
+}
+
+// Группируем по континенту (часть до первого "/" в IANA-имени),
+// чтобы <optgroup> в select показывал понятные разделы вместо
+// одного длинного списка на 400+ строк.
+function groupTimezonesByRegion(zones: string[]): Record<string, string[]> {
+  const regionNames: Record<string, string> = {
+    Africa: "Africa",
+    America: "America",
+    Antarctica: "Antarctica",
+    Asia: "Asia",
+    Atlantic: "Atlantic",
+    Australia: "Australia",
+    Europe: "Europe",
+    Indian: "Indian Ocean",
+    Pacific: "Pacific",
+    UTC: "UTC",
+  };
+  const groups: Record<string, string[]> = {};
+  for (const tz of zones) {
+    const region = tz.split("/")[0];
+    const label = regionNames[region] || "Other";
+    if (!groups[label]) groups[label] = [];
+    groups[label].push(tz);
+  }
+  // сортируем регионы в логичном порядке, остальное — по алфавиту
+  const order = ["UTC", "Europe", "Asia", "Africa", "America", "Australia", "Pacific", "Atlantic", "Indian Ocean", "Antarctica", "Other"];
+  const sorted: Record<string, string[]> = {};
+  for (const key of order) {
+    if (groups[key]) sorted[key] = groups[key].sort();
+  }
+  return sorted;
 }
 
 const CHART_DATA = generateRealisticChartData();
@@ -585,7 +611,7 @@ const [deleteError, setDeleteError] = useState("");
   const [businessName, setBusinessName] = useState("");
   const [timezone, setTimezoneState] = useState("America/New_York");
   const [allTimezones] = useState<string[]>(() => getAllTimezones().sort());
-  const [timezoneFilter, setTimezoneFilter] = useState("");
+  const groupedTimezones = groupTimezonesByRegion(allTimezones);
   const [businessId, setBusinessId] = useState("");
   const [broadcastNotif, setBroadcastNotif] = useState<{ id: string; message: string } | null>(null);
 
@@ -1527,25 +1553,20 @@ if (!subInfo) {
                   </div>
                  <div>
   <label className="text-xs text-muted-foreground uppercase tracking-wider">{T.settingsTimezone || "Timezone"}</label>
-  <input
-    type="text"
-    value={timezoneFilter}
-    onChange={(e) => setTimezoneFilter(e.target.value)}
-    placeholder={language === "UA" ? "Пошук міста..." : language === "DE" ? "Stadt suchen..." : "Search city..."}
-    className="mt-1 w-full bg-secondary border border-border rounded-lg px-3 py-2 text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 mb-1"
-  />
   <select
     value={timezone}
     onChange={(e) => { setTimezoneState(e.target.value); saveBusinessProfileWithTimezone(e.target.value); }}
-    className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+    className="mt-1 w-full bg-secondary border border-border rounded-lg px-3 py-2 text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
   >
-    {allTimezones
-      .filter((tz) => tz.toLowerCase().includes(timezoneFilter.toLowerCase()))
-      .map((tz) => (
-        <option key={tz} value={tz}>
-          {formatTimezoneLabel(tz)} — {tz}
-        </option>
-      ))}
+    {Object.entries(groupedTimezones).map(([region, zones]) => (
+      <optgroup key={region} label={region}>
+        {zones.map((tz) => (
+          <option key={tz} value={tz}>
+            {formatTimezoneLabel(tz)}
+          </option>
+        ))}
+      </optgroup>
+    ))}
   </select>
 </div>
                 </div>
