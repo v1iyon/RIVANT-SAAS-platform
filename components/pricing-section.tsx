@@ -77,7 +77,7 @@ export function PricingSection() {
     },
     {
       name: T.scale ?? "Scale",
-      price: 499,
+      price: 399,
       description: T.pricingSubtitle ?? "Best for scaling businesses",
       features: T.scaleFeatures ?? [],
       popular: false,
