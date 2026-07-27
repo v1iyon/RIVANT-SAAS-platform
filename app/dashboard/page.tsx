@@ -585,6 +585,7 @@ const [deleteError, setDeleteError] = useState("");
   const [businessName, setBusinessName] = useState("");
   const [timezone, setTimezoneState] = useState("America/New_York");
   const [allTimezones] = useState<string[]>(() => getAllTimezones().sort());
+  const [timezoneFilter, setTimezoneFilter] = useState("");
   const [businessId, setBusinessId] = useState("");
   const [broadcastNotif, setBroadcastNotif] = useState<{ id: string; message: string } | null>(null);
 
@@ -626,13 +627,23 @@ const [deleteError, setDeleteError] = useState("");
       setProfileEmail(email);
       setEditEmail(email);
       setIsAuthenticated(true);
-      const bizRes = await fetch(`/api/business-profile?email=${encodeURIComponent(email)}`);
-      const bizData = await bizRes.json();
-      if (bizData.business) {
-        setBusinessName(bizData.business.name || "");
-        setTimezoneState(bizData.business.timezone || "America/New_York");
-        setBusinessId(bizData.business.id?.slice(0, 8).toUpperCase() || "");
-      }
+     const bizRes = await fetch(`/api/business-profile?email=${encodeURIComponent(email)}`);
+const bizData = await bizRes.json();
+if (bizData.business) {
+  setBusinessName(bizData.business.name || "");
+  setBusinessId(bizData.business.id?.slice(0, 8).toUpperCase() || "");
+
+  if (bizData.business.timezone) {
+    // уже сохранён свой пояс раньше — используем его
+    setTimezoneState(bizData.business.timezone);
+  } else {
+    // ещё ничего не сохранено — определяем пояс браузера и сразу сохраняем,
+    // чтобы человеку не пришлось искать себя в списке вручную
+    const detected = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    setTimezoneState(detected);
+    saveBusinessProfileWithTimezone(detected);
+  }
+}
 
       const bizStatusRes = await fetch(`/api/business-status?email=${encodeURIComponent(email)}`);
       const bizStatus = await bizStatusRes.json();
@@ -1516,16 +1527,25 @@ if (!subInfo) {
                   </div>
                  <div>
   <label className="text-xs text-muted-foreground uppercase tracking-wider">{T.settingsTimezone || "Timezone"}</label>
+  <input
+    type="text"
+    value={timezoneFilter}
+    onChange={(e) => setTimezoneFilter(e.target.value)}
+    placeholder={language === "UA" ? "Пошук міста..." : language === "DE" ? "Stadt suchen..." : "Search city..."}
+    className="mt-1 w-full bg-secondary border border-border rounded-lg px-3 py-2 text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 mb-1"
+  />
   <select
     value={timezone}
     onChange={(e) => { setTimezoneState(e.target.value); saveBusinessProfileWithTimezone(e.target.value); }}
-    className="mt-1 w-full bg-secondary border border-border rounded-lg px-3 py-2 text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+    className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
   >
-    {allTimezones.map((tz) => (
-      <option key={tz} value={tz}>
-        {formatTimezoneLabel(tz)} — {tz}
-      </option>
-    ))}
+    {allTimezones
+      .filter((tz) => tz.toLowerCase().includes(timezoneFilter.toLowerCase()))
+      .map((tz) => (
+        <option key={tz} value={tz}>
+          {formatTimezoneLabel(tz)} — {tz}
+        </option>
+      ))}
   </select>
 </div>
                 </div>
