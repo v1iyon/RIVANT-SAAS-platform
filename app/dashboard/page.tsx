@@ -1411,26 +1411,26 @@ if (!subInfo) {
           {/* Settings View - с переводами */}
           {activeView === "settings" && (
             <div className="space-y-6">
-              <div className="bg-card rounded-xl p-6 border border-border">
-                <div className="flex flex-wrap items-center gap-4 mb-6">
-                  <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center overflow-hidden shrink-0">
-                    {profilePhotoUrl ? (
-                      <img src={profilePhotoUrl} alt="avatar" className="w-full h-full object-cover" />
-                    ) : (
-                      <User className="w-8 h-8 text-primary" />
-                    )}
-                  </div>
-                  <div className="min-w-0">
-                    <h3 className="text-xl font-bold text-foreground truncate">{profileName}</h3>
-                    <p className="text-sm text-muted-foreground truncate">{profileEmail}</p>
-                    <div className="flex items-center gap-2 mt-1 flex-wrap">
-                      <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded-full">{getPlanLabel(subInfo?.plan)}</span>
-                      <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full">Active</span>
-                    </div>
-                  </div>
-                  <Button variant="outline" size="sm" className="w-full sm:w-auto sm:ml-auto" onClick={openEditProfile}>{T.editProfile || "Edit Profile"}</Button>
-                </div>
-              </div>
+             <div className="bg-card rounded-xl p-6 border border-border">
+  <div className="flex flex-wrap items-center gap-4">
+    <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center overflow-hidden shrink-0">
+      {profilePhotoUrl ? (
+        <img src={profilePhotoUrl} alt="avatar" className="w-full h-full object-cover" />
+      ) : (
+        <User className="w-8 h-8 text-primary" />
+      )}
+    </div>
+    <div className="min-w-0">
+      <h3 className="text-xl font-bold text-foreground truncate">{profileName}</h3>
+      <p className="text-sm text-muted-foreground truncate">{profileEmail}</p>
+      <div className="flex items-center gap-2 mt-1 flex-wrap">
+        <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded-full">{getPlanLabel(subInfo?.plan)}</span>
+        <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full">Active</span>
+      </div>
+    </div>
+    <Button variant="outline" size="sm" className="w-full sm:w-auto sm:ml-auto" onClick={openEditProfile}>{T.editProfile || "Edit Profile"}</Button>
+  </div>
+</div>
 
               <div className="bg-card rounded-xl p-6 border border-border">
                 <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
