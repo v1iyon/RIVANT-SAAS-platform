@@ -1502,20 +1502,20 @@ if (!subInfo) {
                       });
                     }} />
                   </div>
-                  <div className="flex flex-wrap items-center justify-between gap-2 py-2">
+                  <div className="flex items-center justify-between py-2">
                     <div><p className="font-medium text-foreground">{T.settingsTelegram || "Telegram Notifications"}</p><p className="text-xs text-muted-foreground">{T.settingsTelegramDesc || "Connect Telegram for instant alerts"}</p></div>
                     {hasGrowthAccess ? (
                       telegramConnected ? (
                         <Button variant="outline" size="sm" className="shrink-0" onClick={() => router.push("/#pricing")}>
-  {language === "UA" ? "Оновити для підключення" : language === "DE" ? "Upgrade zum Verbinden" : "Upgrade to connect"}
-</Button>
+    {language === "UA" ? "Оновити" : language === "DE" ? "Upgrade" : "Upgrade"}
+  </Button>
                       ) : (
                         <Button variant="outline" size="sm" onClick={handleConnectTelegram}>{T.settingsConnect || "Connect"}</Button>
                       )
-                    ) : (
-                      <Button variant="outline" size="sm" onClick={() => router.push("/#pricing")}>
-                        {language === "UA" ? "Оновити для підключення" : language === "DE" ? "Upgrade zum Verbinden" : "Upgrade to connect"}
-                      </Button>
+                   ) : (
+  <Button variant="outline" size="sm" onClick={() => router.push("/#pricing")}>
+    {language === "UA" ? "Оновити" : language === "DE" ? "Upgrade" : "Upgrade"}
+  </Button>
                     )}
                   </div>
                 </div>
@@ -1651,13 +1651,18 @@ if (!subInfo) {
                 <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 text-primary" /> {T.settingsDangerZone || "Danger Zone"}
                 </h3>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div><p className="font-medium text-foreground">{T.settingsDeleteAccount || "Delete Account"}</p><p className="text-xs text-muted-foreground">{T.settingsDeleteAccountDesc || "Permanently delete your account and all data"}</p></div>
-                   <Button variant="destructive" size="sm" onClick={() => setShowDeleteAccountModal(true)}>
-  {T.settingsDeleteAccount || "Delete Account"}
-</Button>
-                  </div>
+               <div className="space-y-3">
+  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+    <div className="min-w-0">
+    <p className="font-medium text-foreground">
+      {language === "UA" ? "Видалити акаунт" : language === "DE" ? "Konto löschen" : "Delete account"}
+    </p>
+    <p className="text-xs text-muted-foreground">{T.settingsDeleteAccountDesc || "Permanently delete your account and all data"}</p>
+  </div>
+  <Button variant="destructive" size="sm" className="shrink-0 w-full sm:w-auto" onClick={() => setShowDeleteAccountModal(true)}>
+    {language === "UA" ? "Видалити" : language === "DE" ? "Löschen" : "Delete"}
+  </Button>
+</div>
                   <div className="flex items-center justify-between pt-2 border-t border-border">
                     <div><p className="font-medium text-foreground">{T.settingsExportData || "Export All Data"}</p><p className="text-xs text-muted-foreground">{T.settingsExportDataDesc || "Download all your business data"}</p></div>
                     <Button variant="outline" size="sm" onClick={handleExportData}>{T.settingsExport || "Export"}</Button>
