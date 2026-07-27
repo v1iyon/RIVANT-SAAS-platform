@@ -1,6 +1,6 @@
-const { createClient } = require("@supabase/supabase-js");
-const crypto = require("crypto");
-const { logError } = require("../lib/log-error");
+import { createClient } from "@supabase/supabase-js";
+import crypto from "crypto";
+import { logError } from "../lib/log-error.js";
 
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
@@ -112,11 +112,10 @@ async function main() {
   for (const integ of integrations) {
     try {
       const apiKey = decrypt(integ.api_key_encrypted);
-      const sinceUnix = Math.floor(Date.now() / 1000) - 48 * 3600; // последние 48 часов с запасом
+      const sinceUnix = Math.floor(Date.now() / 1000) - 48 * 3600;
       const charges = await fetchStripeCharges(apiKey, sinceUnix);
       const successful = charges.filter((c) => c.paid && !c.refunded);
 
-      // Группируем по дате (UTC)
       const byDate = {};
       for (const c of successful) {
         const date = new Date(c.created * 1000).toISOString().slice(0, 10);
@@ -132,12 +131,12 @@ async function main() {
         .maybeSingle();
       if (!business) continue;
 
-      const costPct = Number(business.cost_pct) || 30; 
+      const costPct = Number(business.cost_pct) || 30;
 
       for (const [date, agg] of Object.entries(byDate)) {
         const { data: prev } = await admin
           .from("metrics_computed")
-          .select("revenue")
+          .select("revenue, cost, margin_pct")
           .eq("business_id", business.id)
           .eq("date", date)
           .maybeSingle();
@@ -159,8 +158,7 @@ async function main() {
           { onConflict: "business_id,date" }
         );
 
-        // Простая проверка отклонения: если выручка упала более чем на 20% относительно уже сохранённой
-       if (prev && prev.revenue > 0) {
+        if (prev && prev.revenue > 0) {
           const change = ((agg.revenue - prev.revenue) / prev.revenue) * 100;
           if (change <= -20) {
             const message = `Revenue for ${business.name} dropped ${Math.abs(change).toFixed(0)}% on ${date}`;
@@ -207,14 +205,14 @@ async function main() {
 
       console.log(`Synced business ${business.id}: ${Object.keys(byDate).length} day(s) updated`);
     } catch (err) {
-  console.error(`Failed to sync integration ${integ.id}:`, err.message);
-  await logError({
-    source: "stripe",
-    message: `Sync failed for integration ${integ.id}`,
-    details: err.message,
-    businessId: integ.business_id,
-  });
-}
+      console.error(`Failed to sync integration ${integ.id}:`, err.message);
+      await logError({
+        source: "stripe",
+        message: `Sync failed for integration ${integ.id}`,
+        details: err.message,
+        businessId: integ.business_id,
+      });
+    }
   }
 }
 

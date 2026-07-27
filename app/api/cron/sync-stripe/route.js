@@ -10,7 +10,7 @@ export async function GET(req) {
   }
 
   try {
-    const { runSync } = await import("../../../../scripts/sync-stripe-core.js");
+    const { runSync } = await import("../../../../scripts/sync-stripe-core.mjs");
     const result = await runSync();
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {

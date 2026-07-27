@@ -16,7 +16,7 @@ jobs:
           node-version: "20"
 
       - name: Install dependencies
-        run: npm install @supabase/supabase-js grammy
+        run: npm install @supabase/supabase-js
 
       - name: Run sync
         env:
@@ -25,4 +25,5 @@ jobs:
           ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
-        run: node scripts/sync-stripe.js
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: node scripts/run-sync.mjs
