@@ -69,8 +69,8 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
   const tryUnlock = async () => {
     setLoading(true);
     setError("");
-    // Проверяем пароль через уже существующий эндпоинт отзывов.
-    const res = await fetch("/api/admin/reviews", {
+    // Проверяем пароль через эндпоинт лидов.
+    const res = await fetch("/api/admin/leads", {
       headers: { "x-admin-secret": input },
     });
     setLoading(false);
