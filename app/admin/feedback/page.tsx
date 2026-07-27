@@ -89,12 +89,12 @@ export default function AdminFeedbackPage() {
         {filtered.map((f) => (
           <div key={f.id} className="rounded-xl border border-gray-800 bg-gray-900 p-4">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <span className={`rounded-full px-2 py-0.5 text-xs ${typeBadgeClass(f.type)}`}>
-                  {f.type === "bug" ? "Проблема" : "Предложение"}
-                </span>
-                <span className="text-xs text-gray-500">{f.email}</span>
-              </div>
+  <div className="flex flex-wrap items-center gap-2 min-w-0">
+    <span className={`rounded-full px-2 py-0.5 text-xs shrink-0 ${typeBadgeClass(f.type)}`}>
+      {f.type === "bug" ? "Проблема" : "Предложение"}
+    </span>
+    <span className="text-xs text-gray-500 truncate max-w-[220px]">{f.email}</span>
+  </div>
               <span className={`rounded-full px-2 py-0.5 text-xs ${statusBadgeClass(f.status)}`}>
                 {STATUS_LABELS[f.status]}
               </span>

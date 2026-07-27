@@ -506,6 +506,10 @@ export default function DashboardPage() {
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [show2FAModal, setShow2FAModal] = useState(false);
+  const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
+const [deleteConfirmText, setDeleteConfirmText] = useState("");
+const [deleting, setDeleting] = useState(false);
+const [deleteError, setDeleteError] = useState("");
   const [mfaFactorId, setMfaFactorId] = useState("");
   const [mfaQrCode, setMfaQrCode] = useState("");
   const [mfaCode, setMfaCode] = useState("");
@@ -669,6 +673,29 @@ const handleDisconnectTelegram = async () => {
     await supabase.auth.signOut();
     router.push("/");
   };
+
+  const confirmDeleteAccount = async () => {
+  setDeleting(true);
+  setDeleteError("");
+  try {
+    const res = await fetch("/api/delete-account", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: profileEmail }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setDeleteError(data.error || "Something went wrong");
+      setDeleting(false);
+      return;
+    }
+    await supabase.auth.signOut();
+    router.push("/");
+  } catch {
+    setDeleteError("Network error");
+    setDeleting(false);
+  }
+};
 
   const openEditProfile = () => {
     setEditName(profileName);
@@ -1208,9 +1235,15 @@ if (!subInfo) {
               {!hasGrowthAccess ? (
                 <div className="text-center py-16 bg-gray-900/30 rounded-xl border border-gray-800">
                   <AlertTriangle className="w-10 h-10 mx-auto mb-3 text-gray-600" />
-                  <h3 className="text-white font-semibold mb-1">Available on Growth plan</h3>
-                  <p className="text-gray-500 text-sm mb-4">Real-time risk detection is part of the Growth plan.</p>
-                  <Button className="bg-blue-600 hover:bg-blue-700" onClick={() => router.push("/#pricing")}>Upgrade</Button>
+                 <h3 className="text-white font-semibold mb-1">
+  {language === "UA" ? "Доступно на тарифі Growth" : language === "DE" ? "Verfügbar im Growth-Tarif" : "Available on Growth plan"}
+</h3>
+<p className="text-gray-500 text-sm mb-4">
+  {language === "UA" ? "Виявлення ризиків у реальному часі доступне на тарифі Growth." : language === "DE" ? "Echtzeit-Risikoerkennung ist Teil des Growth-Tarifs." : "Real-time risk detection is part of the Growth plan."}
+</p>
+<Button className="bg-blue-600 hover:bg-blue-700" onClick={() => router.push("/#pricing")}>
+  {language === "UA" ? "Оновити тариф" : language === "DE" ? "Upgraden" : "Upgrade"}
+</Button>
                 </div>
               ) : (
                 <>
@@ -1279,9 +1312,15 @@ if (!subInfo) {
               {!hasGrowthAccess ? (
                 <div className="text-center py-16 bg-gray-900/30 rounded-xl border border-gray-800">
                   <AlertTriangle className="w-10 h-10 mx-auto mb-3 text-gray-600" />
-                  <h3 className="text-white font-semibold mb-1">Available on Growth plan</h3>
-                  <p className="text-gray-500 text-sm mb-4">Real-time risk detection is part of the Growth plan.</p>
-                  <Button className="bg-blue-600 hover:bg-blue-700" onClick={() => router.push("/#pricing")}>Upgrade</Button>
+                 <h3 className="text-white font-semibold mb-1">
+  {language === "UA" ? "Доступно на тарифі Growth" : language === "DE" ? "Verfügbar im Growth-Tarif" : "Available on Growth plan"}
+</h3>
+<p className="text-gray-500 text-sm mb-4">
+  {language === "UA" ? "Виявлення ризиків у реальному часі доступне на тарифі Growth." : language === "DE" ? "Echtzeit-Risikoerkennung ist Teil des Growth-Tarifs." : "Real-time risk detection is part of the Growth plan."}
+</p>
+<Button className="bg-blue-600 hover:bg-blue-700" onClick={() => router.push("/#pricing")}>
+  {language === "UA" ? "Оновити тариф" : language === "DE" ? "Upgraden" : "Upgrade"}
+</Button>
                 </div>
               ) : (
                 <>
@@ -1441,7 +1480,7 @@ if (!subInfo) {
                   <BellRing className="w-4 h-4 text-primary" /> {T.settingsNotifications || "Notification Preferences"}
                 </h3>
                 <div className="space-y-4">
-                 <div className="flex items-center justify-between py-2">
+                <div className="flex flex-wrap items-center justify-between gap-2 py-2">
                     <div><p className="font-medium text-foreground">{T.settingsPush || "Push Notifications"}</p><p className="text-xs text-muted-foreground">{T.settingsPushDesc || "Receive alerts in dashboard"}</p></div>
                     <Switch checked={notificationsEnabled} onCheckedChange={(val) => {
                       setNotificationsEnabled(val);
@@ -1452,7 +1491,7 @@ if (!subInfo) {
                       });
                     }} />
                   </div>
-                  <div className="flex items-center justify-between py-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2 py-2">
                     <div><p className="font-medium text-foreground">{T.settingsEmail || "Email Alerts"}</p><p className="text-xs text-muted-foreground">{T.settingsEmailDesc || "Receive alerts via email"}</p></div>
                     <Switch checked={emailAlerts} onCheckedChange={(val) => {
                       setEmailAlerts(val);
@@ -1463,13 +1502,13 @@ if (!subInfo) {
                       });
                     }} />
                   </div>
-                  <div className="flex items-center justify-between py-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2 py-2">
                     <div><p className="font-medium text-foreground">{T.settingsTelegram || "Telegram Notifications"}</p><p className="text-xs text-muted-foreground">{T.settingsTelegramDesc || "Connect Telegram for instant alerts"}</p></div>
                     {hasGrowthAccess ? (
                       telegramConnected ? (
-                        <Button variant="outline" size="sm" className="text-red-400 border-red-400/30 hover:bg-red-500/10" onClick={handleDisconnectTelegram}>
-                          {language === "UA" ? "Відключити" : language === "DE" ? "Trennen" : "Disconnect"}
-                        </Button>
+                        <Button variant="outline" size="sm" className="shrink-0" onClick={() => router.push("/#pricing")}>
+  {language === "UA" ? "Оновити для підключення" : language === "DE" ? "Upgrade zum Verbinden" : "Upgrade to connect"}
+</Button>
                       ) : (
                         <Button variant="outline" size="sm" onClick={handleConnectTelegram}>{T.settingsConnect || "Connect"}</Button>
                       )
@@ -1615,7 +1654,9 @@ if (!subInfo) {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <div><p className="font-medium text-foreground">{T.settingsDeleteAccount || "Delete Account"}</p><p className="text-xs text-muted-foreground">{T.settingsDeleteAccountDesc || "Permanently delete your account and all data"}</p></div>
-                    <Button variant="destructive" size="sm">{T.settingsDeleteAccount || "Delete Account"}</Button>
+                   <Button variant="destructive" size="sm" onClick={() => setShowDeleteAccountModal(true)}>
+  {T.settingsDeleteAccount || "Delete Account"}
+</Button>
                   </div>
                   <div className="flex items-center justify-between pt-2 border-t border-border">
                     <div><p className="font-medium text-foreground">{T.settingsExportData || "Export All Data"}</p><p className="text-xs text-muted-foreground">{T.settingsExportDataDesc || "Download all your business data"}</p></div>
@@ -1664,6 +1705,43 @@ if (!subInfo) {
           </div>
         </div>
       )}
+
+      {showDeleteAccountModal && (
+  <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+    <div className="bg-gray-900 border border-red-500/30 rounded-2xl p-6 w-full max-w-[400px] shadow-2xl">
+      <h2 className="text-lg font-semibold text-white mb-2">
+        {language === "UA" ? "Видалити акаунт?" : language === "DE" ? "Konto löschen?" : "Delete account?"}
+      </h2>
+      <p className="text-sm text-gray-400 mb-6">
+        {language === "UA"
+          ? "Ви впевнені, що хочете видалити акаунт? Усі ваші дані буде втрачено назавжди."
+          : language === "DE"
+          ? "Sind Sie sicher, dass Sie Ihr Konto löschen möchten? Alle Ihre Daten gehen dauerhaft verloren."
+          : "Are you sure you want to delete your account? All your data will be lost permanently."}
+      </p>
+      {deleteError && <p className="text-sm text-red-400 mb-3">{deleteError}</p>}
+      <div className="flex gap-3">
+        <Button
+          variant="destructive"
+          className="flex-1"
+          disabled={deleting}
+          onClick={confirmDeleteAccount}
+        >
+          {deleting
+            ? "..."
+            : language === "UA" ? "Так, видалити" : language === "DE" ? "Ja, löschen" : "Yes, delete"}
+        </Button>
+        <Button
+          variant="outline"
+          className="flex-1 border-gray-700 text-gray-300 hover:bg-gray-800"
+          onClick={() => { setShowDeleteAccountModal(false); setDeleteError(""); }}
+        >
+          {language === "UA" ? "Скасувати" : language === "DE" ? "Abbrechen" : "Cancel"}
+        </Button>
+      </div>
+    </div>
+  </div>
+)}
 
 {/* Change Password Modal */}
       {showPasswordModal && (
