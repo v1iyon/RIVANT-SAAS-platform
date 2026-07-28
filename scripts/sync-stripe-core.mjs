@@ -98,11 +98,14 @@ async function fetchStripeCharges(apiKey, sinceUnix) {
 }
 
 async function main() {
-  const { data: integrations } = await admin
+  const { data: integrations, error: fetchErr } = await admin
     .from("integrations")
     .select("id, business_id, api_key_encrypted")
     .eq("provider", "stripe")
     .eq("status", "connected");
+
+  console.log("DEBUG fetchErr:", fetchErr);
+  console.log("DEBUG integrations found:", integrations?.length, JSON.stringify(integrations?.map(i => i.id)));
 
   if (!integrations?.length) {
     console.log("No connected Stripe integrations, nothing to sync.");
@@ -111,10 +114,14 @@ async function main() {
 
   for (const integ of integrations) {
     try {
+      console.log("DEBUG processing integration:", integ.id, "business_id:", integ.business_id);
       const apiKey = decrypt(integ.api_key_encrypted);
+      console.log("DEBUG decrypt OK, key prefix:", apiKey?.slice(0, 8));
       const sinceUnix = Math.floor(Date.now() / 1000) - 48 * 3600;
       const charges = await fetchStripeCharges(apiKey, sinceUnix);
+      console.log("DEBUG charges fetched:", charges.length);
       const successful = charges.filter((c) => c.paid && !c.refunded);
+      console.log("DEBUG successful charges:", successful.length);
 
       const byDate = {};
       for (const c of successful) {
