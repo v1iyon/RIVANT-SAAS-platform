@@ -66,7 +66,7 @@ async function getAIExplanation(business, today, yesterday, language = "EN") {
     const buildPrompt = PROMPTS[language] || PROMPTS.EN;
     const prompt = buildPrompt(business, today, yesterday);
 
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+   const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
         "x-api-key": process.env.ANTHROPIC_API_KEY,
@@ -79,15 +79,6 @@ async function getAIExplanation(business, today, yesterday, language = "EN") {
         messages: [{ role: "user", content: prompt }],
       }),
     });
-
-    const { error: alertErr } = await admin.from("alerts_log").insert({
-  business_id: business.id,
-  type: "revenue_drop",
-  message,
-  ai_explanation: aiExplanation,
-  status: "open",
-});
-console.log("DEBUG alerts_log insert error:", alertErr);
 
     if (!res.ok) throw new Error(`Anthropic API error: ${res.status}`);
     const data = await res.json();
@@ -186,6 +177,14 @@ async function main() {
           if (change <= -20) {
             const message = `Revenue for ${business.name} dropped ${Math.abs(change).toFixed(0)}% on ${date}`;
 
+            const { data: existingAlert } = await admin
+              .from("alerts_log")
+              .select("id")
+              .eq("business_id", business.id)
+              .eq("message", message)
+              .maybeSingle();
+            if (existingAlert) continue;
+
             const { data: user } = await admin
               .from("users")
               .select("telegram_id, email, email_enabled, language")
@@ -201,13 +200,14 @@ async function main() {
               userLang
             );
 
-            await admin.from("alerts_log").insert({
+            const { error: alertErr } = await admin.from("alerts_log").insert({
               business_id: business.id,
               type: "revenue_drop",
               message,
               ai_explanation: aiExplanation,
               status: "open",
             });
+            console.log("DEBUG alerts_log insert error:", alertErr);
 
             const fullMessage = aiExplanation ? `⚠️ ${message}\n\n${aiExplanation}` : `⚠️ ${message}`;
 
