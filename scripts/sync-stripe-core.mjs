@@ -133,7 +133,7 @@ async function main() {
 
       const { data: business, error: bizErr } = await admin
         .from("businesses")
-        .select("id, user_id, name, cost_pct, language")
+        .select("id, user_id, name, cost_pct")
         .eq("id", integ.business_id)
         .maybeSingle();
       console.log("DEBUG business lookup for", integ.business_id, "-> found:", !!business, "error:", bizErr);
@@ -179,7 +179,7 @@ async function main() {
               .eq("id", business.user_id)
               .maybeSingle();
 
-            const userLang = user?.language || business.language || "EN";
+            const userLang = user?.language || "EN";
 
             const aiExplanation = await getAIExplanation(
               business,
