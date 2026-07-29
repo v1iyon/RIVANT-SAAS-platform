@@ -139,6 +139,7 @@ async function main() {
       if (!business) continue;
 
       const costPct = Number(business.cost_pct) || 30;
+      console.log("DEBUG byDate:", JSON.stringify(byDate));
 
       for (const [date, agg] of Object.entries(byDate)) {
         const { data: prev } = await admin
@@ -153,7 +154,7 @@ async function main() {
           ? Number((((agg.revenue - cost) / agg.revenue) * 100).toFixed(1))
           : 0;
 
-        await admin.from("metrics_computed").upsert(
+        const { error: upsertErr } = await admin.from("metrics_computed").upsert(
           {
             business_id: business.id,
             date,
@@ -164,6 +165,7 @@ async function main() {
           },
           { onConflict: "business_id,date" }
         );
+        console.log("DEBUG upsert result for", date, "error:", upsertErr);
 
         if (prev && prev.revenue > 0) {
           const change = ((agg.revenue - prev.revenue) / prev.revenue) * 100;
