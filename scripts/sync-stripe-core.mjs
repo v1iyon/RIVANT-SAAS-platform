@@ -80,7 +80,10 @@ async function getAIExplanation(business, today, yesterday, language = "EN") {
       }),
     });
 
-    if (!res.ok) throw new Error(`Anthropic API error: ${res.status}`);
+   if (!res.ok) {
+      const errBody = await res.text();
+      throw new Error(`Anthropic API error: ${res.status} — ${errBody}`);
+    }
     const data = await res.json();
     return data.content?.[0]?.text?.trim() || null;
   } catch (err) {
