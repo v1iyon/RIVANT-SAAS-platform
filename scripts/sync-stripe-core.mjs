@@ -74,11 +74,20 @@ async function getAIExplanation(business, today, yesterday, language = "EN") {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5",
         max_tokens: 150,
         messages: [{ role: "user", content: prompt }],
       }),
     });
+
+    const { error: alertErr } = await admin.from("alerts_log").insert({
+  business_id: business.id,
+  type: "revenue_drop",
+  message,
+  ai_explanation: aiExplanation,
+  status: "open",
+});
+console.log("DEBUG alerts_log insert error:", alertErr);
 
     if (!res.ok) throw new Error(`Anthropic API error: ${res.status}`);
     const data = await res.json();
