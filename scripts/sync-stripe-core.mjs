@@ -143,11 +143,15 @@ async function main() {
       console.log("DEBUG byDate:", JSON.stringify(byDate));
 
       for (const [date, agg] of Object.entries(byDate)) {
+        const prevDate = new Date(new Date(date).getTime() - 24 * 3600 * 1000)
+          .toISOString()
+          .slice(0, 10);
+
         const { data: prev } = await admin
           .from("metrics_computed")
           .select("revenue, cost, margin_pct")
           .eq("business_id", business.id)
-          .eq("date", date)
+          .eq("date", prevDate)
           .maybeSingle();
 
         const cost = Number((agg.revenue * (costPct / 100)).toFixed(2));
