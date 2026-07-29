@@ -131,11 +131,12 @@ async function main() {
         byDate[date].orders += 1;
       }
 
-      const { data: business } = await admin
+      const { data: business, error: bizErr } = await admin
         .from("businesses")
         .select("id, user_id, name, cost_pct, language")
         .eq("id", integ.business_id)
         .maybeSingle();
+      console.log("DEBUG business lookup for", integ.business_id, "-> found:", !!business, "error:", bizErr);
       if (!business) continue;
 
       const costPct = Number(business.cost_pct) || 30;
