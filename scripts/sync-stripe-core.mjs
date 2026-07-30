@@ -45,29 +45,32 @@ async function sendEmail(to, subject, text) {
 }
 
 const PROMPTS = {
-  UA: (b, t, y) => `Ти фінансовий аналітик. Дані бізнесу "${b.name}":
+  UA: (b, t, y, changePct) => `Дані бізнесу "${b.name}":
 Сьогодні: виручка $${t.revenue}, витрати $${t.cost}, маржа ${t.margin_pct}%
 Вчора: виручка $${y.revenue}, витрати $${y.cost}, маржа ${y.margin_pct}%
-Відповідай ЛИШЕ у форматі JSON, без жодного тексту навколо:
-{"cause": "коротка ймовірна причина (3-6 слів)", "action": "що перевірити (одне речення, до 15 слів)"}`,
+Напиши ОДНЕ речення (до 30 слів) українською за точним шаблоном:
+"Виручка впала на ${Math.abs(changePct).toFixed(0)}% (з $${y.revenue} до $${t.revenue}) при [незмінній/зниженій/підвищеній] маржі ${t.margin_pct}%, тож перевірте [2-3 конкретні речі для перевірки, наприклад кількість замовлень, трафік, рекламні кампанії, роботу сайту чи платіжної системи]."
+Відповідай ЛИШЕ цим реченням, без лапок і пояснень.`,
 
-  EN: (b, t, y) => `You are a financial analyst. Data for business "${b.name}":
+  EN: (b, t, y, changePct) => `Data for business "${b.name}":
 Today: revenue $${t.revenue}, costs $${t.cost}, margin ${t.margin_pct}%
 Yesterday: revenue $${y.revenue}, costs $${y.cost}, margin ${y.margin_pct}%
-Respond ONLY in JSON, no text around it:
-{"cause": "short likely cause (3-6 words)", "action": "what to check (one sentence, max 15 words)"}`,
+Write ONE sentence (max 30 words) in English following this exact pattern:
+"Revenue dropped ${Math.abs(changePct).toFixed(0)}% (from $${y.revenue} to $${t.revenue}) with margin [unchanged/lower/higher] at ${t.margin_pct}%, so check [2-3 specific things, e.g. order volume, traffic, ad campaigns, site or payment issues]."
+Reply ONLY with this sentence, no quotes or explanations.`,
 
-  DE: (b, t, y) => `Du bist Finanzanalyst. Daten für "${b.name}":
+  DE: (b, t, y, changePct) => `Daten für "${b.name}":
 Heute: Umsatz $${t.revenue}, Kosten $${t.cost}, Marge ${t.margin_pct}%
 Gestern: Umsatz $${y.revenue}, Kosten $${y.cost}, Marge ${y.margin_pct}%
-Antworte NUR als JSON, kein Text drumherum:
-{"cause": "kurze wahrscheinliche Ursache (3-6 Wörter)", "action": "was zu prüfen ist (ein Satz, max. 15 Wörter)"}`,
+Schreibe EINEN Satz (max. 30 Wörter) auf Deutsch nach diesem Muster:
+"Der Umsatz ist um ${Math.abs(changePct).toFixed(0)}% gesunken (von $${y.revenue} auf $${t.revenue}) bei [gleichbleibender/gesunkener/gestiegener] Marge von ${t.margin_pct}%, prüfen Sie daher [2-3 konkrete Punkte, z.B. Bestellvolumen, Traffic, Werbekampagnen, Website oder Zahlungssystem]."
+Antworte NUR mit diesem Satz, ohne Anführungszeichen oder Erklärungen.`,
 };
 
-async function getAIExplanation(business, today, yesterday, language = "EN") {
+async function getAIExplanation(business, today, yesterday, language = "EN", changePct) {
   try {
     const buildPrompt = PROMPTS[language] || PROMPTS.EN;
-    const prompt = buildPrompt(business, today, yesterday);
+    const prompt = buildPrompt(business, today, yesterday, changePct);
 
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -88,16 +91,7 @@ async function getAIExplanation(business, today, yesterday, language = "EN") {
       throw new Error(`Anthropic API error: ${res.status} — ${errBody}`);
     }
     const data = await res.json();
-    const raw = data.content?.[0]?.text?.trim() || "";
-    const parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
-
-    const templates = {
-      UA: (cause, action) => `Ймовірна причина: ${cause}.\nЩо перевірити: ${action}`,
-      EN: (cause, action) => `Likely cause: ${cause}.\nWhat to check: ${action}`,
-      DE: (cause, action) => `Wahrscheinliche Ursache: ${cause}.\nWas zu prüfen ist: ${action}`,
-    };
-    const buildMessage = templates[language] || templates.EN;
-    return buildMessage(parsed.cause, parsed.action);
+    return data.content?.[0]?.text?.trim() || null;
   } catch (err) {
     console.error("AI explanation failed:", err.message);
     return null;
@@ -216,7 +210,8 @@ async function main() {
               business,
               { revenue: agg.revenue, cost, margin_pct: marginPct },
               { revenue: prev.revenue, cost: prev.cost, margin_pct: prev.margin_pct },
-              userLang
+              userLang,
+              change
             );
 
             const { error: alertErr } = await admin.from("alerts_log").insert({
