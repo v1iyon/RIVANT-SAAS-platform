@@ -48,17 +48,20 @@ const PROMPTS = {
   UA: (b, t, y) => `Ти фінансовий аналітик. Дані бізнесу "${b.name}":
 Сьогодні: виручка $${t.revenue}, витрати $${t.cost}, маржа ${t.margin_pct}%
 Вчора: виручка $${y.revenue}, витрати $${y.cost}, маржа ${y.margin_pct}%
-Одним реченням (до 25 слів), українською, поясни ймовірну причину зміни та що перевірити. Без вступних фраз.`,
+Відповідай ЛИШЕ у форматі JSON, без жодного тексту навколо:
+{"cause": "коротка ймовірна причина (3-6 слів)", "action": "що перевірити (одне речення, до 15 слів)"}`,
 
   EN: (b, t, y) => `You are a financial analyst. Data for business "${b.name}":
 Today: revenue $${t.revenue}, costs $${t.cost}, margin ${t.margin_pct}%
 Yesterday: revenue $${y.revenue}, costs $${y.cost}, margin ${y.margin_pct}%
-In one sentence (max 25 words), in English, explain the likely reason for the change and what to check. No intro phrases.`,
+Respond ONLY in JSON, no text around it:
+{"cause": "short likely cause (3-6 words)", "action": "what to check (one sentence, max 15 words)"}`,
 
-  DE: (b, t, y) => `Du bist Finanzanalyst. Daten für Unternehmen "${b.name}":
+  DE: (b, t, y) => `Du bist Finanzanalyst. Daten für "${b.name}":
 Heute: Umsatz $${t.revenue}, Kosten $${t.cost}, Marge ${t.margin_pct}%
 Gestern: Umsatz $${y.revenue}, Kosten $${y.cost}, Marge ${y.margin_pct}%
-In einem Satz (max. 25 Wörter), auf Deutsch, erkläre die wahrscheinliche Ursache und was zu prüfen ist. Keine Einleitung.`,
+Antworte NUR als JSON, kein Text drumherum:
+{"cause": "kurze wahrscheinliche Ursache (3-6 Wörter)", "action": "was zu prüfen ist (ein Satz, max. 15 Wörter)"}`,
 };
 
 async function getAIExplanation(business, today, yesterday, language = "EN") {
@@ -66,7 +69,7 @@ async function getAIExplanation(business, today, yesterday, language = "EN") {
     const buildPrompt = PROMPTS[language] || PROMPTS.EN;
     const prompt = buildPrompt(business, today, yesterday);
 
-   const res = await fetch("https://api.anthropic.com/v1/messages", {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
         "x-api-key": process.env.ANTHROPIC_API_KEY,
@@ -80,12 +83,21 @@ async function getAIExplanation(business, today, yesterday, language = "EN") {
       }),
     });
 
-   if (!res.ok) {
+    if (!res.ok) {
       const errBody = await res.text();
       throw new Error(`Anthropic API error: ${res.status} — ${errBody}`);
     }
     const data = await res.json();
-    return data.content?.[0]?.text?.trim() || null;
+    const raw = data.content?.[0]?.text?.trim() || "";
+    const parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
+
+    const templates = {
+      UA: (cause, action) => `Ймовірна причина: ${cause}.\nЩо перевірити: ${action}`,
+      EN: (cause, action) => `Likely cause: ${cause}.\nWhat to check: ${action}`,
+      DE: (cause, action) => `Wahrscheinliche Ursache: ${cause}.\nWas zu prüfen ist: ${action}`,
+    };
+    const buildMessage = templates[language] || templates.EN;
+    return buildMessage(parsed.cause, parsed.action);
   } catch (err) {
     console.error("AI explanation failed:", err.message);
     return null;
@@ -178,6 +190,7 @@ async function main() {
         if (prev && prev.revenue > 0) {
           const change = ((agg.revenue - prev.revenue) / prev.revenue) * 100;
           if (change <= -20) {
+            const severity = change <= -50 ? "critical" : change <= -35 ? "high" : "medium";
             const message = `Revenue for ${business.name} dropped ${Math.abs(change).toFixed(0)}% on ${date}`;
 
             const { data: existingAlert } = await admin
@@ -209,6 +222,7 @@ async function main() {
               message,
               ai_explanation: aiExplanation,
               status: "open",
+              severity,
             });
             console.log("DEBUG alerts_log insert error:", alertErr);
 
