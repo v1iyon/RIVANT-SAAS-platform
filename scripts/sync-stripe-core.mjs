@@ -48,22 +48,22 @@ const PROMPTS = {
   UA: (b, t, y, changePct) => `Дані бізнесу "${b.name}":
 Сьогодні: виручка $${t.revenue}, витрати $${t.cost}, маржа ${t.margin_pct}%
 Вчора: виручка $${y.revenue}, витрати $${y.cost}, маржа ${y.margin_pct}%
-Напиши ОДНЕ речення (до 30 слів) українською за точним шаблоном:
-"Виручка впала на ${Math.abs(changePct).toFixed(0)}% (з $${y.revenue} до $${t.revenue}) при [незмінній/зниженій/підвищеній] маржі ${t.margin_pct}%, тож перевірте [2-3 конкретні речі для перевірки, наприклад кількість замовлень, трафік, рекламні кампанії, роботу сайту чи платіжної системи]."
+Напиши ОДНЕ речення (до 30 слів) українською, професійним діловим тоном, без розмовних слів типу "тож" чи "отже". Формат:
+"[Назва показника] [зросла/впала] на ${Math.abs(changePct).toFixed(0)}% (з $${y.revenue} до $${t.revenue}), маржа [не змінилась / знизилась / зросла] і становить ${t.margin_pct}%. Перевірте: [2-3 конкретні пункти, релевантні саме цій проблемі]."
 Відповідай ЛИШЕ цим реченням, без лапок і пояснень.`,
 
   EN: (b, t, y, changePct) => `Data for business "${b.name}":
 Today: revenue $${t.revenue}, costs $${t.cost}, margin ${t.margin_pct}%
 Yesterday: revenue $${y.revenue}, costs $${y.cost}, margin ${y.margin_pct}%
-Write ONE sentence (max 30 words) in English following this exact pattern:
-"Revenue dropped ${Math.abs(changePct).toFixed(0)}% (from $${y.revenue} to $${t.revenue}) with margin [unchanged/lower/higher] at ${t.margin_pct}%, so check [2-3 specific things, e.g. order volume, traffic, ad campaigns, site or payment issues]."
+Write ONE sentence (max 30 words) in English, professional business tone, no filler words. Format:
+"[Metric name] [dropped/rose] ${Math.abs(changePct).toFixed(0)}% (from $${y.revenue} to $${t.revenue}), margin [unchanged/lower/higher] at ${t.margin_pct}%. Check: [2-3 specific items relevant to this issue]."
 Reply ONLY with this sentence, no quotes or explanations.`,
 
   DE: (b, t, y, changePct) => `Daten für "${b.name}":
 Heute: Umsatz $${t.revenue}, Kosten $${t.cost}, Marge ${t.margin_pct}%
 Gestern: Umsatz $${y.revenue}, Kosten $${y.cost}, Marge ${y.margin_pct}%
-Schreibe EINEN Satz (max. 30 Wörter) auf Deutsch nach diesem Muster:
-"Der Umsatz ist um ${Math.abs(changePct).toFixed(0)}% gesunken (von $${y.revenue} auf $${t.revenue}) bei [gleichbleibender/gesunkener/gestiegener] Marge von ${t.margin_pct}%, prüfen Sie daher [2-3 konkrete Punkte, z.B. Bestellvolumen, Traffic, Werbekampagnen, Website oder Zahlungssystem]."
+Schreibe EINEN Satz (max. 30 Wörter) auf Deutsch, professioneller Geschäftston, keine Füllwörter. Format:
+"[Kennzahl] [gesunken/gestiegen] um ${Math.abs(changePct).toFixed(0)}% (von $${y.revenue} auf $${t.revenue}), Marge [unverändert/niedriger/höher] bei ${t.margin_pct}%. Prüfen Sie: [2-3 konkrete Punkte]."
 Antworte NUR mit diesem Satz, ohne Anführungszeichen oder Erklärungen.`,
 };
 
@@ -224,7 +224,16 @@ async function main() {
             });
             console.log("DEBUG alerts_log insert error:", alertErr);
 
-            const fullMessage = aiExplanation ? `⚠️ ${message}\n\n${aiExplanation}` : `⚠️ ${message}`;
+            const severityLabels = {
+              critical: { UA: "🔴 Критично", EN: "🔴 Critical", DE: "🔴 Kritisch" },
+              high: { UA: "🟠 Важливо", EN: "🟠 High priority", DE: "🟠 Wichtig" },
+              medium: { UA: "🟡 Середньо", EN: "🟡 Medium", DE: "🟡 Mittel" },
+            };
+            const severityLabel = severityLabels[severity][userLang] || severityLabels[severity].EN;
+
+            const fullMessage = aiExplanation
+              ? `${severityLabel}\n${message}\n\n${aiExplanation}`
+              : `${severityLabel}\n${message}`;
 
             if (user?.telegram_id) {
               await sendTelegram(user.telegram_id, fullMessage);
