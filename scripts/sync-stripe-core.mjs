@@ -183,20 +183,35 @@ async function main() {
 
         if (prev && prev.revenue > 0) {
           const change = ((agg.revenue - prev.revenue) / prev.revenue) * 100;
+
+          if (change > -20) {
+            const { data: resolved, error: resolveErr } = await admin
+              .from("alerts_log")
+              .update({ status: "resolved" })
+              .eq("business_id", business.id)
+              .eq("type", "revenue_drop")
+              .eq("status", "open")
+              .select("id");
+            console.log("DEBUG auto-resolved alerts:", resolved?.length, "error:", resolveErr);
+          }
+
           if (change <= -20) {
             const severity = change <= -50 ? "critical" : change <= -35 ? "high" : "medium";
             const message = `Revenue for ${business.name} dropped ${Math.abs(change).toFixed(0)}% on ${date}`;
 
             const oneDayAgo = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
-            const { data: existingAlert } = await admin
-              .from("alerts_log")
-              .select("id")
-              .eq("business_id", business.id)
-              .eq("type", "revenue_drop")
-              .eq("status", "open")
-              .gte("created_at", oneDayAgo)
-              .maybeSingle();
-            if (existingAlert) continue;
+            const { data: existingAlerts, error: dedupErr } = await admin
+  .from("alerts_log")
+  .select("id, created_at")
+  .eq("business_id", business.id)
+  .eq("type", "revenue_drop")
+  .eq("status", "open")
+  .gte("created_at", oneDayAgo)
+  .order("created_at", { ascending: false })
+  .limit(1);
+
+console.log("DEBUG dedup check:", existingAlerts?.length, "error:", dedupErr);
+if (existingAlerts?.length) continue;
 
             const { data: user } = await admin
               .from("users")
