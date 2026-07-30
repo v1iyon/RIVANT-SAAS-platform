@@ -199,17 +199,17 @@ async function main() {
             const severity = change <= -50 ? "critical" : change <= -35 ? "high" : "medium";
             const message = `Revenue for ${business.name} dropped ${Math.abs(change).toFixed(0)}% on ${date}`;
 
-            const oneDayAgo = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
-            const { data: existingAlerts, error: dedupErr } = await admin
+           const oneDayAgo = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+const { data: existingAlerts, error: dedupErr } = await admin
   .from("alerts_log")
-  .select("id, created_at")
+  .select("id, sent_at")
   .eq("business_id", business.id)
   .eq("type", "revenue_drop")
   .eq("status", "open")
-  .gte("created_at", oneDayAgo)
-  .order("created_at", { ascending: false })
+  .gte("sent_at", oneDayAgo)
+  .order("sent_at", { ascending: false })
   .limit(1);
-
+  
 console.log("DEBUG dedup check:", existingAlerts?.length, "error:", dedupErr);
 if (existingAlerts?.length) continue;
 
