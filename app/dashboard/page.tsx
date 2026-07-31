@@ -74,11 +74,19 @@ interface Integration {
   errorMessage?: string;
 }
 
-// Базовые значения
-const BASE_REVENUE = 125608;
-const BASE_PROFIT = 34563;
-const BASE_MARGIN = 27.5;
-const BASE_CAC = 47;
+// Реальная строка метрик из /api/metrics (metrics_computed в Supabase).
+// Раньше здесь были BASE_REVENUE/BASE_PROFIT/BASE_MARGIN/BASE_CAC —
+// захардкоженные demo-числа. Теперь всё считается из реальных данных,
+// а до первого синка показываем честный empty-state вместо фейковых цифр.
+interface MetricsRow {
+  date: string;
+  revenue: number;
+  expenses: number;
+  profit: number;
+  margin_pct: number;
+  orders: number;
+  cac: number | null;
+}
 
 // Интеграции
 const INITIAL_INTEGRATIONS: Integration[] = [
@@ -89,55 +97,25 @@ const INITIAL_INTEGRATIONS: Integration[] = [
   { id: "quickbooks", name: "QuickBooks", status: "connected", lastSync: "15 min ago", lastSyncTime: new Date(Date.now() - 900000) },
 ];
 
-// Генерация данных для графика (30 дней)
-const generateRealisticChartData = () => {
-  const data = [];
-  let revenue = 78200;
-  let expenses = 58700;
+// Преобразует реальные строки metrics_computed (пришедшие из /api/metrics)
+// в форму {day, revenue, expenses, profit, margin}, которую ожидает
+// RevenueExpensesChart. day — порядковый номер в выборке (не календарный день),
+// нужен только для подписи в hover-тултипе.
+const toChartHistory = (rows: MetricsRow[]) =>
+  rows.map((r, i) => ({
+    day: i + 1,
+    date: r.date,
+    revenue: r.revenue,
+    expenses: r.expenses,
+    profit: r.profit,
+    margin: r.margin_pct,
+  }));
 
-  for (let day = 1; day <= 30; day++) {
-    const growthRate = 0.0035;
-    let newRevenue = revenue * (1 + growthRate);
-    let newExpenses = expenses * (1 + growthRate * 0.65);
-
-    const revenueNoise = newRevenue * (Math.random() - 0.5) * 0.02;
-    const expenseNoise = newExpenses * (Math.random() - 0.5) * 0.015;
-
-    newRevenue += revenueNoise;
-    newExpenses += expenseNoise;
-
-    if (day % 7 === 0 || day % 7 === 6) {
-      newRevenue = newRevenue * 0.92;
-      newExpenses = newExpenses * 0.88;
-    }
-
-    if (day === 7 || day === 21) {
-      newRevenue = newRevenue * 1.08;
-      newExpenses = newExpenses * 1.03;
-    }
-
-    revenue = Math.round(newRevenue);
-    expenses = Math.round(newExpenses);
-    const profit = revenue - expenses;
-    const margin = (profit / revenue) * 100;
-
-    data.push({ day, revenue, expenses, profit, margin: Number(margin.toFixed(1)) });
-  }
-  return data;
-};
-
-// Генерация данных для тикеров
-const generateTickerData = (baseValue: number, volatility: number, trend: number = 0) => {
-  const data = [];
-  let value = baseValue;
-  for (let i = 0; i < 24; i++) {
-    const trendEffect = value * trend;
-    const change = (Math.random() - 0.48) * volatility;
-    value = value + trendEffect + change;
-    value = Math.max(baseValue * 0.94, Math.min(baseValue * 1.06, value));
-    data.push(Math.round(value * 100) / 100);
-  }
-  return data;
+// Берёт значения last/prev metric для карточек сверху и спарклайн
+// из хвоста реальной истории (без выдуманных случайных чисел).
+const buildSparkline = (rows: MetricsRow[], pick: (r: MetricsRow) => number) => {
+  const tail = rows.slice(-14);
+  return tail.map(pick);
 };
 
 // Полный список часовых поясов IANA — то же самое, что использует ОС.
@@ -207,8 +185,6 @@ function groupTimezonesByRegion(zones: string[]): Record<string, string[]> {
   }
   return sorted;
 }
-
-const CHART_DATA = generateRealisticChartData();
 
 const sidebarItems = [
   { icon: LayoutDashboard, label: "overview", view: "overview" as ViewType, translationKey: "overview" },
@@ -297,12 +273,22 @@ function TickerSparkline({ history, color, currentValue, previousValue }: { hist
 }
 
 // ========== КОМПОНЕНТ ГЛАВНОГО ГРАФИКА ==========
-function RevenueExpensesChart() {
+function RevenueExpensesChart({ history }: { history: { day: number; date: string; revenue: number; expenses: number; profit: number; margin: number }[] }) {
   const { t } = useLanguage();
   const T = t as any;
   const [hoveredBar, setHoveredBar] = useState<number | null>(null);
   const [selectedMetric, setSelectedMetric] = useState<"revenue" | "expenses" | "profit">("revenue");
-  const history = CHART_DATA;
+
+  if (!history || history.length === 0) {
+    return (
+      <div className="bg-gradient-to-br from-gray-900/80 to-black rounded-2xl p-8 border border-gray-800 text-center">
+        <BarChart3 className="w-8 h-8 mx-auto mb-3 text-gray-600" />
+        <p className="text-gray-400 text-sm">
+          {T.demoNoChartData || "No revenue history yet — this fills in automatically after your first Stripe sync."}
+        </p>
+      </div>
+    );
+  }
 
   const maxRevenue = Math.max(...history.map(d => d.revenue));
   const maxExpenses = Math.max(...history.map(d => d.expenses));
@@ -549,20 +535,28 @@ export default function DashboardPage() {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   // Состояния для живых метрик
-  const [currentRevenue, setCurrentRevenue] = useState(BASE_REVENUE);
-  const [currentProfit, setCurrentProfit] = useState(BASE_PROFIT);
-  const [currentMargin, setCurrentMargin] = useState(BASE_MARGIN);
-  const [currentCac, setCurrentCac] = useState(BASE_CAC);
-  const [prevRevenue, setPrevRevenue] = useState(BASE_REVENUE);
-  const [prevProfit, setPrevProfit] = useState(BASE_PROFIT);
-  const [prevMargin, setPrevMargin] = useState(BASE_MARGIN);
-  const [prevCac, setPrevCac] = useState(BASE_CAC);
+  // Реальные метрики из metrics_computed (через /api/metrics).
+  // metricsLoaded=false — ещё идёт первый запрос (не путать с "данных нет").
+  const [metricsRows, setMetricsRows] = useState<MetricsRow[]>([]);
+  const [metricsLoaded, setMetricsLoaded] = useState(false);
+
+  const lastRow = metricsRows[metricsRows.length - 1];
+  const prevRow = metricsRows[metricsRows.length - 2];
+
+  const currentRevenue = lastRow?.revenue ?? 0;
+  const currentProfit = lastRow?.profit ?? 0;
+  const currentMargin = lastRow?.margin_pct ?? 0;
+  const currentCac = lastRow?.cac ?? null; // нет источника рекламных расходов — см. Фазу 3 аудита
+  const prevRevenue = prevRow?.revenue ?? currentRevenue;
+  const prevProfit = prevRow?.profit ?? currentProfit;
+  const prevMargin = prevRow?.margin_pct ?? currentMargin;
+  const prevCac = prevRow?.cac ?? currentCac;
 
   // Очереди для спарклайнов
-  const [revenueQueue, setRevenueQueue] = useState<number[]>(() => generateTickerData(BASE_REVENUE, 400, 0.0003));
-  const [profitQueue, setProfitQueue] = useState<number[]>(() => generateTickerData(BASE_PROFIT, 300, 0.0002));
-  const [marginQueue, setMarginQueue] = useState<number[]>(() => generateTickerData(BASE_MARGIN, 0.4, 0.0001));
-  const [cacQueue, setCacQueue] = useState<number[]>(() => generateTickerData(BASE_CAC, 1.2, -0.0001));
+  const revenueQueue = buildSparkline(metricsRows, (r) => r.revenue);
+  const profitQueue = buildSparkline(metricsRows, (r) => r.profit);
+  const marginQueue = buildSparkline(metricsRows, (r) => r.margin_pct);
+  const chartHistory = toChartHistory(metricsRows);
 
   const [risks, setRisks] = useState<Risk[]>(INITIAL_RISKS);
   const [alertCount, setAlertCount] = useState(INITIAL_RISKS.length);
@@ -680,6 +674,17 @@ if (bizData.business) {
       const sub = await res.json();
       setSubInfo(sub);
 
+      try {
+        const metricsRes = await fetch(`/api/metrics?email=${encodeURIComponent(email)}`, { cache: "no-store" });
+        const metricsData = await metricsRes.json();
+        setMetricsRows(metricsData.hasData ? metricsData.rows : []);
+      } catch (e) {
+        console.error("Failed to load metrics", e);
+        setMetricsRows([]);
+      } finally {
+        setMetricsLoaded(true);
+      }
+
       const notifRes = await fetch(`/api/notifications/latest?email=${encodeURIComponent(email)}`, { cache: "no-store" });
       const notifData = await notifRes.json();
       if (notifData.notification) setBroadcastNotif(notifData.notification);
@@ -718,10 +723,11 @@ const isBlocked =
   subInfo.access_status === "none";             // явный статус "нет плана", если так возвращает API
 
 
-  const revenueChange = ((currentRevenue - prevRevenue) / prevRevenue * 100).toFixed(1);
-  const profitChange = ((currentProfit - prevProfit) / prevProfit * 100).toFixed(1);
+  const pctChange = (curr: number, prev: number) => (prev ? ((curr - prev) / prev * 100).toFixed(1) : "0.0");
+  const revenueChange = pctChange(currentRevenue, prevRevenue);
+  const profitChange = pctChange(currentProfit, prevProfit);
   const marginChange = (currentMargin - prevMargin).toFixed(1);
-  const cacChange = ((currentCac - prevCac) / prevCac * 100).toFixed(1);
+  const cacChange = currentCac != null && prevCac ? pctChange(currentCac, prevCac) : "0.0";
 
  const handleConnectTelegram = async () => {
   const res = await fetch("/api/telegram-connect", {
@@ -1275,51 +1281,80 @@ if (!subInfo) {
           {activeView === "overview" && (
             <div className="space-y-5">
 
+              {metricsLoaded && metricsRows.length === 0 ? (
+                <div className="text-center py-16 bg-gray-900/30 rounded-xl border border-gray-800">
+                  <DollarSign className="w-10 h-10 mx-auto mb-3 text-gray-600" />
+                  <h3 className="text-white font-semibold mb-1">
+                    {language === "UA" ? "Дані ще не синхронізовані" : language === "DE" ? "Noch keine Daten synchronisiert" : "No data synced yet"}
+                  </h3>
+                  <p className="text-gray-500 text-sm max-w-md mx-auto">
+                    {language === "UA"
+                      ? "Підключи Stripe у розділі Integrations — перший синк відбувається автоматично раз на годину."
+                      : language === "DE"
+                      ? "Verbinde Stripe unter Integrations — die erste Synchronisierung läuft automatisch stündlich."
+                      : "Connect Stripe under Integrations — the first sync runs automatically within an hour."}
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                    <MetricCard
+                      title={T.revenue || "Revenue"}
+                      value={currentRevenue}
+                      change={parseFloat(revenueChange)}
+                      icon={DollarSign}
+                      color="bg-blue-500"
+                      prefix="$"
+                      sparklineData={revenueQueue}
+                      prevValue={prevRevenue}
+                    />
+                    <MetricCard
+                      title={T.profit || "Profit"}
+                      value={currentProfit}
+                      change={parseFloat(profitChange)}
+                      icon={TrendingUp}
+                      color="bg-green-500"
+                      prefix="$"
+                      sparklineData={profitQueue}
+                      prevValue={prevProfit}
+                    />
+                    <MetricCard
+                      title={T.margin || "Margin"}
+                      value={currentMargin}
+                      change={parseFloat(marginChange)}
+                      icon={LineChart}
+                      color="bg-purple-500"
+                      suffix="%"
+                      sparklineData={marginQueue}
+                      prevValue={prevMargin}
+                    />
+                    {currentCac != null ? (
+                      <MetricCard
+                        title={T.cac || "CAC"}
+                        value={currentCac}
+                        change={parseFloat(cacChange)}
+                        icon={Users}
+                        color="bg-orange-500"
+                        prefix="$"
+                        sparklineData={[]}
+                        prevValue={prevCac ?? currentCac}
+                      />
+                    ) : (
+                      <div className="bg-gray-900/40 rounded-xl p-4 border border-gray-800 flex flex-col justify-between">
+                        <div className="flex items-center gap-2 text-gray-500">
+                          <Users className="w-4 h-4" />
+                          <span className="text-xs">{T.cac || "CAC"}</span>
+                        </div>
+                        <div className="text-sm text-gray-500 mt-2">
+                          {language === "UA" ? "Немає джерела даних (реклама не підключена)" : language === "DE" ? "Keine Datenquelle (Werbung nicht verbunden)" : "No data source yet (ad platform not connected)"}
+                        </div>
+                      </div>
+                    )}
+                  </div>
 
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <MetricCard
-                  title={T.revenue || "Revenue"}
-                  value={currentRevenue}
-                  change={parseFloat(revenueChange)}
-                  icon={DollarSign}
-                  color="bg-blue-500"
-                  prefix="$"
-                  sparklineData={revenueQueue}
-                  prevValue={prevRevenue}
-                />
-                <MetricCard
-                  title={T.profit || "Profit"}
-                  value={currentProfit}
-                  change={parseFloat(profitChange)}
-                  icon={TrendingUp}
-                  color="bg-green-500"
-                  prefix="$"
-                  sparklineData={profitQueue}
-                  prevValue={prevProfit}
-                />
-                <MetricCard
-                  title={T.margin || "Margin"}
-                  value={currentMargin}
-                  change={parseFloat(marginChange)}
-                  icon={LineChart}
-                  color="bg-purple-500"
-                  suffix="%"
-                  sparklineData={marginQueue}
-                  prevValue={prevMargin}
-                />
-                <MetricCard
-                  title={T.cac || "CAC"}
-                  value={currentCac}
-                  change={parseFloat(cacChange)}
-                  icon={Users}
-                  color="bg-orange-500"
-                  prefix="$"
-                  sparklineData={cacQueue}
-                  prevValue={prevCac}
-                />
-              </div>
-
-              <RevenueExpensesChart />
+                  <RevenueExpensesChart history={chartHistory} />
+                </>
+              )}
             </div>
           )}
 
