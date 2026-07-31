@@ -1,0 +1,15 @@
+name: Trial prompt reminder
+
+on:
+  schedule:
+    - cron: "0 9 * * *"   # каждый день в 09:00 UTC
+  workflow_dispatch: {}    # чтобы можно было запускать вручную кнопкой
+
+jobs:
+  trial-prompt:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger trial prompt cron
+        run: |
+          curl -f -X GET "https://rivant-os.vercel.app/api/cron/trial-prompt" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"
