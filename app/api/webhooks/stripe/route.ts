@@ -3,17 +3,23 @@ import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js'; // Якщо використовуєш Supabase
 
 // Ініціалізація Stripe з твоїм секретним ключем
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2025-02-24.acacia', // Або твоя версія API
-});
+
 
 // Ініціалізація Supabase (якщо використовуєш)
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY! // Використовуй Service Role Key для запису!
+  process.env.SUPABASE_SERVICE_KEY! // Використовуй Service Role Key для запису!
 );
 
 export async function POST(req: Request) {
+  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+    apiVersion: '2025-02-24.acacia',
+  });
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_KEY!
+  );
+
   const body = await req.text();
   const sig = req.headers.get('stripe-signature')!;
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
