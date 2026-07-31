@@ -653,6 +653,10 @@ const [deleteError, setDeleteError] = useState("");
   const [editEmail, setEditEmail] = useState("");
   const [editPhone, setEditPhone] = useState("");
   const [editPhotoUrl, setEditPhotoUrl] = useState<string | null>(null);
+  const [phoneDirty, setPhoneDirty] = useState(false);
+const [phoneSaved, setPhoneSaved] = useState(false);
+const [companyDirty, setCompanyDirty] = useState(false);
+const [companySaved, setCompanySaved] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
   const addToQueue = <T,>(queue: T[], newValue: T): T[] => [...queue.slice(1), newValue];
@@ -890,6 +894,9 @@ const handleDisconnectTelegram = async () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: profileEmail, name: businessName, timezone }),
     });
+    setCompanyDirty(false);
+    setCompanySaved(true);
+    setTimeout(() => setCompanySaved(false), 2000);
   };
 
   const saveBusinessProfileWithTimezone = async (tz: string) => {
@@ -900,22 +907,25 @@ const handleDisconnectTelegram = async () => {
   });
 };
 
-  const savePhone = async () => {
-    try {
-      await fetch("/api/profile", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: profileEmail,
-          full_name: profileName,
-          phone: profilePhone,
-          avatar_url: profilePhotoUrl,
-        }),
-      });
-    } catch (e) {
-      console.error("Failed to save phone", e);
-    }
-  };
+const savePhone = async () => {
+  try {
+    await fetch("/api/profile", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: profileEmail,
+        full_name: profileName,
+        phone: profilePhone,
+        avatar_url: profilePhotoUrl,
+      }),
+    });
+    setPhoneDirty(false);
+    setPhoneSaved(true);
+    setTimeout(() => setPhoneSaved(false), 2000);
+  } catch (e) {
+    console.error("Failed to save phone", e);
+  }
+};
   
   const handleExportData = () => {
     window.open(`/api/export-data?email=${encodeURIComponent(profileEmail)}`, "_blank");
@@ -1730,12 +1740,27 @@ if (!subInfo) {
              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="text-xs text-muted-foreground uppercase tracking-wider">{T.settingsCompanyName || "Company Name"}</label>
-                    <input
-                      value={businessName}
-                      onChange={(e) => setBusinessName(e.target.value)}
-                      onBlur={saveBusinessProfile}
-                      className="mt-1 w-full bg-secondary border border-border rounded-lg px-3 py-2 text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                    />
+                    <div className="mt-1 flex items-center gap-2">
+                      <input
+                        value={businessName}
+                        onChange={(e) => { setBusinessName(e.target.value); setCompanyDirty(true); }}
+                        onBlur={saveBusinessProfile}
+                        className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                      />
+                      {companyDirty && (
+                        <button
+                          type="button"
+                          onClick={saveBusinessProfile}
+                          title={language === "UA" ? "Зберегти" : language === "DE" ? "Speichern" : "Save"}
+                          className="shrink-0 w-9 h-9 flex items-center justify-center rounded-lg bg-primary/20 hover:bg-primary/30 text-primary transition-colors"
+                        >
+                          <CheckCircle className="w-5 h-5" />
+                        </button>
+                      )}
+                      {companySaved && !companyDirty && (
+                        <CheckCircle className="w-5 h-5 text-green-400 shrink-0" />
+                      )}
+                    </div>
                   </div>
                   <div>
                     <label className="text-xs text-muted-foreground uppercase tracking-wider">{T.settingsBusinessId || "Business ID"}</label>
@@ -1743,12 +1768,27 @@ if (!subInfo) {
                   </div>
                   <div>
                     <label className="text-xs text-muted-foreground uppercase tracking-wider">{T.settingsPhone || "Phone"}</label>
-                    <input
-                      value={profilePhone}
-                      onChange={(e) => { setProfilePhone(e.target.value); setEditPhone(e.target.value); }}
-                      onBlur={savePhone}
-                      className="mt-1 w-full bg-secondary border border-border rounded-lg px-3 py-2 text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                    />
+                    <div className="mt-1 flex items-center gap-2">
+                      <input
+                        value={profilePhone}
+                        onChange={(e) => { setProfilePhone(e.target.value); setEditPhone(e.target.value); setPhoneDirty(true); }}
+                        onBlur={savePhone}
+                        className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                      />
+                      {phoneDirty && (
+                        <button
+                          type="button"
+                          onClick={savePhone}
+                          title={language === "UA" ? "Зберегти" : language === "DE" ? "Speichern" : "Save"}
+                          className="shrink-0 w-9 h-9 flex items-center justify-center rounded-lg bg-primary/20 hover:bg-primary/30 text-primary transition-colors"
+                        >
+                          <CheckCircle className="w-5 h-5" />
+                        </button>
+                      )}
+                      {phoneSaved && !phoneDirty && (
+                        <CheckCircle className="w-5 h-5 text-green-400 shrink-0" />
+                      )}
+                    </div>
                   </div>
                  <div>
   <label className="text-xs text-muted-foreground uppercase tracking-wider">{T.settingsTimezone || "Timezone"}</label>
@@ -1801,14 +1841,15 @@ if (!subInfo) {
                   <div className="flex items-center justify-between py-2">
                     <div><p className="font-medium text-foreground">{T.settingsTelegram || "Telegram Notifications"}</p><p className="text-xs text-muted-foreground">{T.settingsTelegramDesc || "Connect Telegram for instant alerts"}</p></div>
                     {hasGrowthAccess ? (
-                      telegramConnected ? (
-                        <Button variant="outline" size="sm" className="shrink-0" onClick={() => router.push("/#pricing")}>
-    {language === "UA" ? "Оновити" : language === "DE" ? "Upgrade" : "Upgrade"}
-  </Button>
-                      ) : (
-                        <Button variant="outline" size="sm" onClick={handleConnectTelegram}>{T.settingsConnect || "Connect"}</Button>
-                      )
-                   ) : (
+  telegramConnected ? (
+    <Button variant="outline" size="sm" className="shrink-0" onClick={handleDisconnectTelegram}>
+      {language === "UA" ? "Відключити" : language === "DE" ? "Trennen" : "Disconnect"}
+    </Button>
+  ) : (
+    <Button variant="outline" size="sm" onClick={handleConnectTelegram}>{T.settingsConnect || "Connect"}</Button>
+  )
+) : (
+
   <Button variant="outline" size="sm" onClick={() => router.push("/#pricing")}>
     {language === "UA" ? "Оновити" : language === "DE" ? "Upgrade" : "Upgrade"}
   </Button>

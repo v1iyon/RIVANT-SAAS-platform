@@ -148,6 +148,30 @@ async function main() {
       console.log("DEBUG business lookup for", integ.business_id, "-> found:", !!business, "error:", bizErr);
       if (!business) continue;
 
+      if (!business) continue;
+
+      // Не обновляем метрики, если подписка не активна (трайл/план закончился)
+      const { data: subRow } = await admin
+        .from("subscriptions")
+        .select("access_status, current_period_end")
+        .eq("user_id", business.user_id)
+        .maybeSingle();
+
+      const periodEnded = subRow?.current_period_end
+        ? new Date(subRow.current_period_end) < new Date()
+        : false;
+
+      const subscriptionInactive =
+        !subRow ||
+        subRow.access_status === "blocked" ||
+        subRow.access_status === "none" ||
+        periodEnded;
+
+      if (subscriptionInactive) {
+        console.log(`Skipping sync for business ${business.id}: subscription inactive`);
+        continue;
+      }
+
       const costPct = Number(business.cost_pct) || 30;
       console.log("DEBUG byDate:", JSON.stringify(byDate));
 
@@ -209,7 +233,7 @@ const { data: existingAlerts, error: dedupErr } = await admin
   .gte("sent_at", oneDayAgo)
   .order("sent_at", { ascending: false })
   .limit(1);
-  
+
 console.log("DEBUG dedup check:", existingAlerts?.length, "error:", dedupErr);
 if (existingAlerts?.length) continue;
 
