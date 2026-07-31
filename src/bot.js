@@ -70,6 +70,14 @@ async function loadUserContext(ctx, next) {
     return;
   }
 
+  // Логируем любое взаимодействие (клик по кнопке или сообщение) для аналитики
+  const eventType = ctx.callbackQuery ? `tg_click_${ctx.callbackQuery.data}` : "tg_message";
+  supabase.from("user_events").insert({
+    user_id: user.id,
+    event_type: eventType,
+    channel: "telegram",
+  }).then(() => {}, (e) => console.error("event log failed", e));
+
   if (user.is_blocked) {
     await ctx.reply(
       lang === "UA"
@@ -240,6 +248,73 @@ bot.callbackQuery("integrations", async (ctx) => {
   const ids = (businesses || []).map((b) => b.id);
 
   await ctx.reply(ids.length ? d.integrationsConnected(ids.length, SITE_URL) : d.integrationsNone(SITE_URL));
+});
+
+// ---------------------------------------------------------------------------
+// 🔔 Ответ на промпт продления триала
+// ---------------------------------------------------------------------------
+bot.callbackQuery("trial_yes", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const { user, d } = ctx.rivant;
+
+  const { data: business } = await supabase
+    .from("businesses")
+    .select("id")
+    .eq("user_id", user.id)
+    .limit(1)
+    .maybeSingle();
+
+  await supabase.from("user_events").insert({
+    user_id: user.id,
+    business_id: business?.id || null,
+    event_type: "trial_prompt_yes",
+    channel: "telegram",
+  });
+  await supabase.from("interest_signals").insert({
+    business_id: business?.id || null,
+    email: user.email,
+    response: "yes",
+  });
+
+  // Уведомляем тебя лично
+  if (process.env.ADMIN_TELEGRAM_ID) {
+    await fetch(`https://api.telegram.org/bot${process.env.BOT_TOKEN}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: process.env.ADMIN_TELEGRAM_ID,
+        text: `🔥 Лид хочет продолжить: ${user.email}`,
+      }),
+    });
+  }
+
+  await ctx.reply(d.trialYesReply || "Дякуємо! Ми скоро з вами зв'яжемось 🙌");
+});
+
+bot.callbackQuery("trial_no", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const { user, d } = ctx.rivant;
+
+  const { data: business } = await supabase
+    .from("businesses")
+    .select("id")
+    .eq("user_id", user.id)
+    .limit(1)
+    .maybeSingle();
+
+  await supabase.from("user_events").insert({
+    user_id: user.id,
+    business_id: business?.id || null,
+    event_type: "trial_prompt_no",
+    channel: "telegram",
+  });
+  await supabase.from("interest_signals").insert({
+    business_id: business?.id || null,
+    email: user.email,
+    response: "not_now",
+  });
+
+  await ctx.reply(d.trialNoReply || "Зрозуміло, дякуємо за відповідь!");
 });
 
 bot.on("message", async (ctx) => {

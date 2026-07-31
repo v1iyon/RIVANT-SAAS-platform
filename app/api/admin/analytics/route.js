@@ -26,6 +26,8 @@ export async function GET(req) {
       { count: registeredWeek },
       { count: totalBusinesses },
       { count: stripeConnected },
+      { data: allEvents }, 
+      { data: allInterest },
       { data: allUsers },
       { data: allSubs },
     ] = await Promise.all([
@@ -34,8 +36,10 @@ export async function GET(req) {
       admin.from("users").select("id", { count: "exact", head: true }).gte("created_at", startOfDay(7)),
       admin.from("businesses").select("id", { count: "exact", head: true }),
       admin.from("integrations").select("id", { count: "exact", head: true }).eq("provider", "stripe").eq("status", "connected"),
-      admin.from("users").select("id, telegram_id"),
+     admin.from("users").select("id, telegram_id"),
       admin.from("subscriptions").select("plan, access_status"),
+      admin.from("user_events").select("event_type, channel, created_at"),
+      admin.from("interest_signals").select("email, response, created_at"),
     ]);
 
     const telegramConnected = (allUsers || []).filter((u) => u.telegram_id).length;
@@ -67,6 +71,16 @@ export async function GET(req) {
 
     const paidCount = planCounts.starter + planCounts.growth + planCounts.scale;
 
+    const promptsSent = (allEvents || []).filter((e) => e.event_type === "trial_prompt_sent").length;
+    const promptsYes = (allEvents || []).filter((e) => e.event_type === "trial_prompt_yes").length;
+    const promptsNo = (allEvents || []).filter((e) => e.event_type === "trial_prompt_no").length;
+
+    const telegramClicks = (allEvents || []).filter((e) => e.channel === "telegram").length;
+    const webEvents = (allEvents || []).filter((e) => e.channel === "web").length;
+
+    const interestYes = (allInterest || []).filter((i) => i.response === "yes").length;
+    const interestNotNow = (allInterest || []).filter((i) => i.response === "not_now").length;
+
     return Response.json({
       totalUsers: totalUsers || 0,
       registeredToday: registeredToday || 0,
@@ -82,6 +96,17 @@ export async function GET(req) {
         createdBusiness: totalBusinesses || 0,
         onboarded: onboardedUserIds.size,
         paid: paidCount,
+    trialEngagement: {
+        promptsSent,
+        promptsYes,
+        promptsNo,
+        interestYes,
+        interestNotNow,
+      },
+      activityByChannel: {
+        telegram: telegramClicks,
+        web: webEvents,
+      },
       },
     });
   } catch (err) {

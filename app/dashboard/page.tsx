@@ -6,6 +6,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useLanguage, Language } from "@/lib/translations";
+import { TrialPromptModal } from "@/components/dashboard/trial-prompt-modal";
 import {
   LayoutDashboard,
   AlertTriangle,
@@ -1256,6 +1257,7 @@ if (!subInfo) {
             </div>
           </div>
         </header>
+        <TrialPromptModal email={profileEmail} language={language} />
 
 {broadcastNotif && (
   <div className="bg-blue-600/20 border-b border-blue-500/30 px-4 py-3 flex items-center justify-between gap-3">
