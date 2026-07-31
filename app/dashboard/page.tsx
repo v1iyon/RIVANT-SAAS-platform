@@ -591,6 +591,9 @@ export default function DashboardPage() {
   const [metricsRows, setMetricsRows] = useState<MetricsRow[]>([]);
   const [metricsLoaded, setMetricsLoaded] = useState(false);
 
+const [forecastData, setForecastData] = useState<any>(null);
+const [forecastLoaded, setForecastLoaded] = useState(false);
+
   const lastRow = metricsRows[metricsRows.length - 1];
   const prevRow = metricsRows[metricsRows.length - 2];
 
@@ -686,6 +689,19 @@ const [deleteError, setDeleteError] = useState("");
     window.removeEventListener("focus", refreshTelegramStatus);
   };
 }, [profileEmail]);
+
+useEffect(() => {
+  if (!profileEmail) return;
+  setForecastLoaded(false);
+  fetch(`/api/forecast?email=${encodeURIComponent(profileEmail)}&language=${language}`, { cache: "no-store" })
+    .then((res) => res.json())
+    .then((data) => setForecastData(data))
+    .catch((e) => {
+      console.error("Failed to load forecast", e);
+      setForecastData({ sufficient: false, days: 0 });
+    })
+    .finally(() => setForecastLoaded(true));
+}, [profileEmail, language]);
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data }: any) => {
@@ -1556,7 +1572,12 @@ if (!subInfo) {
   {language === "UA" ? "Оновити тариф" : language === "DE" ? "Upgraden" : "Upgrade"}
 </Button>
                 </div>
-              ) : !forecast.sufficient ? (
+              ) : !forecastLoaded ? (
+                <div className="text-center py-16 bg-gray-900/30 rounded-xl border border-gray-800">
+                  <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+                  <p className="text-gray-500 text-sm">{getTranslation("loading", "Loading...")}</p>
+                </div>
+              ) : !forecastData?.sufficient ? (
                 <div className="text-center py-16 bg-gray-900/30 rounded-xl border border-gray-800">
                   <TrendingUp className="w-10 h-10 mx-auto mb-3 text-gray-600" />
                   <h3 className="text-white font-semibold mb-1">
@@ -1564,50 +1585,58 @@ if (!subInfo) {
                   </h3>
                   <p className="text-gray-500 text-sm max-w-md mx-auto">
                     {language === "UA"
-                      ? `Є ${forecast.days} дн. даних, потрібно мінімум ${MIN_DAYS_FOR_FORECAST}. Прогноз з'явиться автоматично, коли назбирається історія.`
+                      ? `Є ${forecastData?.days ?? 0} дн. даних, потрібно мінімум 3. Прогноз з'явиться автоматично, коли назбирається історія.`
                       : language === "DE"
-                      ? `${forecast.days} Tage Daten vorhanden, mindestens ${MIN_DAYS_FOR_FORECAST} nötig. Die Prognose erscheint automatisch, sobald genug Historie da ist.`
-                      : `${forecast.days} day(s) of data so far, need at least ${MIN_DAYS_FOR_FORECAST}. The forecast will appear automatically once there's enough history.`}
+                      ? `${forecastData?.days ?? 0} Tage Daten vorhanden, mindestens 3 nötig. Die Prognose erscheint automatisch, sobald genug Historie da ist.`
+                      : `${forecastData?.days ?? 0} day(s) of data so far, need at least 3. The forecast will appear automatically once there's enough history.`}
                   </p>
                 </div>
               ) : (
                 <>
-                  {/* 1. Метрики — реальная линейная регрессия по фактичним даним, не AI-магія */}
+                  {forecastData.tier === "low" && (
+                    <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-3 flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 text-yellow-400 mt-0.5 shrink-0" />
+                      <p className="text-xs text-yellow-300">
+                        {language === "UA"
+                          ? `Попередній прогноз на основі лише ${forecastData.days} дн. даних — точність зросте, коли назбирається більше історії (рекомендовано від 14 днів).`
+                          : language === "DE"
+                          ? `Vorläufige Prognose auf Basis von nur ${forecastData.days} Tagen — die Genauigkeit steigt mit mehr Historie (empfohlen ab 14 Tagen).`
+                          : `Preliminary forecast based on only ${forecastData.days} day(s) of data — accuracy improves as more history accumulates (14+ days recommended).`}
+                      </p>
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="bg-gradient-to-br from-blue-500/10 to-transparent rounded-xl p-5 border border-blue-500/20">
                       <div className="text-sm text-blue-400 font-semibold mb-1">{T.projectedRevenue || "Projected Revenue (90d)"}</div>
-                      <div className="text-3xl font-bold text-white">${Math.round(forecast.revenue90).toLocaleString()}</div>
-                      <div className={`text-sm mt-2 ${forecast.dailyGrowthPct >= 0 ? "text-green-400" : "text-red-400"}`}>
-                        {forecast.dailyGrowthPct >= 0 ? "+" : ""}{forecast.dailyGrowthPct.toFixed(2)}%/{language === "UA" ? "день (тренд)" : language === "DE" ? "Tag (Trend)" : "day (trend)"}
+                      <div className="text-3xl font-bold text-white">${Math.round(forecastData.revenue90).toLocaleString()}</div>
+                      <div className={`text-sm mt-2 ${forecastData.dailyGrowthPct >= 0 ? "text-green-400" : "text-red-400"}`}>
+                        {forecastData.dailyGrowthPct >= 0 ? "+" : ""}{forecastData.dailyGrowthPct.toFixed(2)}%/{language === "UA" ? "день (тренд)" : language === "DE" ? "Tag (Trend)" : "day (trend)"}
                       </div>
                       <div className="text-xs text-gray-500 mt-3">
-                        {T.demoConfidence || "Confidence"}: {forecast.confidence}% · {language === "UA" ? `на основі ${forecast.days} дн.` : language === "DE" ? `basierend auf ${forecast.days} Tagen` : `based on ${forecast.days} days`}
+                        {T.demoConfidence || "Confidence"}: {forecastData.confidence}% · {language === "UA" ? `на основі ${forecastData.days} дн.` : language === "DE" ? `basierend auf ${forecastData.days} Tagen` : `based on ${forecastData.days} days`}
                       </div>
                     </div>
                     <div className="bg-gradient-to-br from-orange-500/10 to-transparent rounded-xl p-5 border border-orange-500/20">
                       <div className="text-sm text-orange-400 font-semibold mb-1">{T.projectedExpenses || "Projected Expenses (90d)"}</div>
-                      <div className="text-3xl font-bold text-white">${Math.round(forecast.expenses90).toLocaleString()}</div>
+                      <div className="text-3xl font-bold text-white">${Math.round(forecastData.expenses90).toLocaleString()}</div>
                       <div className="text-sm text-gray-500 mt-2">
                         {language === "UA" ? "лінійна екстраполяція витрат" : language === "DE" ? "lineare Extrapolation der Kosten" : "linear extrapolation of costs"}
-                      </div>
-                      <div className="text-xs text-gray-500 mt-3">
-                        {T.demoConfidence || "Confidence"}: {Math.round(forecast.expensesReg.r2 * 100)}%
                       </div>
                     </div>
                   </div>
 
-                  {/* 2. График — реальные накопленные прогнози на 30/60/90 днів, без вигаданих місяців */}
                   <div className="bg-gray-900/30 rounded-xl p-3 sm:p-5 border border-gray-800 overflow-hidden">
                     <h3 className="font-semibold text-white text-base mb-4">
                       {language === "UA" ? "Прогноз (накопичувальний)" : language === "DE" ? "Prognose (kumulativ)" : "Cumulative forecast"}
                     </h3>
                     <div className="flex justify-around items-end h-40 gap-1 sm:gap-4">
                       {[
-                        { label: "30d", revenue: forecast.revenue30, expenses: forecast.expenses30 },
-                        { label: "60d", revenue: forecast.revenue60, expenses: forecast.expenses60 },
-                        { label: "90d", revenue: forecast.revenue90, expenses: forecast.expenses90 },
+                        { label: "30d", revenue: forecastData.revenue30, expenses: forecastData.expenses30 },
+                        { label: "60d", revenue: forecastData.revenue60, expenses: forecastData.expenses60 },
+                        { label: "90d", revenue: forecastData.revenue90, expenses: forecastData.expenses90 },
                       ].map((m, i) => {
-                        const scale = Math.max(forecast.revenue90, forecast.expenses90, 1) / 140;
+                        const scale = Math.max(forecastData.revenue90, forecastData.expenses90, 1) / 140;
                         return (
                           <div key={i} className="flex flex-col items-center gap-2 flex-1 min-w-0">
                             <div className="relative w-full flex justify-center gap-1 sm:gap-2 items-end">
@@ -1629,30 +1658,20 @@ if (!subInfo) {
                     </div>
                   </div>
 
-                  {/* 3. Текст — реальные цифры з регресії, без вигаданих "seasonal peak" і "ad spend" */}
+                  {/* AI-объяснение — сгенерировано на основе уже посчитанных чисел, не выдумано */}
                   <div className="bg-blue-500/5 rounded-xl p-4 border border-blue-500/20">
-                    <p className="text-sm text-gray-400">
-                      {language === "UA"
-                        ? `Проста лінійна регресія за ${forecast.days} дн. фактичних даних (не AI, чесний тренд):`
-                        : language === "DE"
-                        ? `Einfache lineare Regression über ${forecast.days} Tage echter Daten (kein KI-Modell, ehrlicher Trend):`
-                        : `Simple linear regression over ${forecast.days} real days of data (not AI — an honest trend line):`}
-                    </p>
-                    <ul className="mt-2 space-y-1 text-sm text-gray-300">
-                      <li>
-                        • {language === "UA" ? "Тренд виручки" : language === "DE" ? "Umsatztrend" : "Revenue trend"}: {forecast.dailyGrowthPct >= 0 ? "+" : ""}{forecast.dailyGrowthPct.toFixed(2)}%/{language === "UA" ? "день" : language === "DE" ? "Tag" : "day"}
-                      </li>
-                      <li>
-                        • {language === "UA" ? "Тренд маржі" : language === "DE" ? "Margentrend" : "Margin trend"}: {forecast.marginReg.slope >= 0 ? "+" : ""}{forecast.marginReg.slope.toFixed(2)} {language === "UA" ? "п.п./день" : "pp/day"}
-                      </li>
-                      <li className="text-gray-500">
-                        • {language === "UA"
-                          ? `Довіра до прогнозу (R²): ${forecast.confidence}% — чим більше днів даних, тим точніше.`
-                          : language === "DE"
-                          ? `Prognosegüte (R²): ${forecast.confidence}% — mehr Tage Daten = genauere Prognose.`
-                          : `Forecast fit (R²): ${forecast.confidence}% — accuracy improves as more days accumulate.`}
-                      </li>
-                    </ul>
+                    {forecastData.explanation ? (
+                      <p className="text-sm text-gray-300 whitespace-pre-line">{forecastData.explanation}</p>
+                    ) : (
+                      <ul className="space-y-1 text-sm text-gray-300">
+                        <li>
+                          • {language === "UA" ? "Тренд виручки" : language === "DE" ? "Umsatztrend" : "Revenue trend"}: {forecastData.dailyGrowthPct >= 0 ? "+" : ""}{forecastData.dailyGrowthPct.toFixed(2)}%/{language === "UA" ? "день" : language === "DE" ? "Tag" : "day"}
+                        </li>
+                        <li>
+                          • {language === "UA" ? "Тренд маржі" : language === "DE" ? "Margentrend" : "Margin trend"}: {forecastData.marginSlope >= 0 ? "+" : ""}{forecastData.marginSlope.toFixed(2)} {language === "UA" ? "п.п./день" : "pp/day"}
+                        </li>
+                      </ul>
+                    )}
                   </div>
                 </>
               )}
