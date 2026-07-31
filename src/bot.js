@@ -276,19 +276,61 @@ bot.callbackQuery("trial_yes", async (ctx) => {
     response: "yes",
   });
 
-  // Уведомляем тебя лично
   if (process.env.ADMIN_TELEGRAM_ID) {
-    await fetch(`https://api.telegram.org/bot${process.env.BOT_TOKEN}/sendMessage`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: process.env.ADMIN_TELEGRAM_ID,
-        text: `🔥 Лид хочет продолжить: ${user.email}`,
-      }),
-    });
+  const notifyRes = await fetch(`https://api.telegram.org/bot${process.env.BOT_TOKEN}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat_id: process.env.ADMIN_TELEGRAM_ID,
+      text: `🔥 Лид хочет продолжить: ${user.email}`,
+    }),
+  });
+  if (!notifyRes.ok) {
+    const errBody = await notifyRes.text();
+    console.error("Admin notify failed:", notifyRes.status, errBody);
+  }
+}
+
+  // Убираем кнопки из исходного сообщения
+  try {
+    await ctx.editMessageReplyMarkup({ reply_markup: undefined });
+  } catch (e) {
+    console.error("failed to remove keyboard", e.message);
   }
 
-  await ctx.reply(d.trialYesReply || "Дякуємо! Ми скоро з вами зв'яжемось 🙌");
+  await ctx.reply(d.trialYesReply(SITE_URL), { link_preview_options: { is_disabled: true } });
+});
+
+bot.callbackQuery("trial_no", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const { user, d } = ctx.rivant;
+
+  const { data: business } = await supabase
+    .from("businesses")
+    .select("id")
+    .eq("user_id", user.id)
+    .limit(1)
+    .maybeSingle();
+
+  await supabase.from("user_events").insert({
+    user_id: user.id,
+    business_id: business?.id || null,
+    event_type: "trial_prompt_no",
+    channel: "telegram",
+  });
+  await supabase.from("interest_signals").insert({
+    business_id: business?.id || null,
+    email: user.email,
+    response: "not_now",
+  });
+
+  try {
+    await ctx.editMessageReplyMarkup({ reply_markup: undefined });
+  } catch (e) {
+    console.error("failed to remove keyboard", e.message);
+  }
+
+  await ctx.reply(d.trialNoReply);
 });
 
 bot.callbackQuery("trial_no", async (ctx) => {
