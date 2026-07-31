@@ -54,15 +54,30 @@ import { createClient } from "@/lib/supabase-browser";
 type ViewType = "overview" | "risks" | "forecast" | "integrations" | "settings";
 
 interface Risk {
-  id: number;
+  id: string | number;
   title: string;
   description: string;
   time: string;
-  severity: "high" | "medium" | "low";
+  severity: "critical" | "high" | "medium" | "low";
   action: string;
   category: "ads" | "inventory" | "finance" | "shipping" | "conversion" | "cac" | "margin" | "integration";
   alertType?: string;
   integrationId?: string;
+}
+
+// alerts_log.type -> UI category (только "revenue_drop" реально пишется
+// сейчас движком; остальные — задел на будущее, когда появятся другие типы).
+function alertTypeToCategory(type: string): Risk["category"] {
+  if (type === "revenue_drop") return "finance";
+  return "integration";
+}
+
+function formatAlertTime(sentAt: string): string {
+  try {
+    return new Date(sentAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return sentAt;
+  }
 }
 
 interface Integration {
@@ -111,12 +126,77 @@ const toChartHistory = (rows: MetricsRow[]) =>
     margin: r.margin_pct,
   }));
 
+// Простая линейная регрессия по реальным данным вместо выдуманного
+// "AI-forecast". Прозрачно: считаем тренд по имеющимся дням и продлеваем
+// его вперёд. Чем меньше дней данных, тем менее надёжен прогноз — это
+// явно показывается пользователю, а не маскируется фейковой уверенностью.
+function linearRegression(ys: number[]) {
+  const n = ys.length;
+  if (n === 0) return { slope: 0, intercept: 0, r2: 0 };
+  const xs = ys.map((_, i) => i);
+  const sumX = xs.reduce((s, x) => s + x, 0);
+  const sumY = ys.reduce((s, y) => s + y, 0);
+  const sumXY = xs.reduce((s, x, i) => s + x * ys[i], 0);
+  const sumXX = xs.reduce((s, x) => s + x * x, 0);
+  const denom = n * sumXX - sumX * sumX;
+  const meanY = sumY / n;
+  if (denom === 0) return { slope: 0, intercept: meanY, r2: 0 };
+  const slope = (n * sumXY - sumX * sumY) / denom;
+  const intercept = (sumY - slope * sumX) / n;
+  const ssTot = ys.reduce((s, y) => s + (y - meanY) ** 2, 0);
+  const ssRes = ys.reduce((s, y, i) => s + (y - (intercept + slope * xs[i])) ** 2, 0);
+  const r2 = ssTot === 0 ? 0 : Math.max(0, Math.min(1, 1 - ssRes / ssTot));
+  return { slope, intercept, r2 };
+}
+
+function projectTotal(reg: { slope: number; intercept: number }, fromDay: number, days: number) {
+  let total = 0;
+  for (let i = 0; i < days; i++) {
+    total += Math.max(0, reg.intercept + reg.slope * (fromDay + i));
+  }
+  return total;
+}
+
 // Берёт значения last/prev metric для карточек сверху и спарклайн
 // из хвоста реальной истории (без выдуманных случайных чисел).
 const buildSparkline = (rows: MetricsRow[], pick: (r: MetricsRow) => number) => {
   const tail = rows.slice(-14);
   return tail.map(pick);
 };
+
+const MIN_DAYS_FOR_FORECAST = 7;
+
+function buildForecast(rows: MetricsRow[]) {
+  if (rows.length < MIN_DAYS_FOR_FORECAST) {
+    return { sufficient: false as const, days: rows.length };
+  }
+  const revenueReg = linearRegression(rows.map((r) => r.revenue));
+  const expensesReg = linearRegression(rows.map((r) => r.expenses));
+  const marginReg = linearRegression(rows.map((r) => r.margin_pct));
+  const fromDay = rows.length;
+
+  const revenue90 = projectTotal(revenueReg, fromDay, 90);
+  const expenses90 = projectTotal(expensesReg, fromDay, 90);
+  const revenue30 = projectTotal(revenueReg, fromDay, 30);
+  const revenue60 = projectTotal(revenueReg, fromDay, 60);
+  const expenses30 = projectTotal(expensesReg, fromDay, 30);
+  const expenses60 = projectTotal(expensesReg, fromDay, 60);
+
+  const avgRecentRevenue = rows.slice(-7).reduce((s, r) => s + r.revenue, 0) / Math.min(7, rows.length);
+  const dailyGrowthPct = avgRecentRevenue > 0 ? (revenueReg.slope / avgRecentRevenue) * 100 : 0;
+
+  return {
+    sufficient: true as const,
+    days: rows.length,
+    revenueReg,
+    expensesReg,
+    marginReg,
+    revenue30, revenue60, revenue90,
+    expenses30, expenses60, expenses90,
+    dailyGrowthPct,
+    confidence: Math.round(revenueReg.r2 * 100),
+  };
+}
 
 // Полный список часовых поясов IANA — то же самое, что использует ОС.
 // Fallback на случай очень старых браузеров без поддержки Intl.supportedValuesOf.
@@ -496,36 +576,7 @@ function getCategoryIcon(category: string) {
   }
 }
 
-// Статичные риски для демо
-const INITIAL_RISKS: Risk[] = [
-  {
-    id: 1,
-    title: "Low stock alert",
-    description: "Top SKU #4521 has only 3 days of stock remaining",
-    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    severity: "high",
-    action: "Reorder Now",
-    category: "inventory",
-  },
-  {
-    id: 2,
-    title: "Conversion rate dropping",
-    description: "Checkout completion dropped 12% in last 2 hours",
-    time: new Date(Date.now() - 600000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    severity: "high",
-    action: "Check Funnel",
-    category: "conversion",
-  },
-  {
-    id: 3,
-    title: "Ad spend spike",
-    description: "Meta Ads spending 23% above daily budget",
-    time: new Date(Date.now() - 1200000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    severity: "medium",
-    action: "Check Campaigns",
-    category: "ads",
-  },
-];
+
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -557,9 +608,11 @@ export default function DashboardPage() {
   const profitQueue = buildSparkline(metricsRows, (r) => r.profit);
   const marginQueue = buildSparkline(metricsRows, (r) => r.margin_pct);
   const chartHistory = toChartHistory(metricsRows);
+  const forecast = buildForecast(metricsRows);
 
-  const [risks, setRisks] = useState<Risk[]>(INITIAL_RISKS);
-  const [alertCount, setAlertCount] = useState(INITIAL_RISKS.length);
+  const [risks, setRisks] = useState<Risk[]>([]);
+  const [alertCount, setAlertCount] = useState(0);
+  const [alertsLoaded, setAlertsLoaded] = useState(false);
   const [integrations, setIntegrations] = useState<Integration[]>(INITIAL_INTEGRATIONS);
 
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
@@ -683,6 +736,29 @@ if (bizData.business) {
         setMetricsRows([]);
       } finally {
         setMetricsLoaded(true);
+      }
+
+      try {
+        const alertsRes = await fetch(`/api/alerts?email=${encodeURIComponent(email)}`, { cache: "no-store" });
+        const alertsData = await alertsRes.json();
+        const mapped: Risk[] = (alertsData.alerts || []).map((a: any) => ({
+          id: a.id,
+          title: a.message,
+          description: a.ai_explanation || "",
+          time: formatAlertTime(a.sent_at),
+          severity: a.severity,
+          action: language === "UA" ? "Переглянути огляд" : language === "DE" ? "Übersicht ansehen" : "View overview",
+          category: alertTypeToCategory(a.type),
+          alertType: a.type,
+        }));
+        setRisks(mapped);
+        setAlertCount(mapped.length);
+      } catch (e) {
+        console.error("Failed to load alerts", e);
+        setRisks([]);
+        setAlertCount(0);
+      } finally {
+        setAlertsLoaded(true);
       }
 
       const notifRes = await fetch(`/api/notifications/latest?email=${encodeURIComponent(email)}`, { cache: "no-store" });
@@ -1242,7 +1318,7 @@ if (!subInfo) {
                       <div key={alert.id} className="p-3 hover:bg-gray-800/50 border-b border-gray-800/30 last:border-0">
                         <div className="flex items-start gap-3">
                           <div className={`w-2 h-2 rounded-full mt-1.5 ${
-                            alert.severity === "high" ? "bg-red-500" :
+                            alert.severity === "high" || alert.severity === "critical" ? "bg-red-500" :
                             alert.severity === "medium" ? "bg-yellow-500" : "bg-blue-500"
                           }`} />
                           <div>
@@ -1380,7 +1456,19 @@ if (!subInfo) {
                     <span className="text-sm text-gray-500">{risks.length} {language === "UA" ? "сповіщень" : language === "DE" ? "Benachrichtigungen" : "notifications"}</span>
                     {risks.length > 0 && (
                       <button
-                        onClick={() => { setRisks([]); setAlertCount(0); }}
+                        onClick={async () => {
+                          setRisks([]);
+                          setAlertCount(0);
+                          try {
+                            await fetch("/api/alerts", {
+                              method: "PATCH",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ email: profileEmail, resolveAll: true }),
+                            });
+                          } catch (e) {
+                            console.error("Failed to resolve all alerts", e);
+                          }
+                        }}
                         className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-red-400 transition-colors px-2 py-1 rounded-lg hover:bg-red-500/10"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -1394,27 +1482,44 @@ if (!subInfo) {
                       <div key={risk.id} className="bg-gray-900/50 rounded-xl p-4 border border-gray-800">
                         <div className="flex items-start gap-3">
                           <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                            risk.severity === "high" ? "bg-red-500/20" : risk.severity === "medium" ? "bg-yellow-500/20" : "bg-blue-500/20"
+                            risk.severity === "high" || risk.severity === "critical" ? "bg-red-500/20" : risk.severity === "medium" ? "bg-yellow-500/20" : "bg-blue-500/20"
                           }`}>
                             {getCategoryIcon(risk.category)}
                           </div>
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-1">
                               <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
-                                risk.severity === "high" ? "bg-red-500/20 text-red-400" :
+                                risk.severity === "high" || risk.severity === "critical" ? "bg-red-500/20 text-red-400" :
                                 risk.severity === "medium" ? "bg-yellow-500/20 text-yellow-400" : "bg-blue-500/20 text-blue-400"
                               }`}>{risk.severity.toUpperCase()}</span>
                               <span className="text-xs text-gray-500">{risk.time}</span>
                             </div>
                             <h4 className="font-semibold text-white text-base">{risk.title}</h4>
                             <p className="text-sm text-gray-400 mt-0.5">{risk.description}</p>
-                            <Button size="sm" variant="outline" className="mt-3 h-8 text-sm border-gray-700 text-gray-400 hover:bg-gray-800">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="mt-3 h-8 text-sm border-gray-700 text-gray-400 hover:bg-gray-800"
+                              onClick={() => setActiveView("overview")}
+                            >
                               {risk.action}
                             </Button>
                           </div>
                           {/* FIX: увеличенная тап-зона крестика удаления риска (p-2 -m-1 вместо p-1) */}
                           <button
-                            onClick={() => { setRisks(prev => prev.filter(r => r.id !== risk.id)); setAlertCount(prev => Math.max(0, prev - 1)); }}
+                            onClick={async () => {
+                              setRisks(prev => prev.filter(r => r.id !== risk.id));
+                              setAlertCount(prev => Math.max(0, prev - 1));
+                              try {
+                                await fetch("/api/alerts", {
+                                  method: "PATCH",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ email: profileEmail, id: risk.id }),
+                                });
+                              } catch (e) {
+                                console.error("Failed to resolve alert", e);
+                              }
+                            }}
                             className="text-gray-600 hover:text-gray-300 transition-colors p-2 -m-1 rounded-lg hover:bg-gray-800 self-start shrink-0"
                           >
                             <X className="w-4 h-4" />
@@ -1422,7 +1527,7 @@ if (!subInfo) {
                         </div>
                       </div>
                     ))}
-                    {risks.length === 0 && (
+                    {alertsLoaded && risks.length === 0 && (
                       <div className="text-center py-12 text-gray-500">
                         <CheckCircle className="w-12 h-12 mx-auto mb-3 opacity-30" />
                         <p className="text-base">{T.demoNoActiveRisks || "No active risks. All systems normal."}</p>
@@ -1451,64 +1556,102 @@ if (!subInfo) {
   {language === "UA" ? "Оновити тариф" : language === "DE" ? "Upgraden" : "Upgrade"}
 </Button>
                 </div>
+              ) : !forecast.sufficient ? (
+                <div className="text-center py-16 bg-gray-900/30 rounded-xl border border-gray-800">
+                  <TrendingUp className="w-10 h-10 mx-auto mb-3 text-gray-600" />
+                  <h3 className="text-white font-semibold mb-1">
+                    {language === "UA" ? "Недостатньо даних для прогнозу" : language === "DE" ? "Nicht genug Daten für eine Prognose" : "Not enough data for a forecast yet"}
+                  </h3>
+                  <p className="text-gray-500 text-sm max-w-md mx-auto">
+                    {language === "UA"
+                      ? `Є ${forecast.days} дн. даних, потрібно мінімум ${MIN_DAYS_FOR_FORECAST}. Прогноз з'явиться автоматично, коли назбирається історія.`
+                      : language === "DE"
+                      ? `${forecast.days} Tage Daten vorhanden, mindestens ${MIN_DAYS_FOR_FORECAST} nötig. Die Prognose erscheint automatisch, sobald genug Historie da ist.`
+                      : `${forecast.days} day(s) of data so far, need at least ${MIN_DAYS_FOR_FORECAST}. The forecast will appear automatically once there's enough history.`}
+                  </p>
+                </div>
               ) : (
                 <>
-                  {/* 1. Метрики */}
+                  {/* 1. Метрики — реальная линейная регрессия по фактичним даним, не AI-магія */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="bg-gradient-to-br from-blue-500/10 to-transparent rounded-xl p-5 border border-blue-500/20">
                       <div className="text-sm text-blue-400 font-semibold mb-1">{T.projectedRevenue || "Projected Revenue (90d)"}</div>
-                      <div className="text-3xl font-bold text-white">$892,400</div>
-                      <div className="text-sm text-green-400 mt-2">+18% {T.demoVsLastQuarter || "vs last quarter"}</div>
-                      <div className="text-xs text-gray-500 mt-3">{T.demoConfidence || "Confidence"}: 94%</div>
+                      <div className="text-3xl font-bold text-white">${Math.round(forecast.revenue90).toLocaleString()}</div>
+                      <div className={`text-sm mt-2 ${forecast.dailyGrowthPct >= 0 ? "text-green-400" : "text-red-400"}`}>
+                        {forecast.dailyGrowthPct >= 0 ? "+" : ""}{forecast.dailyGrowthPct.toFixed(2)}%/{language === "UA" ? "день (тренд)" : language === "DE" ? "Tag (Trend)" : "day (trend)"}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-3">
+                        {T.demoConfidence || "Confidence"}: {forecast.confidence}% · {language === "UA" ? `на основі ${forecast.days} дн.` : language === "DE" ? `basierend auf ${forecast.days} Tagen` : `based on ${forecast.days} days`}
+                      </div>
                     </div>
                     <div className="bg-gradient-to-br from-orange-500/10 to-transparent rounded-xl p-5 border border-orange-500/20">
                       <div className="text-sm text-orange-400 font-semibold mb-1">{T.projectedExpenses || "Projected Expenses (90d)"}</div>
-                      <div className="text-3xl font-bold text-white">$654,200</div>
-                      <div className="text-sm text-yellow-400 mt-2">+8% {T.demoVsLastQuarter || "vs last quarter"}</div>
-                      <div className="text-xs text-gray-500 mt-3">{T.demoConfidence || "Confidence"}: 91%</div>
+                      <div className="text-3xl font-bold text-white">${Math.round(forecast.expenses90).toLocaleString()}</div>
+                      <div className="text-sm text-gray-500 mt-2">
+                        {language === "UA" ? "лінійна екстраполяція витрат" : language === "DE" ? "lineare Extrapolation der Kosten" : "linear extrapolation of costs"}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-3">
+                        {T.demoConfidence || "Confidence"}: {Math.round(forecast.expensesReg.r2 * 100)}%
+                      </div>
                     </div>
                   </div>
 
-                  {/* 2. График */}
+                  {/* 2. График — реальные накопленные прогнози на 30/60/90 днів, без вигаданих місяців */}
                   <div className="bg-gray-900/30 rounded-xl p-3 sm:p-5 border border-gray-800 overflow-hidden">
-                    <h3 className="font-semibold text-white text-base mb-4">{T.demoMonthlyForecast || "Monthly Forecast"}</h3>
+                    <h3 className="font-semibold text-white text-base mb-4">
+                      {language === "UA" ? "Прогноз (накопичувальний)" : language === "DE" ? "Prognose (kumulativ)" : "Cumulative forecast"}
+                    </h3>
                     <div className="flex justify-around items-end h-40 gap-1 sm:gap-4">
                       {[
-                        { month: "Jul", revenue: 280, expenses: 210, revenueActual: 268 },
-                        { month: "Aug", revenue: 298, expenses: 215, revenueActual: 291 },
-                        { month: "Sep", revenue: 312, expenses: 222, revenueActual: null }
-                      ].map((m, i) => (
-                        <div key={i} className="flex flex-col items-center gap-2 flex-1 min-w-0">
-                          <div className="relative w-full flex justify-center gap-1 sm:gap-2 items-end">
-                            {m.revenueActual && (
-                              <div className="w-4 sm:w-8 bg-blue-500/30 rounded-t" style={{ height: `${m.revenueActual / 3.2}px` }} />
-                            )}
-                            <div className="w-4 sm:w-8 bg-blue-500 rounded-t" style={{ height: `${m.revenue / 3.2}px` }} />
-                            <div className="w-4 sm:w-8 bg-rose-500/60 rounded-t" style={{ height: `${m.expenses / 3.2}px` }} />
+                        { label: "30d", revenue: forecast.revenue30, expenses: forecast.expenses30 },
+                        { label: "60d", revenue: forecast.revenue60, expenses: forecast.expenses60 },
+                        { label: "90d", revenue: forecast.revenue90, expenses: forecast.expenses90 },
+                      ].map((m, i) => {
+                        const scale = Math.max(forecast.revenue90, forecast.expenses90, 1) / 140;
+                        return (
+                          <div key={i} className="flex flex-col items-center gap-2 flex-1 min-w-0">
+                            <div className="relative w-full flex justify-center gap-1 sm:gap-2 items-end">
+                              <div className="w-4 sm:w-8 bg-blue-500 rounded-t" style={{ height: `${Math.max(m.revenue / scale, 2)}px` }} />
+                              <div className="w-4 sm:w-8 bg-rose-500/60 rounded-t" style={{ height: `${Math.max(m.expenses / scale, 2)}px` }} />
+                            </div>
+                            <span className="text-xs sm:text-sm text-gray-400 font-medium truncate max-w-full">{m.label}</span>
+                            <div className="flex gap-1.5 sm:gap-2 text-[9px] sm:text-[10px]">
+                              <span className="text-blue-400">↑${Math.round(m.revenue / 1000)}k</span>
+                              <span className="text-rose-400">↓${Math.round(m.expenses / 1000)}k</span>
+                            </div>
                           </div>
-                          <span className="text-xs sm:text-sm text-gray-400 font-medium truncate max-w-full">{m.month}</span>
-                          <div className="flex gap-1.5 sm:gap-2 text-[9px] sm:text-[10px]">
-                            <span className="text-blue-400">↑${m.revenue}k</span>
-                            <span className="text-rose-400">↓${m.expenses}k</span>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                     <div className="flex justify-center gap-6 mt-4 pt-3 text-[10px] text-gray-600 border-t border-gray-800">
                       <div className="flex items-center gap-1"><div className="w-3 h-3 bg-blue-500 rounded-sm" /><span>{T.demoRevenueForecast || "Revenue Forecast"}</span></div>
-                      <div className="flex items-center gap-1"><div className="w-3 h-3 bg-blue-500/30 rounded-sm" /><span>{T.demoActualRevenue || "Actual Revenue"}</span></div>
                       <div className="flex items-center gap-1"><div className="w-3 h-3 bg-rose-500/60 rounded-sm" /><span>{T.demoExpensesForecast || "Expenses"}</span></div>
                     </div>
                   </div>
 
-                  {/* 3. AI текст */}
+                  {/* 3. Текст — реальные цифры з регресії, без вигаданих "seasonal peak" і "ad spend" */}
                   <div className="bg-blue-500/5 rounded-xl p-4 border border-blue-500/20">
-                    <p className="text-sm text-gray-400">{T.demoForecastBasedOn || "Based on historical data and market trends, our AI model predicts:"}</p>
+                    <p className="text-sm text-gray-400">
+                      {language === "UA"
+                        ? `Проста лінійна регресія за ${forecast.days} дн. фактичних даних (не AI, чесний тренд):`
+                        : language === "DE"
+                        ? `Einfache lineare Regression über ${forecast.days} Tage echter Daten (kein KI-Modell, ehrlicher Trend):`
+                        : `Simple linear regression over ${forecast.days} real days of data (not AI — an honest trend line):`}
+                    </p>
                     <ul className="mt-2 space-y-1 text-sm text-gray-300">
-                      <li>• {T.demoForecastRevenueGrowth || "18% revenue growth projected over next 90 days"}</li>
-                      <li>• {T.demoForecastMarginImprovement || "Operating margin expected to improve by 2.3%"}</li>
-                      <li>• {T.demoForecastSeasonalPeak || "Seasonal peak predicted in September (+12% vs August)"}</li>
-                      <li>• {T.demoForecastAdSpend || "Recommended ad spend increase of 8% for Q3"}</li>
+                      <li>
+                        • {language === "UA" ? "Тренд виручки" : language === "DE" ? "Umsatztrend" : "Revenue trend"}: {forecast.dailyGrowthPct >= 0 ? "+" : ""}{forecast.dailyGrowthPct.toFixed(2)}%/{language === "UA" ? "день" : language === "DE" ? "Tag" : "day"}
+                      </li>
+                      <li>
+                        • {language === "UA" ? "Тренд маржі" : language === "DE" ? "Margentrend" : "Margin trend"}: {forecast.marginReg.slope >= 0 ? "+" : ""}{forecast.marginReg.slope.toFixed(2)} {language === "UA" ? "п.п./день" : "pp/day"}
+                      </li>
+                      <li className="text-gray-500">
+                        • {language === "UA"
+                          ? `Довіра до прогнозу (R²): ${forecast.confidence}% — чим більше днів даних, тим точніше.`
+                          : language === "DE"
+                          ? `Prognosegüte (R²): ${forecast.confidence}% — mehr Tage Daten = genauere Prognose.`
+                          : `Forecast fit (R²): ${forecast.confidence}% — accuracy improves as more days accumulate.`}
+                      </li>
                     </ul>
                   </div>
                 </>
