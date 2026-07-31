@@ -26,20 +26,24 @@ export async function GET(req) {
 
   if (usersErr) return Response.json({ error: usersErr.message }, { status: 500 });
 
-  const businessByUser = new Map();
-  (businesses || []).forEach((b) => businessByUser.set(b.user_id, b.id));
+  const businessIdsByUser = new Map();
+(businesses || []).forEach((b) => {
+  const arr = businessIdsByUser.get(b.user_id) || [];
+  arr.push(b.id);
+  businessIdsByUser.set(b.user_id, arr);
+});
 
-  const stripeConnectedBusinessIds = new Set(
-    (integrations || [])
-      .filter((i) => i.provider === "stripe" && i.status === "connected")
-      .map((i) => i.business_id)
-  );
+const stripeConnectedBusinessIds = new Set(
+  (integrations || [])
+    .filter((i) => i.provider === "stripe" && i.status === "connected")
+    .map((i) => i.business_id)
+);
 
   const subByUser = new Map();
   (subscriptions || []).forEach((s) => subByUser.set(s.user_id, s));
 
   const result = (users || []).map((u) => {
-    const businessId = businessByUser.get(u.id);
+    const userBusinessIds = businessIdsByUser.get(u.id) || [];
     const sub = subByUser.get(u.id);
     return {
       id: u.id,
@@ -48,7 +52,7 @@ export async function GET(req) {
       phone: u.phone,
       is_blocked: u.is_blocked,
       created_at: u.created_at,
-      stripeConnected: businessId ? stripeConnectedBusinessIds.has(businessId) : false,
+      stripeConnected: userBusinessIds.some((id) => stripeConnectedBusinessIds.has(id)),
       telegramConnected: !!u.telegram_id,
       plan: sub?.plan || null,
       access_status: sub?.access_status || null,
