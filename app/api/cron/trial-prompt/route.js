@@ -53,8 +53,8 @@ export async function GET(req) {
     const lang = user.language || "EN";
     const d = getDict(lang);
     const kb = new InlineKeyboard()
-      .text(lang === "UA" ? "✅ Так, хочу продовжити" : "✅ Yes", "trial_yes")
-      .text(lang === "UA" ? "❌ Поки ні" : "❌ Not now", "trial_no");
+  .text(lang === "UA" ? "✅ Так" : lang === "DE" ? "✅ Ja" : "✅ Yes", "trial_yes")
+  .text(lang === "UA" ? "❌ Поки ні" : lang === "DE" ? "❌ Nicht jetzt" : "❌ Not now", "trial_no");
 
     const text = lang === "UA"
       ? "Ваш тестовий період закінчується через кілька днів. Хочете продовжити користуватися RIVANT?"

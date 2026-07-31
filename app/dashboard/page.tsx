@@ -1638,13 +1638,9 @@ if (!subInfo) {
                   </div>
                   <div className="flex items-center justify-between py-2">
                     <div><p className="font-medium text-foreground">{T.settingsApiKeys || "API Keys"}</p><p className="text-xs text-muted-foreground">{T.settingsApiKeysDesc || "Manage API access tokens"}</p></div>
-                    {subInfo?.plan === "scale" ? (
-                      <Button variant="outline" size="sm">{T.settingsManage || "Manage"}</Button>
-                    ) : (
-                      <Button variant="outline" size="sm" onClick={() => router.push("/#pricing")}>
-                    {language === "UA" ? "Лише на тарифі Scale" : language === "DE" ? "Nur im Scale-Tarif" : "Scale plan only"}
-                 </Button>
-                    )}
+                    <Button variant="outline" size="sm" disabled>
+  {language === "UA" ? "Скоро" : language === "DE" ? "Bald" : "Coming soon"}
+</Button>
                   </div>
                 </div>
               </div>
