@@ -428,17 +428,31 @@ function RevenueExpensesChart({ history }: { history: { day: number; date: strin
 }
 
 // ========== КОМПОНЕНТ КАРТОЧКИ МЕТРИКИ (стиль как в LiveDemo) ==========
+// Полные literal-классы Tailwind для каждой темы карточки. Раньше цвет строился
+// динамически через color.replace("bg-", "text-") — Tailwind не видит такую строку
+// на этапе сборки и не генерирует CSS для неё, если она не встречается где-то ещё
+// буквально в коде. text-blue-500/text-green-500 случайно были в других файлах
+// (поэтому Дохід/Прибуток красились), а text-purple-500/text-orange-500 — нет,
+// поэтому Маржа и CAC оставались белыми.
+const METRIC_CARD_THEMES: Record<string, { from: string; border: string; text: string; ticker: string }> = {
+  "bg-blue-500": { from: "from-blue-500/10", border: "border-blue-500/20", text: "text-blue-500", ticker: "bg-blue-500/60" },
+  "bg-green-500": { from: "from-green-500/10", border: "border-green-500/20", text: "text-green-500", ticker: "bg-green-500/60" },
+  "bg-purple-500": { from: "from-purple-500/10", border: "border-purple-500/20", text: "text-purple-500", ticker: "bg-purple-500/60" },
+  "bg-orange-500": { from: "from-orange-500/10", border: "border-orange-500/20", text: "text-orange-500", ticker: "bg-orange-500/60" },
+};
+
 function MetricCard({ title, value, change, color, prefix = "$", suffix = "", sparklineData, prevValue }: {
   title: string; value: number; change: number; color: string; prefix?: string; suffix?: string;
   sparklineData: number[]; prevValue: number;
 }) {
+  const theme = METRIC_CARD_THEMES[color] || METRIC_CARD_THEMES["bg-blue-500"];
   return (
-    <div className={`bg-gradient-to-br ${color.replace("bg-", "from-")}/10 to-transparent rounded-xl p-4 border ${color.replace("bg-", "border-")}/20`}>
-      <div className={`text-xs font-semibold mb-1 uppercase ${color.replace("bg-", "text-")}`}>{title}</div>
+    <div className={`bg-gradient-to-br ${theme.from} to-transparent rounded-xl p-4 border ${theme.border}`}>
+      <div className={`text-xs font-semibold mb-1 uppercase ${theme.text}`}>{title}</div>
       <AnimatedNumber value={value} prefix={prefix} suffix={suffix} changePercent={change} />
       <TickerSparkline
         history={sparklineData}
-        color={`${color}/60`}
+        color={theme.ticker}
         currentValue={value}
         previousValue={prevValue}
       />
