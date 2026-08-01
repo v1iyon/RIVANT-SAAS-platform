@@ -57,5 +57,36 @@ export async function GET(req: Request) {
     cac: null as number | null,
   }));
 
+  // Подмешиваем реальные расходы из expenses (Shopify shipping, Meta Ads
+  // advertising — пишет shopify-sync.mjs / meta-ads-sync.mjs раз в час).
+  // Без этого шага expenses копится в базе, но дашборд его никогда не видел.
+  const minDate = rows[0].date;
+  const { data: expenseRows } = await admin
+    .from("expenses")
+    .select("date, amount, category")
+    .eq("business_id", business.id)
+    .gte("date", minDate)
+    .limit(2000);
+
+  const extraByDate: Record<string, { total: number; advertising: number }> = {};
+  for (const e of expenseRows || []) {
+    if (!extraByDate[e.date]) extraByDate[e.date] = { total: 0, advertising: 0 };
+    const amount = Number(e.amount) || 0;
+    extraByDate[e.date].total += amount;
+    if (e.category === "advertising") extraByDate[e.date].advertising += amount;
+  }
+
+  for (const row of rows) {
+    const extra = extraByDate[row.date];
+    if (!extra) continue;
+    row.expenses += extra.total;
+    row.profit = row.revenue - row.expenses;
+    row.margin_pct = row.revenue > 0 ? Number(((row.profit / row.revenue) * 100).toFixed(1)) : 0;
+    // CAC = рекламные расходы / кол-во заказов за тот же день. Как только
+    // появится Google Ads, тут же станет суммой обеих интеграций — но CAC-карта
+    // на фронте останется одной цифрой, пока подключён только один рекламный источник.
+    row.cac = extra.advertising > 0 && row.orders > 0 ? Number((extra.advertising / row.orders).toFixed(2)) : null;
+  }
+
   return Response.json({ hasData: true, rows });
 }
