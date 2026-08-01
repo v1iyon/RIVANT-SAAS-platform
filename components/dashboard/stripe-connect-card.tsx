@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { CheckCircle, AlertCircle, Lock } from "lucide-react";
 import { useLanguage } from "@/lib/translations";
@@ -18,6 +18,8 @@ export function StripeConnectCard({ email, locked = false, onLockedClick }: Prop
   const [errorMsg, setErrorMsg] = useState("");
   const [lastSynced, setLastSynced] = useState<string | null>(null);
   const [keyPreview, setKeyPreview] = useState<string | null>(null);
+  const [showLockedToast, setShowLockedToast] = useState(false);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadStatus = () => {
     if (!email) return;
@@ -39,9 +41,21 @@ export function StripeConnectCard({ email, locked = false, onLockedClick }: Prop
     loadStatus();
   }, [email]);
 
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    };
+  }, []);
+
+  const triggerLockedToast = () => {
+    setShowLockedToast(true);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setShowLockedToast(false), 6000);
+  };
+
   const handleConnect = async () => {
     if (locked) {
-      onLockedClick?.();
+      triggerLockedToast();
       return;
     }
     if (!apiKey.trim()) return;
@@ -69,7 +83,7 @@ export function StripeConnectCard({ email, locked = false, onLockedClick }: Prop
 
   const handleDisconnect = async () => {
     if (locked) {
-      onLockedClick?.();
+      triggerLockedToast();
       return;
     }
     await fetch("/api/stripe-disconnect", {
@@ -90,13 +104,8 @@ export function StripeConnectCard({ email, locked = false, onLockedClick }: Prop
         ? "Verbinden Sie Stripe, um echte Umsatzdaten abzurufen"
         : "Connect your Stripe account to pull real revenue data",
     connectedWaiting:
-      language === "UA"
-        ? "Підключено, очікуємо першу синхронізацію"
-        : language === "DE"
-        ? "Verbunden, wartet auf erste Synchronisierung"
-        : "Connected, waiting for first sync",
-    lastSynced:
-      language === "UA" ? "Остання синхронізація" : language === "DE" ? "Letzte Synchronisierung" : "Last synced",
+      language === "UA" ? "Підключено, очікуємо першу синхронізацію" : language === "DE" ? "Verbunden, wartet auf erste Synchronisierung" : "Connected, waiting for first sync",
+    lastSynced: language === "UA" ? "Остання синхронізація" : language === "DE" ? "Letzte Synchronisierung" : "Last synced",
     connected: language === "UA" ? "Підключено" : language === "DE" ? "Verbunden" : "Connected",
     hint:
       language === "UA"
@@ -108,9 +117,17 @@ export function StripeConnectCard({ email, locked = false, onLockedClick }: Prop
     disconnectBtn: language === "UA" ? "Відключити" : language === "DE" ? "Trennen" : "Disconnect",
     connecting: language === "UA" ? "Підключення..." : language === "DE" ? "Verbinde..." : "Connecting...",
     placeholder: "rk_test_... / rk_live_...",
+    lockedTitle: language === "UA" ? "Тариф не активний" : language === "DE" ? "Kein aktiver Tarif" : "No active plan",
+    lockedBody:
+      language === "UA"
+        ? "Щоб підключити інтеграцію, потрібно оформити тариф."
+        : language === "DE"
+        ? "Um eine Integration zu verbinden, benötigen Sie einen aktiven Tarif."
+        : "You need an active plan to connect this integration.",
+    lockedOk: language === "UA" ? "Гаразд" : language === "DE" ? "OK" : "OK",
+    lockedViewPlans: language === "UA" ? "Переглянути тарифи" : language === "DE" ? "Tarife ansehen" : "View plans",
   };
 
-  // Пока не знаем реальный статус — ничего не рисуем, чтобы не было "мигания"
   if (status === "checking") {
     return (
       <div className="bg-gray-900/30 rounded-xl p-5 border border-gray-800">
@@ -123,14 +140,9 @@ export function StripeConnectCard({ email, locked = false, onLockedClick }: Prop
   }
 
   return (
-    <div
-      className={`bg-gray-900/30 rounded-xl p-5 border border-gray-800 relative transition-opacity ${
-        locked ? "opacity-40 cursor-pointer select-none" : ""
-      }`}
-      onClick={locked ? () => onLockedClick?.() : undefined}
-    >
+    <div className="bg-gray-900/30 rounded-xl p-5 border border-gray-800 relative">
       {locked && (
-        <div className="absolute top-4 right-4 text-gray-500">
+        <div className="absolute top-4 right-4 text-gray-500" title={texts.lockedTitle}>
           <Lock className="w-4 h-4" />
         </div>
       )}
@@ -151,13 +163,7 @@ export function StripeConnectCard({ email, locked = false, onLockedClick }: Prop
             <span className="text-xs px-2 py-1 rounded-full font-semibold bg-green-500/20 text-green-400 flex items-center gap-1 font-mono whitespace-nowrap">
               <CheckCircle className="w-3 h-3 shrink-0" /> {texts.connected}{keyPreview ? ` · ${keyPreview}` : ""}
             </span>
-            <Button
-              size="sm"
-              variant="outline"
-              className="text-red-400 border-red-400/30 hover:bg-red-500/10 shrink-0"
-              onClick={handleDisconnect}
-              disabled={locked}
-            >
+            <Button size="sm" variant="outline" className="text-red-400 border-red-400/30 hover:bg-red-500/10 shrink-0" onClick={handleDisconnect}>
               {texts.disconnectBtn}
             </Button>
           </div>
@@ -169,7 +175,7 @@ export function StripeConnectCard({ email, locked = false, onLockedClick }: Prop
           <input
             type="text"
             value={apiKey}
-            onChange={(e) => !locked && setApiKey(e.target.value)}
+            onChange={(e) => setApiKey(e.target.value)}
             placeholder={texts.placeholder}
             autoComplete="off"
             autoCorrect="off"
@@ -178,7 +184,6 @@ export function StripeConnectCard({ email, locked = false, onLockedClick }: Prop
             data-lpignore="true"
             data-1p-ignore="true"
             name="rivant-stripe-key-field"
-            readOnly={locked}
             className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-600"
           />
           <p className="text-xs text-gray-500">{texts.hint}</p>
@@ -187,14 +192,29 @@ export function StripeConnectCard({ email, locked = false, onLockedClick }: Prop
               <AlertCircle className="w-3 h-3" /> {errorMsg}
             </p>
           )}
-          <Button
-            size="sm"
-            className="bg-blue-600 hover:bg-blue-700"
-            onClick={handleConnect}
-            disabled={status === "loading"}
-          >
+          <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={handleConnect} disabled={status === "loading"}>
             {status === "loading" ? texts.connecting : texts.connectBtn}
           </Button>
+
+          {showLockedToast && (
+            <div className="mt-2 bg-gray-950 border border-yellow-500/30 rounded-lg p-3 flex flex-col gap-2 animate-in fade-in slide-in-from-top-1">
+              <div className="flex items-start gap-2">
+                <Lock className="w-4 h-4 text-yellow-400 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-white">{texts.lockedTitle}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{texts.lockedBody}</p>
+                </div>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button size="sm" variant="ghost" className="text-gray-400 hover:text-white" onClick={() => setShowLockedToast(false)}>
+                  {texts.lockedOk}
+                </Button>
+                <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={() => onLockedClick?.()}>
+                  {texts.lockedViewPlans}
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

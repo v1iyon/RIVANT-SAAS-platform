@@ -1302,27 +1302,38 @@ if (!subInfo) {
                       prevValue={prevMargin}
                     />
                     {currentCac != null ? (
-                      <MetricCard
-                        title={T.cac || "CAC"}
-                        value={currentCac}
-                        change={parseFloat(cacChange)}
-                        icon={Users}
-                        color="bg-orange-500"
-                        prefix="$"
-                        sparklineData={[]}
-                        prevValue={prevCac ?? currentCac}
-                      />
-                    ) : (
-                      <div className="bg-gray-900/40 rounded-xl p-4 border border-gray-800 flex flex-col justify-between">
-                        <div className="flex items-center gap-2 text-gray-500">
-                          <Users className="w-4 h-4" />
-                          <span className="text-xs">{T.cac || "CAC"}</span>
-                        </div>
-                        <div className="text-sm text-gray-500 mt-2">
-                          {language === "UA" ? "Немає джерела даних (реклама не підключена)" : language === "DE" ? "Keine Datenquelle (Werbung nicht verbunden)" : "No data source yet (ad platform not connected)"}
-                        </div>
-                      </div>
-                    )}
+  <MetricCard
+    title={T.cac || "CAC"}
+    value={currentCac}
+    change={parseFloat(cacChange)}
+    icon={Users}
+    color="bg-orange-500"
+    prefix="$"
+    sparklineData={[]}
+    prevValue={prevCac ?? currentCac}
+  />
+) : metricsRows.length > 0 ? (
+  <div className="bg-gray-900/40 rounded-xl p-4 border border-gray-800 flex flex-col justify-between">
+    <div className="flex items-center gap-2 text-gray-500">
+      <Users className="w-4 h-4" />
+      <span className="text-xs">{T.cac || "CAC"}</span>
+    </div>
+    <div className="text-sm text-gray-500 mt-2">
+      {language === "UA" ? "Немає джерела даних (реклама не підключена)" : language === "DE" ? "Keine Datenquelle (Werbung nicht verbunden)" : "No data source yet (ad platform not connected)"}
+    </div>
+  </div>
+) : (
+  <MetricCard
+    title={T.cac || "CAC"}
+    value={0}
+    change={0}
+    icon={Users}
+    color="bg-orange-500"
+    prefix="$"
+    sparklineData={[]}
+    prevValue={0}
+  />
+)}
                   </div>
 
                   <RevenueExpensesChart history={chartHistory} />
@@ -1331,20 +1342,33 @@ if (!subInfo) {
 
           {activeView === "risks" && (
             <div className="space-y-4">
-              {!hasGrowthAccess ? (
-                <div className="text-center py-16 bg-gray-900/30 rounded-xl border border-gray-800">
-                  <AlertTriangle className="w-10 h-10 mx-auto mb-3 text-gray-600" />
-                 <h3 className="text-white font-semibold mb-1">
-  {language === "UA" ? "Доступно на тарифі Growth" : language === "DE" ? "Verfügbar im Growth-Tarif" : "Available on Growth plan"}
+             {isExpiredTrial ? (
+  <div className="text-center py-16 bg-gray-900/30 rounded-xl border border-gray-800">
+    <AlertTriangle className="w-10 h-10 mx-auto mb-3 text-gray-600" />
+    <h3 className="text-white font-semibold mb-1">
+      {language === "UA" ? "Тариф не активний" : language === "DE" ? "Kein aktiver Tarif" : "No active plan"}
+    </h3>
+    <p className="text-gray-500 text-sm mb-4">
+      {language === "UA" ? "Підключіть тариф, щоб бачити виявлені ризики." : language === "DE" ? "Verbinden Sie einen Tarif, um erkannte Risiken zu sehen." : "Connect a plan to see detected risks."}
+    </p>
+    <Button className="bg-blue-600 hover:bg-blue-700" onClick={() => router.push("/#pricing")}>
+      {language === "UA" ? "Переглянути тарифи" : language === "DE" ? "Tarife ansehen" : "View plans"}
+    </Button>
+  </div>
+) : !hasGrowthAccess ? (
+  <div className="text-center py-16 bg-gray-900/30 rounded-xl border border-gray-800">
+    <AlertTriangle className="w-10 h-10 mx-auto mb-3 text-gray-600" />
+   <h3 className="text-white font-semibold mb-1">
+{language === "UA" ? "Доступно на тарифі Growth" : language === "DE" ? "Verfügbar im Growth-Tarif" : "Available on Growth plan"}
 </h3>
 <p className="text-gray-500 text-sm mb-4">
-  {language === "UA" ? "Виявлення ризиків у реальному часі доступне на тарифі Growth." : language === "DE" ? "Echtzeit-Risikoerkennung ist Teil des Growth-Tarifs." : "Real-time risk detection is part of the Growth plan."}
+{language === "UA" ? "Виявлення ризиків у реальному часі доступне на тарифі Growth." : language === "DE" ? "Echtzeit-Risikoerkennung ist Teil des Growth-Tarifs." : "Real-time risk detection is part of the Growth plan."}
 </p>
 <Button className="bg-blue-600 hover:bg-blue-700" onClick={() => router.push("/#pricing")}>
-  {language === "UA" ? "Оновити тариф" : language === "DE" ? "Upgraden" : "Upgrade"}
+{language === "UA" ? "Оновити тариф" : language === "DE" ? "Upgraden" : "Upgrade"}
 </Button>
-                </div>
-              ) : (
+  </div>
+) : (
                 <>
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-gray-500">{risks.length} {language === "UA" ? "сповіщень" : language === "DE" ? "Benachrichtigungen" : "notifications"}</span>
@@ -1433,12 +1457,25 @@ if (!subInfo) {
           )}
 
 
-          {activeView === "forecast" && (
-            <div className="space-y-4">
-              {!hasGrowthAccess ? (
-                <div className="text-center py-16 bg-gray-900/30 rounded-xl border border-gray-800">
-                  <AlertTriangle className="w-10 h-10 mx-auto mb-3 text-gray-600" />
-                 <h3 className="text-white font-semibold mb-1">
+              {activeView === "forecast" && (
+  <div className="space-y-4">
+    {isExpiredTrial ? (
+      <div className="text-center py-16 bg-gray-900/30 rounded-xl border border-gray-800">
+        <AlertTriangle className="w-10 h-10 mx-auto mb-3 text-gray-600" />
+        <h3 className="text-white font-semibold mb-1">
+          {language === "UA" ? "Тариф не активний" : language === "DE" ? "Kein aktiver Tarif" : "No active plan"}
+        </h3>
+        <p className="text-gray-500 text-sm mb-4">
+          {language === "UA" ? "Підключіть тариф, щоб бачити прогноз." : language === "DE" ? "Verbinden Sie einen Tarif, um die Prognose zu sehen." : "Connect a plan to see the forecast."}
+        </p>
+        <Button className="bg-blue-600 hover:bg-blue-700" onClick={() => router.push("/#pricing")}>
+          {language === "UA" ? "Переглянути тарифи" : language === "DE" ? "Tarife ansehen" : "View plans"}
+        </Button>
+      </div>
+    ) : !hasGrowthAccess ? (
+      <div className="text-center py-16 bg-gray-900/30 rounded-xl border border-gray-800">
+        <AlertTriangle className="w-10 h-10 mx-auto mb-3 text-gray-600" />
+       <h3 className="text-white font-semibold mb-1">
   {language === "UA" ? "Доступно на тарифі Growth" : language === "DE" ? "Verfügbar im Growth-Tarif" : "Available on Growth plan"}
 </h3>
 <p className="text-gray-500 text-sm mb-4">
@@ -1447,8 +1484,8 @@ if (!subInfo) {
 <Button className="bg-blue-600 hover:bg-blue-700" onClick={() => router.push("/#pricing")}>
   {language === "UA" ? "Оновити тариф" : language === "DE" ? "Upgraden" : "Upgrade"}
 </Button>
-                </div>
-              ) : !forecastLoaded ? (
+      </div>
+    ) : !forecastLoaded ? (
                 <div className="text-center py-16 bg-gray-900/30 rounded-xl border border-gray-800">
                   <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
                   <p className="text-gray-500 text-sm">{getTranslation("loading", "Loading...")}</p>
