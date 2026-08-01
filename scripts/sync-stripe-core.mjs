@@ -1,22 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
-import crypto from "crypto";
+import { decrypt } from "../lib/crypto.js";
 import { logError } from "../lib/log-error.js";
 
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-
-function getKey() {
-  return crypto.createHash("sha256").update(process.env.ENCRYPTION_KEY || "").digest();
-}
-
-function decrypt(payload) {
-  const buf = Buffer.from(payload, "base64");
-  const iv = buf.subarray(0, 12);
-  const authTag = buf.subarray(12, 28);
-  const encrypted = buf.subarray(28);
-  const decipher = crypto.createDecipheriv("aes-256-gcm", getKey(), iv);
-  decipher.setAuthTag(authTag);
-  return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString("utf8");
-}
 
 async function sendTelegram(chatId, text) {
   if (!chatId) return;
