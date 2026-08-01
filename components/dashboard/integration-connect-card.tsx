@@ -23,6 +23,9 @@ interface Props {
   // Викликається після успішного підключення на Growth/Trial — щоб батьківський
   // компонент одразу оновив selectedProviders і заблокував інші картки без релоаду.
   onSelected?: (provider: string) => void;
+  // Деяким провайдерам (Shopify — домен магазину, Meta Ads — Ad Account ID) мало
+  // самого ключа. Якщо задано — рендериться друге поле, обов'язкове для підключення.
+  extraField?: { key: string; label: string; placeholder: string };
 }
 
 // Trial навмисно НЕ в цьому списку: під час трайлу доступ повний, як на Scale,
@@ -41,9 +44,11 @@ export function IntegrationConnectCard({
   selectedProviders = [],
   onLockedClick,
   onSelected,
+  extraField,
 }: Props) {
   const { language } = useLanguage();
   const [apiKey, setApiKey] = useState("");
+  const [extraValue, setExtraValue] = useState("");
   const [status, setStatus] = useState<"checking" | "idle" | "loading" | "connected" | "error">("checking");
   const [errorMsg, setErrorMsg] = useState("");
   const [lastSynced, setLastSynced] = useState<string | null>(null);
@@ -61,6 +66,7 @@ export function IntegrationConnectCard({
           setStatus("connected");
           setLastSynced(row.last_synced_at);
           setKeyPreview(row.key_preview);
+          if (extraField && row.config?.[extraField.key]) setExtraValue(row.config[extraField.key]);
         } else {
           setStatus("idle");
         }
@@ -104,13 +110,23 @@ export function IntegrationConnectCard({
       return;
     }
     if (!apiKey.trim()) return;
+    if (extraField && !extraValue.trim()) {
+      setStatus("error");
+      setErrorMsg(`${extraField.label} is required`);
+      return;
+    }
     setStatus("loading");
     setErrorMsg("");
     try {
       const res = await fetch("/api/connect-integration", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, provider, apiKey: apiKey.trim() }),
+        body: JSON.stringify({
+          email,
+          provider,
+          apiKey: apiKey.trim(),
+          config: extraField ? { [extraField.key]: extraValue.trim() } : {},
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -239,8 +255,8 @@ export function IntegrationConnectCard({
           <p className="text-xs text-gray-500">
             {status === "connected"
               ? lastSynced
-                ? `${texts.lastSyncedLabel}: ${new Date(lastSynced).toLocaleString()}`
-                : texts.connectedWaiting
+                ? `${texts.lastSyncedLabel}: ${new Date(lastSynced).toLocaleString()}${extraField && extraValue ? ` · ${extraValue}` : ""}`
+                : `${texts.connectedWaiting}${extraField && extraValue ? ` · ${extraValue}` : ""}`
               : texts.connectDesc}
           </p>
         </div>
@@ -258,6 +274,17 @@ export function IntegrationConnectCard({
 
       {status !== "connected" && (
         <div className="space-y-2">
+          {extraField && (
+            <input
+              type="text"
+              value={extraValue}
+              onChange={(e) => setExtraValue(e.target.value)}
+              placeholder={extraField.placeholder}
+              autoComplete="off"
+              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-600"
+            />
+          )}
+          {extraField && <p className="text-xs text-gray-500">{extraField.label}</p>}
           <input
             type="text"
             value={apiKey}

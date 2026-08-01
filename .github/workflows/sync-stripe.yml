@@ -1,4 +1,4 @@
-name: Sync Stripe metrics
+name: Sync integrations (Stripe, Shopify, Meta Ads)
 
 on:
   schedule:
@@ -27,5 +27,3 @@ jobs:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: node scripts/run-sync.mjs
-
-        

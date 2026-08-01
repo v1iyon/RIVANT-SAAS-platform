@@ -26,7 +26,7 @@ export async function GET(req) {
 
   const { data: rows } = await admin
     .from("integrations")
-    .select("provider, status, last_synced_at, key_preview")
+    .select("provider, status, last_synced_at, key_preview, config")
     .eq("business_id", business.id)
     .in("provider", SUPPORTED_PROVIDERS);
 
@@ -39,6 +39,7 @@ export async function GET(req) {
       connected: row?.status === "connected",
       last_synced_at: row?.last_synced_at || null,
       key_preview: row?.key_preview || null,
+      config: row?.config || {},
     };
   });
 

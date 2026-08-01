@@ -1644,6 +1644,11 @@ if (!subInfo) {
                 selectedProviders={selectedProviders}
                 onSelected={(p) => setSelectedProviders([p])}
                 onLockedClick={() => router.push("/#pricing")}
+                extraField={{
+                  key: "shop_domain",
+                  label: language === "UA" ? "Домен магазину (yourshop.myshopify.com)" : language === "DE" ? "Shop-Domain (yourshop.myshopify.com)" : "Shop domain (yourshop.myshopify.com)",
+                  placeholder: "yourshop.myshopify.com",
+                }}
                 hint={
                   language === "UA"
                     ? "Shopify Admin → Settings → Apps and sales channels → Develop apps → створіть Admin API access token."
@@ -1662,6 +1667,11 @@ if (!subInfo) {
                 selectedProviders={selectedProviders}
                 onSelected={(p) => setSelectedProviders([p])}
                 onLockedClick={() => router.push("/#pricing")}
+                extraField={{
+                  key: "ad_account_id",
+                  label: language === "UA" ? "Ad Account ID (без 'act_')" : language === "DE" ? "Ad Account ID (ohne 'act_')" : "Ad Account ID (without 'act_')",
+                  placeholder: "123456789012345",
+                }}
                 hint={
                   language === "UA"
                     ? "Meta Business Suite → System Users → створіть токен з доступом ads_read."

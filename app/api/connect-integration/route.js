@@ -19,7 +19,7 @@ function looksLikeAKey(value) {
 
 export async function POST(req) {
   try {
-    const { email, provider, apiKey } = await req.json();
+    const { email, provider, apiKey, config } = await req.json();
 
     if (!email || !provider || !apiKey) {
       return Response.json({ error: "email, provider and apiKey are required" }, { status: 400 });
@@ -29,6 +29,14 @@ export async function POST(req) {
     }
     if (!looksLikeAKey(apiKey)) {
       return Response.json({ error: "Key looks too short — check you copied it fully" }, { status: 400 });
+    }
+
+    // Shopify и Meta Ads требуют доп. поле помимо ключа — домен магазина
+    // и Ad Account ID соответственно. Google Ads/QuickBooks (OAuth) сюда пока не входят.
+    const REQUIRED_CONFIG_FIELD = { shopify: "shop_domain", meta_ads: "ad_account_id" };
+    const requiredField = REQUIRED_CONFIG_FIELD[provider];
+    if (requiredField && !config?.[requiredField]?.trim()) {
+      return Response.json({ error: `${requiredField} is required for ${provider}` }, { status: 400 });
     }
 
     const { data: user } = await admin.from("users").select("id").eq("email", email).maybeSingle();
@@ -48,6 +56,7 @@ export async function POST(req) {
 
     const encrypted = encrypt(apiKey.trim());
     const keyPreview = apiKey.trim().slice(0, 8) + "..." + apiKey.trim().slice(-4);
+    const cleanConfig = config && typeof config === "object" ? config : {};
 
     const { data: existing } = await admin
       .from("integrations")
@@ -59,7 +68,7 @@ export async function POST(req) {
     if (existing) {
       await admin
         .from("integrations")
-        .update({ api_key_encrypted: encrypted, status: "connected", key_preview: keyPreview })
+        .update({ api_key_encrypted: encrypted, status: "connected", key_preview: keyPreview, config: cleanConfig })
         .eq("id", existing.id);
     } else {
       await admin.from("integrations").insert({
@@ -68,6 +77,7 @@ export async function POST(req) {
         api_key_encrypted: encrypted,
         status: "connected",
         key_preview: keyPreview,
+        config: cleanConfig,
       });
     }
 
