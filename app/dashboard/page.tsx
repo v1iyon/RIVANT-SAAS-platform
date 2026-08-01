@@ -439,14 +439,6 @@ function RevenueExpensesChart({ history }: { history: { day: number; date: strin
           ))}
         </div>
 
-        {/*
-          FIX: убрали items-end с контейнера графика (та же проблема, что и
-          в LiveDemoModal): каждая колонка сжималась по высоте до размера
-          собственного бара, поэтому hover/click-зона была в несколько px.
-          Теперь колонка растянута на всю высоту (h-48/h-64), бар прижат
-          к низу через mt-auto, а onClick добавлен для тач-устройств,
-          где hover не срабатывает надёжно.
-        */}
         <div className="ml-12 h-48 sm:h-64 flex gap-0.5 sm:gap-1 overflow-x-auto pb-2">
           {history.map((item, idx) => {
             const value = getMetricValue(item);
@@ -585,9 +577,6 @@ export default function DashboardPage() {
   const [activeView, setActiveView] = useState<ViewType>("overview");
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
-  // Состояния для живых метрик
-  // Реальные метрики из metrics_computed (через /api/metrics).
-  // metricsLoaded=false — ещё идёт первый запрос (не путать с "данных нет").
   const [metricsRows, setMetricsRows] = useState<MetricsRow[]>([]);
   const [metricsLoaded, setMetricsLoaded] = useState(false);
 
@@ -600,13 +589,12 @@ const [forecastLoaded, setForecastLoaded] = useState(false);
   const currentRevenue = lastRow?.revenue ?? 0;
   const currentProfit = lastRow?.profit ?? 0;
   const currentMargin = lastRow?.margin_pct ?? 0;
-  const currentCac = lastRow?.cac ?? null; // нет источника рекламных расходов — см. Фазу 3 аудита
+  const currentCac = lastRow?.cac ?? null;
   const prevRevenue = prevRow?.revenue ?? currentRevenue;
   const prevProfit = prevRow?.profit ?? currentProfit;
   const prevMargin = prevRow?.margin_pct ?? currentMargin;
   const prevCac = prevRow?.cac ?? currentCac;
 
-  // Очереди для спарклайнов
   const revenueQueue = buildSparkline(metricsRows, (r) => r.revenue);
   const profitQueue = buildSparkline(metricsRows, (r) => r.profit);
   const marginQueue = buildSparkline(metricsRows, (r) => r.margin_pct);
@@ -728,11 +716,8 @@ if (bizData.business) {
   setBusinessId(bizData.business.id?.slice(0, 8).toUpperCase() || "");
 
   if (bizData.business.timezone) {
-    // уже сохранён свой пояс раньше — используем его
     setTimezoneState(bizData.business.timezone);
   } else {
-    // ещё ничего не сохранено — определяем пояс браузера и сразу сохраняем,
-    // чтобы человеку не пришлось искать себя в списке вручную
     const detected = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
     setTimezoneState(detected);
     saveBusinessProfileWithTimezone(detected);
@@ -789,10 +774,8 @@ if (bizData.business) {
       const verifiedFactor = factorsData?.totp?.find((f: any) => f.status === "verified");
       setTwoFactorEnabled(!!verifiedFactor);
       if (verifiedFactor) setMfaFactorId(verifiedFactor.id);
-      // Подтягиваем сохранённые имя/телефон/фото, если они уже есть в базе
       const profileRes = await fetch(`/api/profile?email=${encodeURIComponent(email)}`, { cache: "no-store" });
       const profile = await profileRes.json();
-      // Если full_name ещё не сохранён (старый юзер / гонка при первой регистрации) — берём часть до @
       const displayName = profile.full_name || email.split("@")[0] || "";
       if (displayName) {
         setProfileName(displayName);
@@ -813,10 +796,10 @@ if (bizData.business) {
 
   const hasGrowthAccess = subInfo ? ["trial", "growth", "scale"].includes(subInfo.plan || "") : false;
 const isBlocked =
-  !subInfo ||                                   // подписка не найдена вообще
-  !subInfo.plan ||                              // плана нет
-  subInfo.access_status === "blocked" ||        // явно заблокирован
-  subInfo.access_status === "none";             // явный статус "нет плана", если так возвращает API
+  !subInfo ||
+  !subInfo.plan ||
+  subInfo.access_status === "blocked" ||
+  subInfo.access_status === "none";
 
 
   const pctChange = (curr: number, prev: number) => (prev ? ((curr - prev) / prev * 100).toFixed(1) : "0.0");
@@ -1004,7 +987,6 @@ const startEnroll2FA = async () => {
     const { data: existing } = await supabase.auth.mfa.listFactors();
     const verified = existing?.totp?.find((f: any) => f.status === "verified");
     if (verified) {
-      // уже подключено на сервере — просто синхронизируем состояние на экране
       setTwoFactorEnabled(true);
       setMfaFactorId(verified.id);
       return;
@@ -1069,7 +1051,6 @@ const startEnroll2FA = async () => {
     setProfilePhotoUrl(editPhotoUrl);
     setShowEditProfileModal(false);
 
-    // Сохраняем в базу, чтобы имя не сбрасывалось при новом входе
     try {
       await fetch("/api/profile", {
         method: "POST",
@@ -1187,7 +1168,6 @@ if (!subInfo) {
 
   return (
     <div className="h-screen bg-background flex flex-col lg:flex-row overflow-hidden pb-16 lg:pb-0">
-      {/* Затемняющая подложка — тап мимо меню закрывает его */}
       {isMobileSidebarOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/70 lg:hidden"
@@ -1195,7 +1175,6 @@ if (!subInfo) {
         />
       )}
 
-      {/* Sidebar - как в демо */}
       <aside className={`
         fixed lg:static inset-y-0 left-0 z-50 w-64 bg-gray-950 lg:bg-black/60 border-r border-gray-800
         transform transition-transform duration-300 ease-in-out overflow-hidden
@@ -1296,9 +1275,7 @@ if (!subInfo) {
         </div>
       </aside>
 
-      {/* Main Content */}
       <main className="flex-1 flex flex-col overflow-hidden">
-        {/* Header */}
         <header className="sticky top-0 z-30 bg-background/95 backdrop-blur-xl border-b border-gray-800 px-4 lg:px-6 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
@@ -1376,10 +1353,8 @@ if (!subInfo) {
   </div>
 )}
 
-        {/* Content */}
        <div className="flex-1 p-4 lg:p-6 overflow-auto">
 
-          {/* Overview View - как в демо лайв */}
           {activeView === "overview" && (
             <div className="space-y-5">
 
@@ -1460,7 +1435,6 @@ if (!subInfo) {
             </div>
           )}
 
-          {/* Risks View */}
           {activeView === "risks" && (
             <div className="space-y-4">
               {!hasGrowthAccess ? (
@@ -1531,7 +1505,6 @@ if (!subInfo) {
                               {risk.action}
                             </Button>
                           </div>
-                          {/* FIX: увеличенная тап-зона крестика удаления риска (p-2 -m-1 вместо p-1) */}
                           <button
                             onClick={async () => {
                               setRisks(prev => prev.filter(r => r.id !== risk.id));
@@ -1566,7 +1539,6 @@ if (!subInfo) {
           )}
 
 
-          {/* Forecast View */}
           {activeView === "forecast" && (
             <div className="space-y-4">
               {!hasGrowthAccess ? (
@@ -1668,7 +1640,6 @@ if (!subInfo) {
                     </div>
                   </div>
 
-                  {/* AI-объяснение — сгенерировано на основе уже посчитанных чисел, не выдумано */}
                   <div className="bg-blue-500/5 rounded-xl p-4 border border-blue-500/20">
                     {forecastData.explanation ? (
                       <p className="text-sm text-gray-300 whitespace-pre-line">{forecastData.explanation}</p>
@@ -1688,8 +1659,7 @@ if (!subInfo) {
             </div>
           )}
 
-         {/* Integrations View */}
-          {activeView === "integrations" && (
+         {activeView === "integrations" && (
             <div className="space-y-4">
               <StripeConnectCard email={profileEmail} />
 
@@ -1709,7 +1679,6 @@ if (!subInfo) {
             </div>
           )}
 
-          {/* Settings View - с переводами */}
           {activeView === "settings" && (
             <div className="space-y-6">
              <div className="bg-card rounded-xl p-6 border border-border">
@@ -1758,7 +1727,7 @@ if (!subInfo) {
                         </button>
                       )}
                       {companySaved && !companyDirty && (
-                        <CheckCircle className="w-5 h-5 text-green-400 shrink-0" />
+                        <CheckCircle className="w-5 h-5 text-green-400 shrink-0 animate-pulse" />
                       )}
                     </div>
                   </div>
@@ -1786,7 +1755,7 @@ if (!subInfo) {
                         </button>
                       )}
                       {phoneSaved && !phoneDirty && (
-                        <CheckCircle className="w-5 h-5 text-green-400 shrink-0" />
+                        <CheckCircle className="w-5 h-5 text-green-400 shrink-0 animate-pulse" />
                       )}
                     </div>
                   </div>
@@ -2007,7 +1976,6 @@ if (!subInfo) {
         </div>
       </main>
 
-      {/* Mobile Bottom Navigation */}
       <nav className="fixed bottom-0 left-0 right-0 z-40 lg:hidden bg-background/95 backdrop-blur-xl border-t border-border px-2 py-2">
         <div className="flex items-center justify-around">
           {sidebarItems.map((item) => (
@@ -2019,10 +1987,8 @@ if (!subInfo) {
         </div>
       </nav>
 
-      {/* Hidden photo input */}
       <input ref={photoInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} />
 
-      {/* Logout Confirmation Modal */}
       {showLogoutModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
           <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-[90vw] max-w-[320px] shadow-2xl">
@@ -2081,7 +2047,6 @@ if (!subInfo) {
   </div>
 )}
 
-{/* Change Password Modal */}
       {showPasswordModal && (
   <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
     <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-[380px] shadow-2xl">
@@ -2120,7 +2085,6 @@ if (!subInfo) {
   </div>
 )}
 
-      {/* 2FA Setup Modal */}
       {show2FAModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-[380px] shadow-2xl">
@@ -2164,7 +2128,6 @@ if (!subInfo) {
         </div>
       )}
 
-      {/* Edit Profile Modal */}
       {showEditProfileModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-[400px] shadow-2xl">
@@ -2177,7 +2140,6 @@ if (!subInfo) {
               </button>
             </div>
 
-            {/* Avatar */}
             <div className="flex flex-col items-center mb-5">
               <div
                 className="w-20 h-20 rounded-full bg-blue-500/20 flex items-center justify-center overflow-hidden cursor-pointer ring-2 ring-transparent hover:ring-blue-500 transition-all"
