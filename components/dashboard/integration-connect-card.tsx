@@ -145,7 +145,7 @@ export function IntegrationConnectCard({ email, provider, displayName, placehold
   return (
     <div className="bg-gray-900/30 rounded-xl p-5 border border-gray-800 relative">
       {locked && (
-        <div className="absolute top-4 right-4 text-gray-500" title={texts.lockedTitle}>
+        <div className="absolute top-4 right-4 text-red-400" title={texts.lockedTitle}>
           <Lock className="w-4 h-4" />
         </div>
       )}
@@ -200,9 +200,9 @@ export function IntegrationConnectCard({ email, provider, displayName, placehold
           </Button>
 
           {showLockedToast && (
-            <div className="mt-2 bg-gray-950 border border-yellow-500/30 rounded-lg p-3 flex flex-col gap-2 animate-in fade-in slide-in-from-top-1">
+            <div className="mt-2 bg-gray-950 border border-red-500/30 rounded-lg p-3 flex flex-col gap-2 animate-in fade-in slide-in-from-top-1">
               <div className="flex items-start gap-2">
-                <Lock className="w-4 h-4 text-yellow-400 mt-0.5 shrink-0" />
+                <Lock className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
                 <div>
                   <p className="text-sm font-medium text-white">{texts.lockedTitle}</p>
                   <p className="text-xs text-gray-400 mt-0.5">{texts.lockedBody}</p>

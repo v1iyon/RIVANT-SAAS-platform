@@ -282,7 +282,7 @@ function RevenueExpensesChart({ history }: { history: { day: number; date: strin
   // Пока нет реальных данных — рисуем тот же скелет графика с нулями,
   // а не блокирующее текстовое сообщение (было "No revenue history yet").
   const chartData = isEmpty
-    ? Array.from({ length: 4 }, (_, i) => ({ day: i + 1, date: "", revenue: 0, expenses: 0, profit: 0, margin: 0 }))
+    ? Array.from({ length: 30 }, (_, i) => ({ day: i + 1, date: "", revenue: 0, expenses: 0, profit: 0, margin: 0 }))
     : history;
   const maxRevenue = Math.max(...chartData.map(d => d.revenue));
   const maxExpenses = Math.max(...chartData.map(d => d.expenses));
@@ -427,7 +427,7 @@ function RevenueExpensesChart({ history }: { history: { day: number; date: strin
   );
 }
 
-// ========== КОМПОНЕНТ КАРТОЧКИ МЕТРИКИ С АНИМАЦИЕЙ ==========
+// ========== КОМПОНЕНТ КАРТОЧКИ МЕТРИКИ С АНИМАЦИЕЙ (неоновый вид) ==========
 function MetricCard({ title, value, change, icon: Icon, color, prefix = "$", suffix = "", sparklineData, prevValue }: {
   title: string; value: number; change: number; icon: any; color: string; prefix?: string; suffix?: string;
   sparklineData: number[]; prevValue: number;
@@ -435,20 +435,41 @@ function MetricCard({ title, value, change, icon: Icon, color, prefix = "$", suf
   const isPositive = change >= 0;
   const displayValue = suffix === "%" ? value.toFixed(1) : value.toLocaleString();
 
+  // color приходит как "bg-blue-500" / "bg-green-500" / "bg-purple-500" / "bg-orange-500" —
+  // маппим на RGB для glow-тени, т.к. Tailwind не даёт динамически собрать shadow-цвет из класса.
+  const glowMap: Record<string, string> = {
+    "bg-blue-500": "59,130,246",
+    "bg-green-500": "34,197,94",
+    "bg-purple-500": "168,85,247",
+    "bg-orange-500": "249,115,22",
+  };
+  const glowRgb = glowMap[color] || "59,130,246";
+
   return (
-    <div className={`bg-gradient-to-br ${color}/10 to-transparent rounded-xl p-3 sm:p-4 border ${color}/20 overflow-hidden`}>
+    <div
+      className={`relative bg-gradient-to-br ${color}/10 to-transparent rounded-xl p-3 sm:p-4 border ${color}/30 overflow-hidden transition-shadow hover:shadow-[0_0_24px_rgba(var(--glow),0.25)]`}
+      style={{ ["--glow" as any]: glowRgb, boxShadow: `0 0 18px rgba(${glowRgb}, 0.12), inset 0 0 20px rgba(${glowRgb}, 0.04)` }}
+    >
       <div className="flex items-center justify-between mb-2 gap-1">
-        <div className={`w-7 h-7 rounded-lg ${color}/20 flex items-center justify-center flex-shrink-0`}>
+        <div
+          className={`w-7 h-7 rounded-lg ${color}/20 flex items-center justify-center flex-shrink-0`}
+          style={{ boxShadow: `0 0 10px rgba(${glowRgb}, 0.35)` }}
+        >
           <Icon className={`w-3.5 h-3.5 ${color.replace("bg-", "text-")}`} />
         </div>
-        <div className={`flex items-center gap-0.5 text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 rounded-full flex-shrink-0 ${isPositive ? "bg-green-500/10 text-green-500" : "bg-red-500/10 text-red-500"}`}>
+        <div className={`flex items-center gap-0.5 text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 rounded-full flex-shrink-0 ${isPositive ? "bg-green-500/10 text-green-400" : "bg-red-500/10 text-red-400"}`}>
           {isPositive ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
           {isPositive ? "+" : ""}{Math.abs(change)}%
         </div>
       </div>
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-1 sm:gap-1.5">
         <div className="min-w-0">
-          <div className="text-lg sm:text-xl font-bold text-white whitespace-nowrap">{prefix}{displayValue}{suffix}</div>
+          <div
+            className="text-lg sm:text-xl font-bold text-white whitespace-nowrap"
+            style={{ textShadow: `0 0 16px rgba(${glowRgb}, 0.45)` }}
+          >
+            {prefix}{displayValue}{suffix}
+          </div>
           <div className="text-[11px] sm:text-xs text-gray-400 mt-0.5 truncate">{title}</div>
         </div>
         <div className="w-full sm:w-24 sm:flex-shrink-0">
@@ -569,6 +590,8 @@ const [companySaved, setCompanySaved] = useState(false);
   const groupedTimezones = groupTimezonesByRegion(allTimezones);
   const [businessId, setBusinessId] = useState("");
   const [broadcastNotif, setBroadcastNotif] = useState<{ id: string; message: string } | null>(null);
+
+  const [showExpiredNotice, setShowExpiredNotice] = useState(false);
 
   useEffect(() => {
   const refreshTelegramStatus = async () => {
@@ -713,6 +736,10 @@ const isBlocked =
   (!subInfo.plan && !isExpiredTrial) ||
   subInfo.access_status === "blocked" ||
   subInfo.access_status === "none";
+
+useEffect(() => {
+  if (isExpiredTrial) setShowExpiredNotice(true);
+}, [isExpiredTrial]);
 
 
   const pctChange = (curr: number, prev: number) => (prev ? ((curr - prev) / prev * 100).toFixed(1) : "0.0");
@@ -1256,6 +1283,34 @@ if (!subInfo) {
           </div>
         </header>
         <TrialPromptModal email={profileEmail} language={language} />
+
+        {showExpiredNotice && (
+  <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+    <div className="bg-gray-900 border border-red-500/30 rounded-2xl p-6 w-full max-w-[380px] shadow-2xl text-center">
+      <div className="w-14 h-14 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-4">
+        <AlertCircle className="w-7 h-7 text-red-400" />
+      </div>
+      <h2 className="text-lg font-semibold text-white mb-2">
+        {language === "UA" ? "Тариф не активний" : language === "DE" ? "Kein aktiver Tarif" : "No active plan"}
+      </h2>
+      <p className="text-sm text-gray-400 mb-6">
+        {language === "UA"
+          ? "Ваш тариф закінчився. Дані в безпеці — оформіть тариф, щоб продовжити."
+          : language === "DE"
+          ? "Ihr Tarif ist abgelaufen. Ihre Daten sind sicher — wählen Sie einen Tarif, um fortzufahren."
+          : "Your plan has ended. Your data is safe — pick a plan to continue."}
+      </p>
+      <div className="flex gap-3">
+        <Button variant="outline" className="flex-1 border-gray-700 text-gray-300 hover:bg-gray-800" onClick={() => setShowExpiredNotice(false)}>
+          {language === "UA" ? "Гаразд" : language === "DE" ? "OK" : "OK"}
+        </Button>
+        <Button className="flex-1 bg-blue-600 hover:bg-blue-700" onClick={() => router.push("/#pricing")}>
+          {language === "UA" ? "Переглянути тарифи" : language === "DE" ? "Tarife ansehen" : "View plans"}
+        </Button>
+      </div>
+    </div>
+  </div>
+)}
 
 {broadcastNotif && (
   <div className="bg-blue-600/20 border-b border-blue-500/30 px-4 py-3 flex items-center justify-between gap-3">
