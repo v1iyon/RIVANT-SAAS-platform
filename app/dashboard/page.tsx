@@ -1629,8 +1629,8 @@ if (!subInfo) {
                 provider="shopify"
                 displayName="Shopify"
                 placeholder="shpat_..."
-                locked={isExpiredTrial}
-  onLockedClick={() => router.push("/#pricing")}
+                isExpiredTrial={isExpiredTrial}
+                onLockedClick={() => router.push("/#pricing")}
                 hint={
                   language === "UA"
                     ? "Shopify Admin → Settings → Apps and sales channels → Develop apps → створіть Admin API access token."
@@ -1644,8 +1644,8 @@ if (!subInfo) {
                 provider="meta_ads"
                 displayName="Meta Ads"
                 placeholder="EAAG..."
-                locked={isExpiredTrial}
-  onLockedClick={() => router.push("/#pricing")}
+                isExpiredTrial={isExpiredTrial}
+                onLockedClick={() => router.push("/#pricing")}
                 hint={
                   language === "UA"
                     ? "Meta Business Suite → System Users → створіть токен з доступом ads_read."
@@ -1659,8 +1659,8 @@ if (!subInfo) {
                 provider="quickbooks"
                 displayName="QuickBooks"
                 placeholder="access token..."
-                locked={isExpiredTrial}
-  onLockedClick={() => router.push("/#pricing")}
+                isExpiredTrial={isExpiredTrial}
+                onLockedClick={() => router.push("/#pricing")}
                 hint={
                   language === "UA"
                     ? "QuickBooks Developer → ваш додаток → Keys & OAuth → скопіюйте access token."
