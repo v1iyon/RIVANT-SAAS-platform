@@ -278,21 +278,16 @@ function RevenueExpensesChart({ history }: { history: { day: number; date: strin
   const [hoveredBar, setHoveredBar] = useState<number | null>(null);
   const [selectedMetric, setSelectedMetric] = useState<"revenue" | "expenses" | "profit">("revenue");
 
-  if (!history || history.length === 0) {
-    return (
-      <div className="bg-gradient-to-br from-gray-900/80 to-black rounded-2xl p-8 border border-gray-800 text-center">
-        <BarChart3 className="w-8 h-8 mx-auto mb-3 text-gray-600" />
-        <p className="text-gray-400 text-sm">
-          {T.demoNoChartData || "No revenue history yet — this fills in automatically after your first Stripe sync."}
-        </p>
-      </div>
-    );
-  }
-
-  const maxRevenue = Math.max(...history.map(d => d.revenue));
-  const maxExpenses = Math.max(...history.map(d => d.expenses));
-  const maxProfit = Math.max(...history.map(d => d.profit));
-  const minProfit = Math.min(...history.map(d => d.profit));
+  const isEmpty = !history || history.length === 0;
+  // Пока нет реальных данных — рисуем тот же скелет графика с нулями,
+  // а не блокирующее текстовое сообщение (было "No revenue history yet").
+  const chartData = isEmpty
+    ? Array.from({ length: 4 }, (_, i) => ({ day: i + 1, date: "", revenue: 0, expenses: 0, profit: 0, margin: 0 }))
+    : history;
+  const maxRevenue = Math.max(...chartData.map(d => d.revenue));
+  const maxExpenses = Math.max(...chartData.map(d => d.expenses));
+  const maxProfit = Math.max(...chartData.map(d => d.profit));
+  const minProfit = Math.min(...chartData.map(d => d.profit));
   let maxValue = selectedMetric === "revenue" ? maxRevenue : selectedMetric === "expenses" ? maxExpenses : maxProfit;
   let minValue = selectedMetric === "profit" ? minProfit : 0;
 
@@ -313,13 +308,13 @@ function RevenueExpensesChart({ history }: { history: { day: number; date: strin
     return item.profit;
   };
 
-  const totalRevenue = history.reduce((sum, d) => sum + d.revenue, 0);
-  const totalExpenses = history.reduce((sum, d) => sum + d.expenses, 0);
+  const totalRevenue = chartData.reduce((sum, d) => sum + d.revenue, 0);
+  const totalExpenses = chartData.reduce((sum, d) => sum + d.expenses, 0);
   const totalProfit = totalRevenue - totalExpenses;
-  const avgMargin = history.reduce((sum, d) => sum + d.margin, 0) / history.length;
+  const avgMargin = chartData.reduce((sum, d) => sum + d.margin, 0) / chartData.length;
   const expenseEfficiency = (totalExpenses / totalRevenue * 100).toFixed(1);
-  const bestDay = history.reduce((best, d, i) => d.margin > history[best].margin ? i : best, 0);
-  const worstDay = history.reduce((worst, d, i) => d.margin < history[worst].margin ? i : worst, 0);
+  const bestDay = chartData.reduce((best, d, i) => d.margin > chartData[best].margin ? i : best, 0);
+  const worstDay = chartData.reduce((worst, d, i) => d.margin < chartData[worst].margin ? i : worst, 0);
 
   return (
     <div className="bg-gradient-to-br from-gray-900/80 to-black rounded-2xl p-4 sm:p-5 border border-gray-800">
@@ -359,7 +354,7 @@ function RevenueExpensesChart({ history }: { history: { day: number; date: strin
         </div>
 
         <div className="ml-12 h-48 sm:h-64 flex gap-0.5 sm:gap-1 overflow-x-auto pb-2">
-          {history.map((item, idx) => {
+          {chartData.map((item, idx) => {
             const value = getMetricValue(item);
             let percent;
             if (selectedMetric === "profit") {
@@ -403,7 +398,7 @@ function RevenueExpensesChart({ history }: { history: { day: number; date: strin
             <div className="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-wider">{T.totalRevenue || "Total Revenue"}</div>
           </div>
           <div className="text-base sm:text-xl font-bold text-white">${(totalRevenue / 1000).toFixed(0)}k</div>
-          <div className="text-[10px] text-gray-500 mt-1">↑ {Math.abs(((history[history.length-1].revenue - history[0].revenue) / history[0].revenue * 100)).toFixed(0)}% {T.demoVsStart || "vs start"}</div>
+          <div className="text-[10px] text-gray-500 mt-1">↑ {Math.abs(((chartData[chartData.length-1].revenue - chartData[0].revenue) / chartData[0].revenue * 100)).toFixed(0)}% {T.demoVsStart || "vs start"}</div>
         </div>
         <div className="bg-rose-500/5 rounded-xl p-2 sm:p-3 border border-rose-500/15">
           <div className="flex items-center gap-1 mb-1">
@@ -425,8 +420,8 @@ function RevenueExpensesChart({ history }: { history: { day: number; date: strin
 
       <div className="flex justify-between items-center mt-3 pt-2 text-[10px] text-gray-600 border-t border-gray-800/50">
         <span>{T.demoExpenseRatio || "Expense ratio"}: {expenseEfficiency}%</span>
-        <span>{T.demoPeakMargin || "Peak margin"}: {history[bestDay].margin}%</span>
-        <span>{T.demoLowMargin || "Low margin"}: {history[worstDay].margin}%</span>
+        <span>{T.demoPeakMargin || "Peak margin"}: {chartData[bestDay].margin}%</span>
+        <span>{T.demoLowMargin || "Low margin"}: {chartData[worstDay].margin}%</span>
       </div>
     </div>
   );
@@ -1274,23 +1269,6 @@ if (!subInfo) {
 
           {activeView === "overview" && (
             <div className="space-y-5">
-
-              {metricsLoaded && metricsRows.length === 0 ? (
-                <div className="text-center py-16 bg-gray-900/30 rounded-xl border border-gray-800">
-                  <DollarSign className="w-10 h-10 mx-auto mb-3 text-gray-600" />
-                  <h3 className="text-white font-semibold mb-1">
-                    {language === "UA" ? "Дані ще не синхронізовані" : language === "DE" ? "Noch keine Daten synchronisiert" : "No data synced yet"}
-                  </h3>
-                  <p className="text-gray-500 text-sm max-w-md mx-auto">
-                    {language === "UA"
-                      ? "Підключи Stripe у розділі Integrations — перший синк відбувається автоматично раз на годину."
-                      : language === "DE"
-                      ? "Verbinde Stripe unter Integrations — die erste Synchronisierung läuft automatisch stündlich."
-                      : "Connect Stripe under Integrations — the first sync runs automatically within an hour."}
-                  </p>
-                </div>
-              ) : (
-                <>
                   <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                     <MetricCard
                       title={T.revenue || "Revenue"}
@@ -1347,8 +1325,6 @@ if (!subInfo) {
                   </div>
 
                   <RevenueExpensesChart history={chartHistory} />
-                </>
-              )}
             </div>
           )}
 
