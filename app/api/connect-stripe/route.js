@@ -1,175 +1,106 @@
-"use client";
+import { createClient } from "@supabase/supabase-js";
+import crypto from "crypto";
 
-import { useState, useEffect } from "react";
-import { Button } from "@/components/ui/button";
-import { CheckCircle, AlertCircle } from "lucide-react";
-import { useLanguage } from "@/lib/translations";
+export const runtime = "nodejs";
 
-export function StripeConnectCard({ email }: { email: string }) {
-  const { language } = useLanguage();
-  const [apiKey, setApiKey] = useState("");
-  const [status, setStatus] = useState<"checking" | "idle" | "loading" | "connected" | "error">("checking");
-  const [errorMsg, setErrorMsg] = useState("");
-  const [lastSynced, setLastSynced] = useState<string | null>(null);
-  const [keyPreview, setKeyPreview] = useState<string | null>(null);
+const admin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_KEY
+);
 
-  const loadStatus = () => {
-    if (!email) return;
-    fetch(`/api/business-status?email=${encodeURIComponent(email)}`, { cache: "no-store" })
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.business?.stripe_connected) {
-          setKeyPreview(d.business.key_preview);
-          setStatus("connected");
-          setLastSynced(d.business.last_synced_at);
-        } else {
-          setStatus("idle");
-        }
-      })
-      .catch(() => setStatus("idle"));
-  };
+function getKey() {
+  return crypto.createHash("sha256").update(process.env.ENCRYPTION_KEY || "").digest();
+}
 
-  useEffect(() => {
-    loadStatus();
-  }, [email]);
+function encrypt(text) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", getKey(), iv);
+  const encrypted = Buffer.concat([cipher.update(text, "utf8"), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+  return Buffer.concat([iv, authTag, encrypted]).toString("base64");
+}
 
-  const handleConnect = async () => {
-    if (!apiKey.trim()) return;
-    setStatus("loading");
-    setErrorMsg("");
-    try {
-      const res = await fetch("/api/connect-stripe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, apiKey: apiKey.trim() }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setStatus("error");
-        setErrorMsg(data.error || "Connection failed");
-        return;
-      }
-      setApiKey("");
-      loadStatus();
-    } catch {
-      setStatus("error");
-      setErrorMsg("Network error");
+async function verifyStripeKey(apiKey) {
+  const res = await fetch("https://api.stripe.com/v1/charges?limit=1", {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+  return res.ok;
+}
+
+export async function POST(req) {
+  try {
+    const { email, apiKey } = await req.json();
+
+    if (!email || !apiKey) {
+      return Response.json({ error: "Email and API key are required" }, { status: 400 });
     }
-  };
 
-  const handleDisconnect = async () => {
-    await fetch("/api/stripe-disconnect", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
-    });
-    setStatus("idle");
-    setLastSynced(null);
-    setKeyPreview(null);
-  };
+    if (!apiKey.startsWith("rk_")) {
+      return Response.json(
+        { error: "Please use a restricted key (starts with rk_test_ or rk_live_), not a full secret key" },
+        { status: 400 }
+      );
+    }
 
-  const texts = {
-    connectDesc:
-      language === "UA"
-        ? "Підключіть Stripe, щоб отримувати реальні дані про виручку"
-        : language === "DE"
-        ? "Verbinden Sie Stripe, um echte Umsatzdaten abzurufen"
-        : "Connect your Stripe account to pull real revenue data",
-    connectedWaiting:
-      language === "UA"
-        ? "Підключено, очікуємо першу синхронізацію"
-        : language === "DE"
-        ? "Verbunden, wartet auf erste Synchronisierung"
-        : "Connected, waiting for first sync",
-    lastSynced:
-      language === "UA" ? "Остання синхронізація" : language === "DE" ? "Letzte Synchronisierung" : "Last synced",
-    connected: language === "UA" ? "Підключено" : language === "DE" ? "Verbunden" : "Connected",
-    hint:
-      language === "UA"
-        ? "Створіть restricted key з доступом лише на читання в Stripe Dashboard → Developers → API keys → Create restricted key."
-        : language === "DE"
-        ? "Erstellen Sie einen restricted key mit Lesezugriff in Stripe Dashboard → Developers → API keys → Create restricted key."
-        : "Create a restricted key with read-only access in Stripe Dashboard → Developers → API keys → Create restricted key.",
-    connectBtn: language === "UA" ? "Підключити Stripe" : language === "DE" ? "Stripe verbinden" : "Connect Stripe",
-    disconnectBtn: language === "UA" ? "Відключити" : language === "DE" ? "Trennen" : "Disconnect",
-    connecting: language === "UA" ? "Підключення..." : language === "DE" ? "Verbinde..." : "Connecting...",
-    placeholder: "rk_test_... / rk_live_...",
-  };
+    const isValid = await verifyStripeKey(apiKey);
+    if (!isValid) {
+      return Response.json(
+        { error: "Stripe rejected this key. Check it has 'Charges: Read' permission and is not expired." },
+        { status: 400 }
+      );
+    }
 
-  // Пока не знаем реальный статус — ничего не рисуем, чтобы не было "мигания"
-  if (status === "checking") {
-    return (
-      <div className="bg-gray-900/30 rounded-xl p-5 border border-gray-800">
-        <div className="flex items-center justify-between mb-1">
-          <h4 className="font-semibold text-white">Stripe</h4>
-        </div>
-        <div className="h-4 w-40 bg-gray-800 rounded animate-pulse" />
-      </div>
-    );
+    const { data: user } = await admin
+      .from("users")
+      .select("id")
+      .eq("email", email)
+      .maybeSingle();
+
+    if (!user) {
+      return Response.json({ error: "Account not found" }, { status: 404 });
+    }
+
+    const { data: business } = await admin
+      .from("businesses")
+      .select("id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (!business) {
+      return Response.json(
+        { error: "Complete your business profile first (Settings → Company Name)" },
+        { status: 400 }
+      );
+    }
+
+    const encrypted = encrypt(apiKey);
+    const keyPreview = apiKey.slice(0, 12) + "..." + apiKey.slice(-4);
+
+    const { data: existing } = await admin
+      .from("integrations")
+      .select("id")
+      .eq("business_id", business.id)
+      .eq("provider", "stripe")
+      .maybeSingle();
+
+    if (existing) {
+      await admin
+        .from("integrations")
+        .update({ api_key_encrypted: encrypted, status: "connected", key_preview: keyPreview })
+        .eq("id", existing.id);
+    } else {
+      await admin.from("integrations").insert({
+        business_id: business.id,
+        provider: "stripe",
+        api_key_encrypted: encrypted,
+        status: "connected",
+        key_preview: keyPreview,
+      });
+    }
+
+    return Response.json({ success: true });
+  } catch (err) {
+    console.error("connect-stripe error:", err);
+    return Response.json({ error: "Server error, try again" }, { status: 500 });
   }
-
-  return (
-    <div className="bg-gray-900/30 rounded-xl p-5 border border-gray-800">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
-        <div className="min-w-0">
-          <h4 className="font-semibold text-white">Stripe</h4>
-          <p className="text-xs text-gray-500">
-            {status === "connected"
-              ? lastSynced
-                ? `${texts.lastSynced}: ${new Date(lastSynced).toLocaleString()}`
-                : texts.connectedWaiting
-              : texts.connectDesc}
-          </p>
-        </div>
-        {status === "connected" && (
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs px-2 py-1 rounded-full font-semibold bg-green-500/20 text-green-400 flex items-center gap-1 font-mono whitespace-nowrap">
-              <CheckCircle className="w-3 h-3 shrink-0" /> {texts.connected}{keyPreview ? ` · ${keyPreview}` : ""}
-            </span>
-            <Button
-              size="sm"
-              variant="outline"
-              className="text-red-400 border-red-400/30 hover:bg-red-500/10 shrink-0"
-              onClick={handleDisconnect}
-            >
-              {texts.disconnectBtn}
-            </Button>
-          </div>
-        )}
-      </div>
-
-      {status !== "connected" && (
-        <div className="space-y-2">
-          <input
-            type="text"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder={texts.placeholder}
-            autoComplete="off"
-            autoCorrect="off"
-            autoCapitalize="off"
-            spellCheck={false}
-            data-lpignore="true"
-            data-1p-ignore="true"
-            name="rivant-stripe-key-field"
-            className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-600"
-          />
-          <p className="text-xs text-gray-500">{texts.hint}</p>
-          {status === "error" && (
-            <p className="text-xs text-red-400 flex items-center gap-1">
-              <AlertCircle className="w-3 h-3" /> {errorMsg}
-            </p>
-          )}
-          <Button
-            size="sm"
-            className="bg-blue-600 hover:bg-blue-700"
-            onClick={handleConnect}
-            disabled={status === "loading"}
-          >
-            {status === "loading" ? texts.connecting : texts.connectBtn}
-          </Button>
-        </div>
-      )}
-    </div>
-  );
 }
