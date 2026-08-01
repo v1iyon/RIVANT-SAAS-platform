@@ -428,54 +428,21 @@ function RevenueExpensesChart({ history }: { history: { day: number; date: strin
 }
 
 // ========== КОМПОНЕНТ КАРТОЧКИ МЕТРИКИ С АНИМАЦИЕЙ (неоновый вид) ==========
-function MetricCard({ title, value, change, icon: Icon, color, prefix = "$", suffix = "", sparklineData, prevValue }: {
-  title: string; value: number; change: number; icon: any; color: string; prefix?: string; suffix?: string;
+// ========== КОМПОНЕНТ КАРТОЧКИ МЕТРИКИ (стиль как в LiveDemo) ==========
+function MetricCard({ title, value, change, color, prefix = "$", suffix = "", sparklineData, prevValue }: {
+  title: string; value: number; change: number; color: string; prefix?: string; suffix?: string;
   sparklineData: number[]; prevValue: number;
 }) {
-  const isPositive = change >= 0;
-  const displayValue = suffix === "%" ? value.toFixed(1) : value.toLocaleString();
-
-  // color приходит как "bg-blue-500" / "bg-green-500" / "bg-purple-500" / "bg-orange-500" —
-  // маппим на RGB для glow-тени, т.к. Tailwind не даёт динамически собрать shadow-цвет из класса.
-  const glowMap: Record<string, string> = {
-    "bg-blue-500": "59,130,246",
-    "bg-green-500": "34,197,94",
-    "bg-purple-500": "168,85,247",
-    "bg-orange-500": "249,115,22",
-  };
-  const glowRgb = glowMap[color] || "59,130,246";
-
   return (
-    <div
-      className={`relative bg-gradient-to-br ${color}/10 to-transparent rounded-xl p-3 sm:p-4 border ${color}/30 overflow-hidden transition-shadow hover:shadow-[0_0_24px_rgba(var(--glow),0.25)]`}
-      style={{ ["--glow" as any]: glowRgb, boxShadow: `0 0 18px rgba(${glowRgb}, 0.12), inset 0 0 20px rgba(${glowRgb}, 0.04)` }}
-    >
-      <div className="flex items-center justify-between mb-2 gap-1">
-        <div
-          className={`w-7 h-7 rounded-lg ${color}/20 flex items-center justify-center flex-shrink-0`}
-          style={{ boxShadow: `0 0 10px rgba(${glowRgb}, 0.35)` }}
-        >
-          <Icon className={`w-3.5 h-3.5 ${color.replace("bg-", "text-")}`} />
-        </div>
-        <div className={`flex items-center gap-0.5 text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 rounded-full flex-shrink-0 ${isPositive ? "bg-green-500/10 text-green-400" : "bg-red-500/10 text-red-400"}`}>
-          {isPositive ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
-          {isPositive ? "+" : ""}{Math.abs(change)}%
-        </div>
-      </div>
-      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-1 sm:gap-1.5">
-        <div className="min-w-0">
-          <div
-            className="text-lg sm:text-xl font-bold text-white whitespace-nowrap"
-            style={{ textShadow: `0 0 16px rgba(${glowRgb}, 0.45)` }}
-          >
-            {prefix}{displayValue}{suffix}
-          </div>
-          <div className="text-[11px] sm:text-xs text-gray-400 mt-0.5 truncate">{title}</div>
-        </div>
-        <div className="w-full sm:w-24 sm:flex-shrink-0">
-          <TickerSparkline history={sparklineData} color={color.replace("bg-", "bg-").replace("/10", "/40")} currentValue={value} previousValue={prevValue} />
-        </div>
-      </div>
+    <div className={`bg-gradient-to-br ${color}/10 to-transparent rounded-xl p-4 border ${color}/20`}>
+      <div className={`text-xs font-semibold mb-1 uppercase ${color.replace("bg-", "text-")}`}>{title}</div>
+      <AnimatedNumber value={value} prefix={prefix} suffix={suffix} changePercent={change} />
+      <TickerSparkline
+        history={sparklineData}
+        color={color.replace("bg-", "bg-").replace("/10", "/60")}
+        currentValue={value}
+        previousValue={prevValue}
+      />
     </div>
   );
 }
@@ -1330,7 +1297,6 @@ if (!subInfo) {
                       title={T.revenue || "Revenue"}
                       value={currentRevenue}
                       change={parseFloat(revenueChange)}
-                      icon={DollarSign}
                       color="bg-blue-500"
                       prefix="$"
                       sparklineData={revenueQueue}
@@ -1340,7 +1306,6 @@ if (!subInfo) {
                       title={T.profit || "Profit"}
                       value={currentProfit}
                       change={parseFloat(profitChange)}
-                      icon={TrendingUp}
                       color="bg-green-500"
                       prefix="$"
                       sparklineData={profitQueue}
@@ -1350,7 +1315,6 @@ if (!subInfo) {
                       title={T.margin || "Margin"}
                       value={currentMargin}
                       change={parseFloat(marginChange)}
-                      icon={LineChart}
                       color="bg-purple-500"
                       suffix="%"
                       sparklineData={marginQueue}
@@ -1361,7 +1325,6 @@ if (!subInfo) {
     title={T.cac || "CAC"}
     value={currentCac}
     change={parseFloat(cacChange)}
-    icon={Users}
     color="bg-orange-500"
     prefix="$"
     sparklineData={[]}
@@ -1382,7 +1345,6 @@ if (!subInfo) {
     title={T.cac || "CAC"}
     value={0}
     change={0}
-    icon={Users}
     color="bg-orange-500"
     prefix="$"
     sparklineData={[]}

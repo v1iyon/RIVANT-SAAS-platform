@@ -544,6 +544,76 @@ function RevenueExpensesChart() {
   );
 }
 
+function DemoIntegrationCard({
+  name, placeholder, hint, keyInput, setKeyInput, connected, setConnected, keyPreview, setKeyPreview, language,
+}: {
+  name: string; placeholder: string; hint: string;
+  keyInput: string; setKeyInput: (v: string) => void;
+  connected: boolean; setConnected: (v: boolean) => void;
+  keyPreview: string; setKeyPreview: (v: string) => void;
+  language: string;
+}) {
+  const handleConnect = () => {
+    if (!keyInput.trim()) return;
+    const key = keyInput.trim();
+    setKeyPreview(key.slice(0, 8) + "..." + key.slice(-4));
+    setConnected(true);
+    setKeyInput("");
+  };
+  const handleDisconnect = () => {
+    setConnected(false);
+    setKeyPreview("");
+  };
+
+  return (
+    <div className="bg-gray-900/40 rounded-xl p-5 border border-gray-800">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="min-w-0">
+          <h4 className="font-semibold text-white text-base">{name}</h4>
+          <p className="text-sm text-gray-500 mt-1">
+            {connected
+              ? (language === "UA" ? "Підключено, очікуємо першу синхронізацію" : language === "DE" ? "Verbunden, wartet auf erste Synchronisierung" : "Connected, waiting for first sync")
+              : (language === "UA" ? `Підключіть ${name}, щоб отримувати реальні дані` : language === "DE" ? `Verbinden Sie ${name}, um echte Daten abzurufen` : `Connect ${name} to pull real data`)}
+          </p>
+        </div>
+        {connected && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs px-2 py-1 rounded-full font-semibold bg-green-500/20 text-green-400 flex items-center gap-1 font-mono whitespace-nowrap">
+              <Wifi className="w-3 h-3 shrink-0" />
+              {language === "UA" ? "Підключено" : language === "DE" ? "Verbunden" : "Connected"} · {keyPreview}
+            </span>
+            <Button size="sm" variant="outline" className="text-red-400 border-red-400/30 hover:bg-red-500/10 shrink-0" onClick={handleDisconnect}>
+              {language === "UA" ? "Відключити" : language === "DE" ? "Trennen" : "Disconnect"}
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {!connected && (
+        <>
+          <input
+            type="text"
+            value={keyInput}
+            onChange={(e) => setKeyInput(e.target.value)}
+            placeholder={placeholder}
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
+            data-lpignore="true"
+            data-1p-ignore="true"
+            className="w-full mt-4 bg-gray-800/60 border border-gray-700 rounded-lg px-3 py-2.5 text-sm text-gray-300 font-mono placeholder:text-gray-500 focus:outline-none focus:border-blue-500/50 transition-colors"
+          />
+          <p className="text-xs text-gray-500 mt-2">{hint}</p>
+          <Button onClick={handleConnect} className="mt-4 font-semibold px-5 bg-blue-500 hover:bg-blue-600 text-white">
+            {language === "UA" ? `Підключити ${name}` : language === "DE" ? `${name} verbinden` : `Connect ${name}`} →
+          </Button>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
   const { t, language } = useLanguage();
   const T = t as any;
@@ -572,6 +642,17 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
   const [stripeKeyInput, setStripeKeyInput] = useState("");
   const [stripeConnected, setStripeConnected] = useState(false);
   const [stripeKeyPreview, setStripeKeyPreview] = useState("");
+  const [shopifyKeyInput, setShopifyKeyInput] = useState("");
+const [shopifyConnected, setShopifyConnected] = useState(false);
+const [shopifyKeyPreview, setShopifyKeyPreview] = useState("");
+
+const [metaKeyInput, setMetaKeyInput] = useState("");
+const [metaConnected, setMetaConnected] = useState(false);
+const [metaKeyPreview, setMetaKeyPreview] = useState("");
+
+const [qbKeyInput, setQbKeyInput] = useState("");
+const [qbConnected, setQbConnected] = useState(false);
+const [qbKeyPreview, setQbKeyPreview] = useState("");
 
   const handleConnectStripe = () => {
     if (!stripeKeyInput.trim()) return;
@@ -1099,13 +1180,41 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
   )}
 </div>
 
+<DemoIntegrationCard
+  name="Shopify"
+  placeholder="shpat_..."
+  hint={language === "UA" ? "Shopify Admin → Settings → Apps and sales channels → Develop apps → створіть Admin API access token." : language === "DE" ? "Shopify Admin → Settings → Apps and sales channels → Develop apps → Admin API access token erstellen." : "Shopify Admin → Settings → Apps and sales channels → Develop apps → create an Admin API access token."}
+  keyInput={shopifyKeyInput} setKeyInput={setShopifyKeyInput}
+  connected={shopifyConnected} setConnected={setShopifyConnected}
+  keyPreview={shopifyKeyPreview} setKeyPreview={setShopifyKeyPreview}
+  language={language}
+/>
+<DemoIntegrationCard
+  name="Meta Ads"
+  placeholder="EAAG..."
+  hint={language === "UA" ? "Meta Business Suite → System Users → створіть токен з доступом ads_read." : language === "DE" ? "Meta Business Suite → System Users → Token mit ads_read-Zugriff erstellen." : "Meta Business Suite → System Users → create a token with ads_read access."}
+  keyInput={metaKeyInput} setKeyInput={setMetaKeyInput}
+  connected={metaConnected} setConnected={setMetaConnected}
+  keyPreview={metaKeyPreview} setKeyPreview={setMetaKeyPreview}
+  language={language}
+/>
+<DemoIntegrationCard
+  name="QuickBooks"
+  placeholder="access token..."
+  hint={language === "UA" ? "QuickBooks Developer → ваш додаток → Keys & OAuth → скопіюйте access token." : language === "DE" ? "QuickBooks Developer → Ihre App → Keys & OAuth → Access Token kopieren." : "QuickBooks Developer → your app → Keys & OAuth → copy the access token."}
+  keyInput={qbKeyInput} setKeyInput={setQbKeyInput}
+  connected={qbConnected} setConnected={setQbConnected}
+  keyPreview={qbKeyPreview} setKeyPreview={setQbKeyPreview}
+  language={language}
+/>
+
                   {/* Прочие интеграции — скоро */}
                   <div className="bg-gray-900/20 rounded-xl p-4 border border-gray-800 flex items-center gap-3 opacity-50">
                     <div className="w-10 h-10 rounded-lg bg-gray-800 flex items-center justify-center flex-shrink-0">
                       <Link className="w-5 h-5 text-gray-500" />
                     </div>
                     <div>
-                      <h4 className="font-semibold text-gray-400 text-sm">Shopify, QuickBooks, Meta Ads</h4>
+                      <h4 className="font-semibold text-gray-400 text-sm">Google Analytics</h4>
                       <p className="text-xs text-gray-600">
                         {language === "UA" ? "Скоро" : language === "DE" ? "Demnächst" : "Coming soon"}
                       </p>
