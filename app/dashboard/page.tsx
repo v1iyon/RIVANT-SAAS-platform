@@ -427,19 +427,18 @@ function RevenueExpensesChart({ history }: { history: { day: number; date: strin
   );
 }
 
-// ========== КОМПОНЕНТ КАРТОЧКИ МЕТРИКИ С АНИМАЦИЕЙ (неоновый вид) ==========
 // ========== КОМПОНЕНТ КАРТОЧКИ МЕТРИКИ (стиль как в LiveDemo) ==========
 function MetricCard({ title, value, change, color, prefix = "$", suffix = "", sparklineData, prevValue }: {
   title: string; value: number; change: number; color: string; prefix?: string; suffix?: string;
   sparklineData: number[]; prevValue: number;
 }) {
   return (
-    <div className={`bg-gradient-to-br ${color}/10 to-transparent rounded-xl p-4 border ${color}/20`}>
+    <div className={`bg-gradient-to-br ${color.replace("bg-", "from-")}/10 to-transparent rounded-xl p-4 border ${color.replace("bg-", "border-")}/20`}>
       <div className={`text-xs font-semibold mb-1 uppercase ${color.replace("bg-", "text-")}`}>{title}</div>
       <AnimatedNumber value={value} prefix={prefix} suffix={suffix} changePercent={change} />
       <TickerSparkline
         history={sparklineData}
-        color={color.replace("bg-", "bg-").replace("/10", "/60")}
+        color={`${color}/60`}
         currentValue={value}
         previousValue={prevValue}
       />
