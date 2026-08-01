@@ -2,6 +2,7 @@
 "use client";
 
 import { StripeConnectCard } from "@/components/dashboard/stripe-connect-card";
+import { IntegrationConnectCard } from "@/components/dashboard/integration-connect-card";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -80,15 +81,6 @@ function formatAlertTime(sentAt: string): string {
   }
 }
 
-interface Integration {
-  id: string;
-  name: string;
-  status: "connected" | "error" | "pending";
-  lastSync: string;
-  lastSyncTime?: Date;
-  errorMessage?: string;
-}
-
 // Реальная строка метрик из /api/metrics (metrics_computed в Supabase).
 // Раньше здесь были BASE_REVENUE/BASE_PROFIT/BASE_MARGIN/BASE_CAC —
 // захардкоженные demo-числа. Теперь всё считается из реальных данных,
@@ -103,14 +95,6 @@ interface MetricsRow {
   cac: number | null;
 }
 
-// Интеграции
-const INITIAL_INTEGRATIONS: Integration[] = [
-  { id: "stripe", name: "Stripe", status: "connected", lastSync: "2 min ago", lastSyncTime: new Date() },
-  { id: "shopify", name: "Shopify", status: "connected", lastSync: "5 min ago", lastSyncTime: new Date() },
-  { id: "meta", name: "Meta Ads", status: "connected", lastSync: "1 min ago", lastSyncTime: new Date() },
-  { id: "google", name: "Google Analytics", status: "pending", lastSync: "Setup required", lastSyncTime: new Date(0) },
-  { id: "quickbooks", name: "QuickBooks", status: "connected", lastSync: "15 min ago", lastSyncTime: new Date(Date.now() - 900000) },
-];
 
 // Преобразует реальные строки metrics_computed (пришедшие из /api/metrics)
 // в форму {day, revenue, expenses, profit, margin}, которую ожидает
@@ -126,77 +110,12 @@ const toChartHistory = (rows: MetricsRow[]) =>
     margin: r.margin_pct,
   }));
 
-// Простая линейная регрессия по реальным данным вместо выдуманного
-// "AI-forecast". Прозрачно: считаем тренд по имеющимся дням и продлеваем
-// его вперёд. Чем меньше дней данных, тем менее надёжен прогноз — это
-// явно показывается пользователю, а не маскируется фейковой уверенностью.
-function linearRegression(ys: number[]) {
-  const n = ys.length;
-  if (n === 0) return { slope: 0, intercept: 0, r2: 0 };
-  const xs = ys.map((_, i) => i);
-  const sumX = xs.reduce((s, x) => s + x, 0);
-  const sumY = ys.reduce((s, y) => s + y, 0);
-  const sumXY = xs.reduce((s, x, i) => s + x * ys[i], 0);
-  const sumXX = xs.reduce((s, x) => s + x * x, 0);
-  const denom = n * sumXX - sumX * sumX;
-  const meanY = sumY / n;
-  if (denom === 0) return { slope: 0, intercept: meanY, r2: 0 };
-  const slope = (n * sumXY - sumX * sumY) / denom;
-  const intercept = (sumY - slope * sumX) / n;
-  const ssTot = ys.reduce((s, y) => s + (y - meanY) ** 2, 0);
-  const ssRes = ys.reduce((s, y, i) => s + (y - (intercept + slope * xs[i])) ** 2, 0);
-  const r2 = ssTot === 0 ? 0 : Math.max(0, Math.min(1, 1 - ssRes / ssTot));
-  return { slope, intercept, r2 };
-}
-
-function projectTotal(reg: { slope: number; intercept: number }, fromDay: number, days: number) {
-  let total = 0;
-  for (let i = 0; i < days; i++) {
-    total += Math.max(0, reg.intercept + reg.slope * (fromDay + i));
-  }
-  return total;
-}
-
 // Берёт значения last/prev metric для карточек сверху и спарклайн
 // из хвоста реальной истории (без выдуманных случайных чисел).
 const buildSparkline = (rows: MetricsRow[], pick: (r: MetricsRow) => number) => {
   const tail = rows.slice(-14);
   return tail.map(pick);
 };
-
-const MIN_DAYS_FOR_FORECAST = 7;
-
-function buildForecast(rows: MetricsRow[]) {
-  if (rows.length < MIN_DAYS_FOR_FORECAST) {
-    return { sufficient: false as const, days: rows.length };
-  }
-  const revenueReg = linearRegression(rows.map((r) => r.revenue));
-  const expensesReg = linearRegression(rows.map((r) => r.expenses));
-  const marginReg = linearRegression(rows.map((r) => r.margin_pct));
-  const fromDay = rows.length;
-
-  const revenue90 = projectTotal(revenueReg, fromDay, 90);
-  const expenses90 = projectTotal(expensesReg, fromDay, 90);
-  const revenue30 = projectTotal(revenueReg, fromDay, 30);
-  const revenue60 = projectTotal(revenueReg, fromDay, 60);
-  const expenses30 = projectTotal(expensesReg, fromDay, 30);
-  const expenses60 = projectTotal(expensesReg, fromDay, 60);
-
-  const avgRecentRevenue = rows.slice(-7).reduce((s, r) => s + r.revenue, 0) / Math.min(7, rows.length);
-  const dailyGrowthPct = avgRecentRevenue > 0 ? (revenueReg.slope / avgRecentRevenue) * 100 : 0;
-
-  return {
-    sufficient: true as const,
-    days: rows.length,
-    revenueReg,
-    expensesReg,
-    marginReg,
-    revenue30, revenue60, revenue90,
-    expenses30, expenses60, expenses90,
-    dailyGrowthPct,
-    confidence: Math.round(revenueReg.r2 * 100),
-  };
-}
 
 // Полный список часовых поясов IANA — то же самое, что использует ОС.
 // Fallback на случай очень старых браузеров без поддержки Intl.supportedValuesOf.
@@ -599,12 +518,10 @@ const [forecastLoaded, setForecastLoaded] = useState(false);
   const profitQueue = buildSparkline(metricsRows, (r) => r.profit);
   const marginQueue = buildSparkline(metricsRows, (r) => r.margin_pct);
   const chartHistory = toChartHistory(metricsRows);
-  const forecast = buildForecast(metricsRows);
 
   const [risks, setRisks] = useState<Risk[]>([]);
   const [alertCount, setAlertCount] = useState(0);
   const [alertsLoaded, setAlertsLoaded] = useState(false);
-  const [integrations, setIntegrations] = useState<Integration[]>(INITIAL_INTEGRATIONS);
 
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [emailAlerts, setEmailAlerts] = useState(true);
@@ -1612,27 +1529,37 @@ if (!subInfo) {
                     <h3 className="font-semibold text-white text-base mb-4">
                       {language === "UA" ? "Прогноз (накопичувальний)" : language === "DE" ? "Prognose (kumulativ)" : "Cumulative forecast"}
                     </h3>
-                    <div className="flex justify-around items-end h-40 gap-1 sm:gap-4">
+                    <div className="flex justify-around items-end h-28 gap-1 sm:gap-4">
                       {[
                         { label: "30d", revenue: forecastData.revenue30, expenses: forecastData.expenses30 },
                         { label: "60d", revenue: forecastData.revenue60, expenses: forecastData.expenses60 },
                         { label: "90d", revenue: forecastData.revenue90, expenses: forecastData.expenses90 },
                       ].map((m, i) => {
-                        const scale = Math.max(forecastData.revenue90, forecastData.expenses90, 1) / 140;
+                        // 100px max bar height inside a 112px (h-28) box — leaves
+                        // headroom so bars can never touch/overlap the heading above.
+                        const scale = Math.max(forecastData.revenue90, forecastData.expenses90, 1) / 100;
                         return (
-                          <div key={i} className="flex flex-col items-center gap-2 flex-1 min-w-0">
-                            <div className="relative w-full flex justify-center gap-1 sm:gap-2 items-end">
-                              <div className="w-4 sm:w-8 bg-blue-500 rounded-t" style={{ height: `${Math.max(m.revenue / scale, 2)}px` }} />
-                              <div className="w-4 sm:w-8 bg-rose-500/60 rounded-t" style={{ height: `${Math.max(m.expenses / scale, 2)}px` }} />
-                            </div>
-                            <span className="text-xs sm:text-sm text-gray-400 font-medium truncate max-w-full">{m.label}</span>
-                            <div className="flex gap-1.5 sm:gap-2 text-[9px] sm:text-[10px]">
-                              <span className="text-blue-400">↑${Math.round(m.revenue / 1000)}k</span>
-                              <span className="text-rose-400">↓${Math.round(m.expenses / 1000)}k</span>
-                            </div>
+                          <div key={i} className="flex justify-center gap-1 sm:gap-2 items-end flex-1 min-w-0 h-full">
+                            <div className="w-4 sm:w-8 bg-blue-500 rounded-t" style={{ height: `${Math.min(Math.max(m.revenue / scale, 2), 100)}px` }} />
+                            <div className="w-4 sm:w-8 bg-rose-500/60 rounded-t" style={{ height: `${Math.min(Math.max(m.expenses / scale, 2), 100)}px` }} />
                           </div>
                         );
                       })}
+                    </div>
+                    <div className="flex justify-around gap-1 sm:gap-4 mt-2">
+                      {[
+                        { label: "30d", revenue: forecastData.revenue30, expenses: forecastData.expenses30 },
+                        { label: "60d", revenue: forecastData.revenue60, expenses: forecastData.expenses60 },
+                        { label: "90d", revenue: forecastData.revenue90, expenses: forecastData.expenses90 },
+                      ].map((m, i) => (
+                        <div key={i} className="flex flex-col items-center gap-1 flex-1 min-w-0">
+                          <span className="text-xs sm:text-sm text-gray-400 font-medium truncate max-w-full">{m.label}</span>
+                          <div className="flex gap-1.5 sm:gap-2 text-[9px] sm:text-[10px]">
+                            <span className="text-blue-400">↑${Math.round(m.revenue / 1000)}k</span>
+                            <span className="text-rose-400">↓${Math.round(m.expenses / 1000)}k</span>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                     <div className="flex justify-center gap-6 mt-4 pt-3 text-[10px] text-gray-600 border-t border-gray-800">
                       <div className="flex items-center gap-1"><div className="w-3 h-3 bg-blue-500 rounded-sm" /><span>{T.demoRevenueForecast || "Revenue Forecast"}</span></div>
@@ -1663,6 +1590,46 @@ if (!subInfo) {
             <div className="space-y-4">
               <StripeConnectCard email={profileEmail} />
 
+              <IntegrationConnectCard
+                email={profileEmail}
+                provider="shopify"
+                displayName="Shopify"
+                placeholder="shpat_..."
+                hint={
+                  language === "UA"
+                    ? "Shopify Admin → Settings → Apps and sales channels → Develop apps → створіть Admin API access token."
+                    : language === "DE"
+                    ? "Shopify Admin → Settings → Apps and sales channels → Develop apps → Admin API access token erstellen."
+                    : "Shopify Admin → Settings → Apps and sales channels → Develop apps → create an Admin API access token."
+                }
+              />
+              <IntegrationConnectCard
+                email={profileEmail}
+                provider="meta_ads"
+                displayName="Meta Ads"
+                placeholder="EAAG..."
+                hint={
+                  language === "UA"
+                    ? "Meta Business Suite → System Users → створіть токен з доступом ads_read."
+                    : language === "DE"
+                    ? "Meta Business Suite → System Users → Token mit ads_read-Zugriff erstellen."
+                    : "Meta Business Suite → System Users → create a token with ads_read access."
+                }
+              />
+              <IntegrationConnectCard
+                email={profileEmail}
+                provider="quickbooks"
+                displayName="QuickBooks"
+                placeholder="access token..."
+                hint={
+                  language === "UA"
+                    ? "QuickBooks Developer → ваш додаток → Keys & OAuth → скопіюйте access token."
+                    : language === "DE"
+                    ? "QuickBooks Developer → Ihre App → Keys & OAuth → Access Token kopieren."
+                    : "QuickBooks Developer → your app → Keys & OAuth → copy the access token."
+                }
+              />
+
               <div className="bg-gray-900/20 rounded-xl p-4 border border-gray-800 opacity-50">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -1670,7 +1637,7 @@ if (!subInfo) {
                       <Link2 className="w-5 h-5 text-gray-400" />
                     </div>
                     <div>
-                      <h4 className="font-semibold text-white">Shopify, QuickBooks, Meta Ads</h4>
+                      <h4 className="font-semibold text-white">Google Analytics</h4>
                       <p className="text-xs text-gray-500">Coming soon</p>
                     </div>
                   </div>
@@ -1785,8 +1752,8 @@ if (!subInfo) {
                   <BellRing className="w-4 h-4 text-primary" /> {T.settingsNotifications || "Notification Preferences"}
                 </h3>
                 <div className="space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-2 py-2">
-                    <div><p className="font-medium text-foreground">{T.settingsPush || "Push Notifications"}</p><p className="text-xs text-muted-foreground">{T.settingsPushDesc || "Receive alerts in dashboard"}</p></div>
+                <div className="flex items-center justify-between gap-3 py-2">
+                    <div className="flex-1 min-w-0"><p className="font-medium text-foreground">{T.settingsPush || "Push Notifications"}</p><p className="text-xs text-muted-foreground">{T.settingsPushDesc || "Receive alerts in dashboard"}</p></div>
                     <Switch checked={notificationsEnabled} onCheckedChange={(val) => {
                       setNotificationsEnabled(val);
                       fetch("/api/notification-prefs", {
@@ -1796,8 +1763,8 @@ if (!subInfo) {
                       });
                     }} />
                   </div>
-                  <div className="flex flex-wrap items-center justify-between gap-2 py-2">
-                    <div><p className="font-medium text-foreground">{T.settingsEmail || "Email Alerts"}</p><p className="text-xs text-muted-foreground">{T.settingsEmailDesc || "Receive alerts via email"}</p></div>
+                  <div className="flex items-center justify-between gap-3 py-2">
+                    <div className="flex-1 min-w-0"><p className="font-medium text-foreground">{T.settingsEmail || "Email Alerts"}</p><p className="text-xs text-muted-foreground">{T.settingsEmailDesc || "Receive alerts via email"}</p></div>
                     <Switch checked={emailAlerts} onCheckedChange={(val) => {
                       setEmailAlerts(val);
                       fetch("/api/notification-prefs", {
@@ -1807,19 +1774,19 @@ if (!subInfo) {
                       });
                     }} />
                   </div>
-                  <div className="flex items-center justify-between py-2">
-                    <div><p className="font-medium text-foreground">{T.settingsTelegram || "Telegram Notifications"}</p><p className="text-xs text-muted-foreground">{T.settingsTelegramDesc || "Connect Telegram for instant alerts"}</p></div>
+                  <div className="flex items-center justify-between gap-3 py-2">
+                    <div className="flex-1 min-w-0"><p className="font-medium text-foreground">{T.settingsTelegram || "Telegram Notifications"}</p><p className="text-xs text-muted-foreground">{T.settingsTelegramDesc || "Connect Telegram for instant alerts"}</p></div>
                     {hasGrowthAccess ? (
   telegramConnected ? (
     <Button variant="outline" size="sm" className="shrink-0" onClick={handleDisconnectTelegram}>
       {language === "UA" ? "Відключити" : language === "DE" ? "Trennen" : "Disconnect"}
     </Button>
   ) : (
-    <Button variant="outline" size="sm" onClick={handleConnectTelegram}>{T.settingsConnect || "Connect"}</Button>
+    <Button variant="outline" size="sm" className="shrink-0" onClick={handleConnectTelegram}>{T.settingsConnect || "Connect"}</Button>
   )
 ) : (
 
-  <Button variant="outline" size="sm" onClick={() => router.push("/#pricing")}>
+  <Button variant="outline" size="sm" className="shrink-0" onClick={() => router.push("/#pricing")}>
     {language === "UA" ? "Оновити" : language === "DE" ? "Upgrade" : "Upgrade"}
   </Button>
                     )}
@@ -1832,20 +1799,20 @@ if (!subInfo) {
                   <Shield className="w-4 h-4 text-primary" /> {T.settingsSecurity || "Security"}
                 </h3>
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between py-2">
-                    <div><p className="font-medium text-foreground">{T.settings2FA || "Two-Factor Authentication"}</p><p className="text-xs text-muted-foreground">{T.settings2FADesc || "Add an extra layer of security"}</p></div>
+                  <div className="flex items-center justify-between gap-3 py-2">
+                    <div className="flex-1 min-w-0"><p className="font-medium text-foreground">{T.settings2FA || "Two-Factor Authentication"}</p><p className="text-xs text-muted-foreground">{T.settings2FADesc || "Add an extra layer of security"}</p></div>
                     <Switch
                       checked={twoFactorEnabled}
                       onCheckedChange={(val) => { val ? startEnroll2FA() : disable2FA(); }}
                     />
                   </div>
-                <div className="flex items-center justify-between py-2">
-                    <div><p className="font-medium text-foreground">{T.settingsChangePassword || "Change Password"}</p><p className="text-xs text-muted-foreground">{T.settingsChangePasswordDesc || "Update your password"}</p></div>
-                    <Button variant="outline" size="sm" onClick={() => setShowPasswordModal(true)}>{T.settingsUpdate || "Update"}</Button>
+                <div className="flex items-center justify-between gap-3 py-2">
+                    <div className="flex-1 min-w-0"><p className="font-medium text-foreground">{T.settingsChangePassword || "Change Password"}</p><p className="text-xs text-muted-foreground">{T.settingsChangePasswordDesc || "Update your password"}</p></div>
+                    <Button variant="outline" size="sm" className="shrink-0" onClick={() => setShowPasswordModal(true)}>{T.settingsUpdate || "Update"}</Button>
                   </div>
-                  <div className="flex items-center justify-between py-2">
-                    <div><p className="font-medium text-foreground">{T.settingsApiKeys || "API Keys"}</p><p className="text-xs text-muted-foreground">{T.settingsApiKeysDesc || "Manage API access tokens"}</p></div>
-                    <Button variant="outline" size="sm" disabled>
+                  <div className="flex items-center justify-between gap-3 py-2">
+                    <div className="flex-1 min-w-0"><p className="font-medium text-foreground">{T.settingsApiKeys || "API Keys"}</p><p className="text-xs text-muted-foreground">{T.settingsApiKeysDesc || "Manage API access tokens"}</p></div>
+                    <Button variant="outline" size="sm" className="shrink-0" disabled>
   {language === "UA" ? "Скоро" : language === "DE" ? "Bald" : "Coming soon"}
 </Button>
                   </div>
