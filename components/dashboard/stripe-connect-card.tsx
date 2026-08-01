@@ -2,10 +2,16 @@
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { CheckCircle, AlertCircle } from "lucide-react";
+import { CheckCircle, AlertCircle, Lock } from "lucide-react";
 import { useLanguage } from "@/lib/translations";
 
-export function StripeConnectCard({ email }: { email: string }) {
+interface Props {
+  email: string;
+  locked?: boolean;
+  onLockedClick?: () => void;
+}
+
+export function StripeConnectCard({ email, locked = false, onLockedClick }: Props) {
   const { language } = useLanguage();
   const [apiKey, setApiKey] = useState("");
   const [status, setStatus] = useState<"checking" | "idle" | "loading" | "connected" | "error">("checking");
@@ -34,6 +40,10 @@ export function StripeConnectCard({ email }: { email: string }) {
   }, [email]);
 
   const handleConnect = async () => {
+    if (locked) {
+      onLockedClick?.();
+      return;
+    }
     if (!apiKey.trim()) return;
     setStatus("loading");
     setErrorMsg("");
@@ -58,6 +68,10 @@ export function StripeConnectCard({ email }: { email: string }) {
   };
 
   const handleDisconnect = async () => {
+    if (locked) {
+      onLockedClick?.();
+      return;
+    }
     await fetch("/api/stripe-disconnect", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -109,7 +123,18 @@ export function StripeConnectCard({ email }: { email: string }) {
   }
 
   return (
-    <div className="bg-gray-900/30 rounded-xl p-5 border border-gray-800">
+    <div
+      className={`bg-gray-900/30 rounded-xl p-5 border border-gray-800 relative transition-opacity ${
+        locked ? "opacity-40 cursor-pointer select-none" : ""
+      }`}
+      onClick={locked ? () => onLockedClick?.() : undefined}
+    >
+      {locked && (
+        <div className="absolute top-4 right-4 text-gray-500">
+          <Lock className="w-4 h-4" />
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
         <div className="min-w-0">
           <h4 className="font-semibold text-white">Stripe</h4>
@@ -131,6 +156,7 @@ export function StripeConnectCard({ email }: { email: string }) {
               variant="outline"
               className="text-red-400 border-red-400/30 hover:bg-red-500/10 shrink-0"
               onClick={handleDisconnect}
+              disabled={locked}
             >
               {texts.disconnectBtn}
             </Button>
@@ -143,7 +169,7 @@ export function StripeConnectCard({ email }: { email: string }) {
           <input
             type="text"
             value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
+            onChange={(e) => !locked && setApiKey(e.target.value)}
             placeholder={texts.placeholder}
             autoComplete="off"
             autoCorrect="off"
@@ -152,6 +178,7 @@ export function StripeConnectCard({ email }: { email: string }) {
             data-lpignore="true"
             data-1p-ignore="true"
             name="rivant-stripe-key-field"
+            readOnly={locked}
             className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-600"
           />
           <p className="text-xs text-gray-500">{texts.hint}</p>

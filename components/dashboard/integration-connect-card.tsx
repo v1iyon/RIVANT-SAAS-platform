@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { CheckCircle, AlertCircle } from "lucide-react";
+import { CheckCircle, AlertCircle, Lock } from "lucide-react";
 import { useLanguage } from "@/lib/translations";
 
 interface Props {
@@ -11,13 +11,19 @@ interface Props {
   displayName: string;
   placeholder: string;
   hint: string;
+  // Когда true — карточка полностью серая, клик в любом месте (включая
+  // попытку ввести ключ или нажать connect) уводит на прайсинг вместо
+  // реального подключения. Используется для "триал закончился" — намеренно
+  // без текста вроде "доступно на тарифі X", просто неактивный вид.
+  locked?: boolean;
+  onLockedClick?: () => void;
 }
 
 // Generic version of StripeConnectCard for the providers already supported by
 // /api/integrations-status + /api/connect-integration (meta_ads, google_ads,
 // shopify, quickbooks, plaid) — these used to be a static "Coming soon" block
 // even though the backend to actually connect them already existed.
-export function IntegrationConnectCard({ email, provider, displayName, placeholder, hint }: Props) {
+export function IntegrationConnectCard({ email, provider, displayName, placeholder, hint, locked = false, onLockedClick }: Props) {
   const { language } = useLanguage();
   const [apiKey, setApiKey] = useState("");
   const [status, setStatus] = useState<"checking" | "idle" | "loading" | "connected" | "error">("checking");
@@ -48,6 +54,10 @@ export function IntegrationConnectCard({ email, provider, displayName, placehold
   }, [email, provider]);
 
   const handleConnect = async () => {
+    if (locked) {
+      onLockedClick?.();
+      return;
+    }
     if (!apiKey.trim()) return;
     setStatus("loading");
     setErrorMsg("");
@@ -72,6 +82,10 @@ export function IntegrationConnectCard({ email, provider, displayName, placehold
   };
 
   const handleDisconnect = async () => {
+    if (locked) {
+      onLockedClick?.();
+      return;
+    }
     await fetch("/api/connect-integration", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
@@ -116,7 +130,18 @@ export function IntegrationConnectCard({ email, provider, displayName, placehold
   }
 
   return (
-    <div className="bg-gray-900/30 rounded-xl p-5 border border-gray-800">
+    <div
+      className={`bg-gray-900/30 rounded-xl p-5 border border-gray-800 relative transition-opacity ${
+        locked ? "opacity-40 cursor-pointer select-none" : ""
+      }`}
+      onClick={locked ? () => onLockedClick?.() : undefined}
+    >
+      {locked && (
+        <div className="absolute top-4 right-4 text-gray-500">
+          <Lock className="w-4 h-4" />
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
         <div className="min-w-0">
           <h4 className="font-semibold text-white">{displayName}</h4>
@@ -138,6 +163,7 @@ export function IntegrationConnectCard({ email, provider, displayName, placehold
               variant="outline"
               className="text-red-400 border-red-400/30 hover:bg-red-500/10 shrink-0"
               onClick={handleDisconnect}
+              disabled={locked}
             >
               {texts.disconnectBtn}
             </Button>
@@ -150,7 +176,7 @@ export function IntegrationConnectCard({ email, provider, displayName, placehold
           <input
             type="text"
             value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
+            onChange={(e) => !locked && setApiKey(e.target.value)}
             placeholder={placeholder}
             autoComplete="off"
             autoCorrect="off"
@@ -159,7 +185,8 @@ export function IntegrationConnectCard({ email, provider, displayName, placehold
             data-lpignore="true"
             data-1p-ignore="true"
             name={`rivant-${provider}-key-field`}
-            className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-600"
+            readOnly={locked}
+            className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-600 disabled:cursor-pointer"
           />
           <p className="text-xs text-gray-500">{hint}</p>
           {status === "error" && (

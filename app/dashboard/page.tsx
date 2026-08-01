@@ -706,10 +706,11 @@ if (bizData.business) {
     });
   }, [router]);
 
-  const hasGrowthAccess = subInfo ? ["trial", "growth", "scale"].includes(subInfo.plan || "") : false;
+ const isExpiredTrial = subInfo?.access_status === "expired";
+const hasGrowthAccess = subInfo ? ["trial", "growth", "scale"].includes(subInfo.plan || "") : false;
 const isBlocked =
   !subInfo ||
-  !subInfo.plan ||
+  (!subInfo.plan && !isExpiredTrial) ||
   subInfo.access_status === "blocked" ||
   subInfo.access_status === "none";
 
@@ -1564,13 +1565,19 @@ if (!subInfo) {
 
          {activeView === "integrations" && (
             <div className="space-y-4">
-              <StripeConnectCard email={profileEmail} />
+              <StripeConnectCard
+  email={profileEmail}
+  locked={isExpiredTrial}
+  onLockedClick={() => router.push("/#pricing")}
+/>
 
               <IntegrationConnectCard
                 email={profileEmail}
                 provider="shopify"
                 displayName="Shopify"
                 placeholder="shpat_..."
+                locked={isExpiredTrial}
+  onLockedClick={() => router.push("/#pricing")}
                 hint={
                   language === "UA"
                     ? "Shopify Admin → Settings → Apps and sales channels → Develop apps → створіть Admin API access token."
@@ -1584,6 +1591,8 @@ if (!subInfo) {
                 provider="meta_ads"
                 displayName="Meta Ads"
                 placeholder="EAAG..."
+                locked={isExpiredTrial}
+  onLockedClick={() => router.push("/#pricing")}
                 hint={
                   language === "UA"
                     ? "Meta Business Suite → System Users → створіть токен з доступом ads_read."
@@ -1597,6 +1606,8 @@ if (!subInfo) {
                 provider="quickbooks"
                 displayName="QuickBooks"
                 placeholder="access token..."
+                locked={isExpiredTrial}
+  onLockedClick={() => router.push("/#pricing")}
                 hint={
                   language === "UA"
                     ? "QuickBooks Developer → ваш додаток → Keys & OAuth → скопіюйте access token."

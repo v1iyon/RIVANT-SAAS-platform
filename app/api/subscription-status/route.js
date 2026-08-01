@@ -63,11 +63,53 @@ export async function GET(req) {
     ? new Date(sub.current_period_end) < new Date()
     : false;
 
-  if (periodEnded && sub.access_status !== "blocked") {
-    await admin
-      .from("subscriptions")
-      .update({ access_status: "blocked" })
-      .eq("user_id", appUser.id);
+  if (periodEnded) {
+    // Триал закончился -> мягкий сброс на "точку 0", а не блокировка.
+    // Платный план (starter/growth/scale) закончился -> блокировка, как раньше.
+    if (sub.plan === "trial") {
+      // plan: null + access_status: "expired" — отдельное состояние, отличное
+      // от платного "starter". Даёт 0 интеграций и полностью закрытый доступ,
+      // а не 1 интеграцию, которая полагается реальному тарифу starter.
+      const resetPayload = {
+        plan: null,
+        access_status: "expired",
+        current_period_end: null,
+        integrations_selected: [],
+      };
+
+      await admin.from("subscriptions").update(resetPayload).eq("user_id", appUser.id);
+
+      // Телеграм отвязываем всегда — вне зависимости от того, есть ли businesses.
+      await admin.from("users").update({ telegram_id: null }).eq("id", appUser.id);
+
+      // Интеграции гасим только для business'ов этого юзера. Ключи (api_key_encrypted)
+      // не трогаем намеренно — чтобы при апгрейде юзеру не пришлось искать их заново,
+      // только меняем status на inactive.
+      const { data: businesses } = await admin
+        .from("businesses")
+        .select("id")
+        .eq("user_id", appUser.id);
+
+      const businessIds = (businesses || []).map((b) => b.id);
+      if (businessIds.length > 0) {
+        await admin
+          .from("integrations")
+          .update({ status: "inactive" })
+          .in("business_id", businessIds);
+      }
+
+      return Response.json(
+        { ...sub, ...resetPayload, is_blocked: false },
+        { headers: { "Cache-Control": "no-store, max-age=0" } }
+      );
+    }
+
+    if (sub.access_status !== "blocked") {
+      await admin
+        .from("subscriptions")
+        .update({ access_status: "blocked" })
+        .eq("user_id", appUser.id);
+    }
 
     return Response.json(
       { ...sub, access_status: "blocked", is_blocked: false },
