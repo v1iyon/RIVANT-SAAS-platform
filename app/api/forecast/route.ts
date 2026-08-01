@@ -39,6 +39,17 @@ async function getBusinessId(email: string) {
   return business?.id ?? null;
 }
 
+async function isStripeConnected(businessId: string) {
+  const { data } = await admin
+    .from("integrations")
+    .select("status")
+    .eq("business_id", businessId)
+    .eq("provider", "stripe")
+    .maybeSingle();
+  return data?.status === "connected";
+}
+
+
 function linearRegression(ys: number[]) {
   const n = ys.length;
   if (n === 0) return { slope: 0, intercept: 0, r2: 0 };
@@ -142,10 +153,14 @@ export async function GET(req: Request) {
   const email = url.searchParams.get("email");
   const language = url.searchParams.get("language") || "EN";
 
+
   if (!email) return Response.json({ error: "email required" }, { status: 400 });
 
   const businessId = await getBusinessId(email);
   if (!businessId) return Response.json({ sufficient: false, days: 0 });
+
+  const stripeConnected = await isStripeConnected(businessId);
+if (!stripeConnected) return Response.json({ sufficient: false, days: 0, tier: "insufficient" });
 
   const { data: rows, error } = await admin
     .from("metrics_computed")

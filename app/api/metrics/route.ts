@@ -22,6 +22,20 @@ export async function GET(req: Request) {
     .maybeSingle();
   if (!business) return Response.json({ hasData: false, rows: [] });
 
+  // Если Stripe отключён — данные не показываем вообще, даже если они
+  // остались в metrics_computed с прошлого раза. Отключение интеграции
+  // должно визуально откатывать дашборд к "как будто не подключали".
+  const { data: stripeIntegration } = await admin
+    .from("integrations")
+    .select("status")
+    .eq("business_id", business.id)
+    .eq("provider", "stripe")
+    .maybeSingle();
+
+  if (!stripeIntegration || stripeIntegration.status !== "connected") {
+    return Response.json({ hasData: false, rows: [] });
+  }
+
   const { data: rawRows, error } = await admin
     .from("metrics_computed")
     .select("date, revenue, cost, margin_pct, orders")
@@ -33,11 +47,6 @@ export async function GET(req: Request) {
     return Response.json({ hasData: false, rows: [] });
   }
 
-  // sync-stripe-core.mjs пишет revenue/cost/margin_pct/orders, а не
-  // expenses/profit/cac (тех колонок не существует) — считаем производные
-  // поля здесь, чтобы фронтенд получал стабильную форму данных.
-  // CAC пока нет источника данных (нет интеграции с рекламными кабинетами),
-  // поэтому не выдумываем цифру — оставляем null и явно помечаем на фронте.
   const rows = rawRows.map((r) => ({
     date: r.date,
     revenue: Number(r.revenue) || 0,
