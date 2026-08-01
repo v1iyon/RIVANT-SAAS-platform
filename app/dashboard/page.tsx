@@ -312,7 +312,7 @@ function RevenueExpensesChart({ history }: { history: { day: number; date: strin
   const totalExpenses = chartData.reduce((sum, d) => sum + d.expenses, 0);
   const totalProfit = totalRevenue - totalExpenses;
   const avgMargin = chartData.reduce((sum, d) => sum + d.margin, 0) / chartData.length;
-  const expenseEfficiency = (totalExpenses / totalRevenue * 100).toFixed(1);
+  const expenseEfficiency = totalRevenue > 0 ? (totalExpenses / totalRevenue * 100).toFixed(1) : "0.0";
   const bestDay = chartData.reduce((best, d, i) => d.margin > chartData[best].margin ? i : best, 0);
   const worstDay = chartData.reduce((worst, d, i) => d.margin < chartData[worst].margin ? i : worst, 0);
 
@@ -398,7 +398,7 @@ function RevenueExpensesChart({ history }: { history: { day: number; date: strin
             <div className="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-wider">{T.totalRevenue || "Total Revenue"}</div>
           </div>
           <div className="text-base sm:text-xl font-bold text-white">${(totalRevenue / 1000).toFixed(0)}k</div>
-          <div className="text-[10px] text-gray-500 mt-1">↑ {Math.abs(((chartData[chartData.length-1].revenue - chartData[0].revenue) / chartData[0].revenue * 100)).toFixed(0)}% {T.demoVsStart || "vs start"}</div>
+          <div className="text-[10px] text-gray-500 mt-1">↑ {chartData[0].revenue > 0 ? Math.abs(((chartData[chartData.length-1].revenue - chartData[0].revenue) / chartData[0].revenue * 100)).toFixed(0) : "0"}% {T.demoVsStart || "vs start"}</div>
         </div>
         <div className="bg-rose-500/5 rounded-xl p-2 sm:p-3 border border-rose-500/15">
           <div className="flex items-center gap-1 mb-1">
@@ -549,6 +549,7 @@ const [companySaved, setCompanySaved] = useState(false);
   const addToQueue = <T,>(queue: T[], newValue: T): T[] => [...queue.slice(1), newValue];
   const supabase = createClient();
   const [subInfo, setSubInfo] = useState<{ plan: string | null; access_status: string; is_blocked?: boolean } | null>(null);
+  const [selectedProviders, setSelectedProviders] = useState<string[]>([]);
   const [telegramConnected, setTelegramConnected] = useState(false);
   const [businessName, setBusinessName] = useState("");
   const [timezone, setTimezoneState] = useState("America/New_York");
@@ -632,6 +633,15 @@ if (bizData.business) {
       const res = await fetch(`/api/subscription-status?email=${encodeURIComponent(email)}`, { cache: "no-store" });
       const sub = await res.json();
       setSubInfo(sub);
+
+      try {
+        const selRes = await fetch(`/api/integrations-select?email=${encodeURIComponent(email)}`, { cache: "no-store" });
+        const selData = await selRes.json();
+        setSelectedProviders(selData.selected || []);
+      } catch (e) {
+        console.error("Failed to load integrations selection", e);
+        setSelectedProviders([]);
+      }
 
       try {
         const metricsRes = await fetch(`/api/metrics?email=${encodeURIComponent(email)}`, { cache: "no-store" });
@@ -1630,6 +1640,9 @@ if (!subInfo) {
                 displayName="Shopify"
                 placeholder="shpat_..."
                 isExpiredTrial={isExpiredTrial}
+                planTier={subInfo?.plan ?? null}
+                selectedProviders={selectedProviders}
+                onSelected={(p) => setSelectedProviders([p])}
                 onLockedClick={() => router.push("/#pricing")}
                 hint={
                   language === "UA"
@@ -1645,6 +1658,9 @@ if (!subInfo) {
                 displayName="Meta Ads"
                 placeholder="EAAG..."
                 isExpiredTrial={isExpiredTrial}
+                planTier={subInfo?.plan ?? null}
+                selectedProviders={selectedProviders}
+                onSelected={(p) => setSelectedProviders([p])}
                 onLockedClick={() => router.push("/#pricing")}
                 hint={
                   language === "UA"
@@ -1660,6 +1676,9 @@ if (!subInfo) {
                 displayName="QuickBooks"
                 placeholder="access token..."
                 isExpiredTrial={isExpiredTrial}
+                planTier={subInfo?.plan ?? null}
+                selectedProviders={selectedProviders}
+                onSelected={(p) => setSelectedProviders([p])}
                 onLockedClick={() => router.push("/#pricing")}
                 hint={
                   language === "UA"
@@ -1794,25 +1813,29 @@ if (!subInfo) {
                 <div className="space-y-4">
                 <div className="flex items-center justify-between gap-3 py-2">
                     <div className="flex-1 min-w-0"><p className="font-medium text-foreground">{T.settingsPush || "Push Notifications"}</p><p className="text-xs text-muted-foreground">{T.settingsPushDesc || "Receive alerts in dashboard"}</p></div>
-                    <Switch checked={notificationsEnabled} onCheckedChange={(val) => {
-                      setNotificationsEnabled(val);
-                      fetch("/api/notification-prefs", {
-                        method: "PUT",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ email: profileEmail, push_enabled: val }),
-                      });
-                    }} />
+                    <div className="shrink-0 bg-secondary/40 rounded-full p-1">
+                      <Switch checked={notificationsEnabled} onCheckedChange={(val) => {
+                        setNotificationsEnabled(val);
+                        fetch("/api/notification-prefs", {
+                          method: "PUT",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ email: profileEmail, push_enabled: val }),
+                        });
+                      }} />
+                    </div>
                   </div>
                   <div className="flex items-center justify-between gap-3 py-2">
                     <div className="flex-1 min-w-0"><p className="font-medium text-foreground">{T.settingsEmail || "Email Alerts"}</p><p className="text-xs text-muted-foreground">{T.settingsEmailDesc || "Receive alerts via email"}</p></div>
-                    <Switch checked={emailAlerts} onCheckedChange={(val) => {
-                      setEmailAlerts(val);
-                      fetch("/api/notification-prefs", {
-                        method: "PUT",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ email: profileEmail, email_enabled: val }),
-                      });
-                    }} />
+                    <div className="shrink-0 bg-secondary/40 rounded-full p-1">
+                      <Switch checked={emailAlerts} onCheckedChange={(val) => {
+                        setEmailAlerts(val);
+                        fetch("/api/notification-prefs", {
+                          method: "PUT",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ email: profileEmail, email_enabled: val }),
+                        });
+                      }} />
+                    </div>
                   </div>
                   <div className="flex items-center justify-between gap-3 py-2">
                     <div className="flex-1 min-w-0"><p className="font-medium text-foreground">{T.settingsTelegram || "Telegram Notifications"}</p><p className="text-xs text-muted-foreground">{T.settingsTelegramDesc || "Connect Telegram for instant alerts"}</p></div>
@@ -1841,10 +1864,12 @@ if (!subInfo) {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between gap-3 py-2">
                     <div className="flex-1 min-w-0"><p className="font-medium text-foreground">{T.settings2FA || "Two-Factor Authentication"}</p><p className="text-xs text-muted-foreground">{T.settings2FADesc || "Add an extra layer of security"}</p></div>
-                    <Switch
-                      checked={twoFactorEnabled}
-                      onCheckedChange={(val) => { val ? startEnroll2FA() : disable2FA(); }}
-                    />
+                    <div className="shrink-0 bg-secondary/40 rounded-full p-1">
+                      <Switch
+                        checked={twoFactorEnabled}
+                        onCheckedChange={(val) => { val ? startEnroll2FA() : disable2FA(); }}
+                      />
+                    </div>
                   </div>
                 <div className="flex items-center justify-between gap-3 py-2">
                     <div className="flex-1 min-w-0"><p className="font-medium text-foreground">{T.settingsChangePassword || "Change Password"}</p><p className="text-xs text-muted-foreground">{T.settingsChangePasswordDesc || "Update your password"}</p></div>
