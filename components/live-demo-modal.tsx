@@ -545,19 +545,22 @@ function RevenueExpensesChart() {
 
 function DemoIntegrationCard({
   name, placeholder, hint, keyInput, setKeyInput, connected, setConnected, keyPreview, setKeyPreview, language,
-  extraField, extraValue, setExtraValue,
+  extraFields, extraValues, setExtraValues,
 }: {
   name: string; placeholder: string; hint: string;
   keyInput: string; setKeyInput: (v: string) => void;
   connected: boolean; setConnected: (v: boolean) => void;
   keyPreview: string; setKeyPreview: (v: string) => void;
   language: string;
-  extraField?: { label: string; placeholder: string };
-  extraValue?: string; setExtraValue?: (v: string) => void;
+  extraFields?: { key: string; label: string; placeholder: string } | { key: string; label: string; placeholder: string }[];
+  extraValues?: Record<string, string>; setExtraValues?: (v: Record<string, string>) => void;
 }) {
+  const fields = Array.isArray(extraFields) ? extraFields : extraFields ? [extraFields] : [];
   const handleConnect = () => {
     if (!keyInput.trim()) return;
-    if (extraField && !extraValue?.trim()) return;
+    for (const f of fields) {
+      if (!extraValues?.[f.key]?.trim()) return;
+    }
     const key = keyInput.trim();
     setKeyPreview(key.slice(0, 8) + "..." + key.slice(-4));
     setConnected(true);
@@ -594,17 +597,19 @@ function DemoIntegrationCard({
 
       {!connected && (
         <>
-          {extraField && (
-            <input
-              type="text"
-              value={extraValue}
-              onChange={(e) => setExtraValue?.(e.target.value)}
-              placeholder={extraField.placeholder}
-              autoComplete="off"
-              className="w-full mt-4 bg-gray-800/60 border border-gray-700 rounded-lg px-3 py-2.5 text-sm text-gray-300 font-mono placeholder:text-gray-500 focus:outline-none focus:border-blue-500/50 transition-colors"
-            />
-          )}
-          {extraField && <p className="text-xs text-gray-500 mt-2">{extraField.label}</p>}
+          {fields.map((f) => (
+            <div key={f.key}>
+              <input
+                type="text"
+                value={extraValues?.[f.key] || ""}
+                onChange={(e) => setExtraValues?.({ ...(extraValues || {}), [f.key]: e.target.value })}
+                placeholder={f.placeholder}
+                autoComplete="off"
+                className="w-full mt-2 first:mt-4 bg-gray-800/60 border border-gray-700 rounded-lg px-3 py-2.5 text-sm text-gray-300 font-mono placeholder:text-gray-500 focus:outline-none focus:border-blue-500/50 transition-colors"
+              />
+              <p className="text-xs text-gray-500 mt-2">{f.label}</p>
+            </div>
+          ))}
           <input
             type="text"
             value={keyInput}
@@ -616,7 +621,7 @@ function DemoIntegrationCard({
             spellCheck={false}
             data-lpignore="true"
             data-1p-ignore="true"
-            className={`w-full ${extraField ? "mt-2" : "mt-4"} bg-gray-800/60 border border-gray-700 rounded-lg px-3 py-2.5 text-sm text-gray-300 font-mono placeholder:text-gray-500 focus:outline-none focus:border-blue-500/50 transition-colors`}
+            className={`w-full ${fields.length ? "mt-2" : "mt-4"} bg-gray-800/60 border border-gray-700 rounded-lg px-3 py-2.5 text-sm text-gray-300 font-mono placeholder:text-gray-500 focus:outline-none focus:border-blue-500/50 transition-colors`}
           />
           <p className="text-xs text-gray-500 mt-2">{hint}</p>
           <Button onClick={handleConnect} className="mt-4 font-semibold px-5 bg-blue-500 hover:bg-blue-600 text-white">
@@ -1220,11 +1225,15 @@ const [googleAdsCustomerId, setGoogleAdsCustomerId] = useState("");
   keyInput={googleAdsKeyInput} setKeyInput={setGoogleAdsKeyInput}
   connected={googleAdsConnected} setConnected={setGoogleAdsConnected}
   keyPreview={googleAdsKeyPreview} setKeyPreview={setGoogleAdsKeyPreview}
-  extraField={{
-    label: language === "UA" ? "Customer ID (без дефісів)" : language === "DE" ? "Customer ID (ohne Bindestriche)" : "Customer ID (without dashes)",
-    placeholder: "1234567890",
-  }}
-  extraValue={googleAdsCustomerId} setExtraValue={setGoogleAdsCustomerId}
+  extraFields={[
+    {
+      key: "customerId",
+      label: language === "UA" ? "Customer ID (без дефісів)" : language === "DE" ? "Customer ID (ohne Bindestriche)" : "Customer ID (without dashes)",
+      placeholder: "1234567890",
+    },
+  ]}
+  extraValues={{ customerId: googleAdsCustomerId }}
+  setExtraValues={(v) => setGoogleAdsCustomerId(v.customerId || "")}
   language={language}
 />
 
