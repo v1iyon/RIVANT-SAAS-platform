@@ -163,8 +163,20 @@ async function main(businessId) {
         continue;
       }
 
-      const costPct = Number(business.cost_pct) || 30;
-      console.log("DEBUG byDate:", JSON.stringify(byDate));
+      // Если Shopify подключён — реальная себестоимость товара уже пишется
+      // в expenses (shopify-sync.mjs, category "cogs") и подмешивается в
+      // /api/metrics. Оценку cost_pct в этом случае НЕ применяем, иначе
+      // себестоимость посчитается дважды (выдуманный % + реальные цифры).
+      const { data: shopifyIntegration } = await admin
+        .from("integrations")
+        .select("status")
+        .eq("business_id", business.id)
+        .eq("provider", "shopify")
+        .maybeSingle();
+      const shopifyConnected = shopifyIntegration?.status === "connected";
+
+      const costPct = shopifyConnected ? 0 : Number(business.cost_pct) || 30;
+      console.log("DEBUG byDate:", JSON.stringify(byDate), "shopifyConnected:", shopifyConnected);
 
       for (const [date, agg] of Object.entries(byDate)) {
         const prevDate = new Date(new Date(date).getTime() - 24 * 3600 * 1000)
