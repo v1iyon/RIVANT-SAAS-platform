@@ -1936,7 +1936,7 @@ if (!subInfo) {
                       <Link2 className="w-5 h-5 text-gray-400" />
                     </div>
                     <div>
-                      <h4 className="font-semibold text-white">Google Analytics? QuickBooks</h4>
+                      <h4 className="font-semibold text-white">Google Analytics, QuickBooks</h4>
                       <p className="text-xs text-gray-500">Coming soon</p>
                     </div>
                   </div>
