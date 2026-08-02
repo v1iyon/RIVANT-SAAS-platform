@@ -8,6 +8,31 @@
 import { createClient } from "@supabase/supabase-js";
 import { decrypt } from "../lib/crypto.js";
 import { logError } from "../lib/log-error.js";
+import { sendAlert, getUserContact, generateAlertExplanation, detectExpenseAnomaly, detectCacAnomaly } from "../lib/alerts.mjs";
+
+const SYNC_FAILURE_MESSAGE = {
+  UA: (reason) => `Не вдалося синхронізувати Meta Ads: ${reason}`,
+  EN: (reason) => `Failed to sync Meta Ads: ${reason}`,
+  DE: (reason) => `Meta Ads Synchronisierung fehlgeschlagen: ${reason}`,
+};
+
+const SPEND_SPIKE_MESSAGE = {
+  UA: (pct, avg, today, date) => `Витрати на Meta Ads зросли на ${pct}% (з $${Math.round(avg)} до $${Math.round(today)}) ${date}`,
+  EN: (pct, avg, today, date) => `Meta Ads spend jumped ${pct}% (from $${Math.round(avg)} to $${Math.round(today)}) on ${date}`,
+  DE: (pct, avg, today, date) => `Meta Ads-Ausgaben sind am ${date} um ${pct}% gestiegen (von $${Math.round(avg)} auf $${Math.round(today)})`,
+};
+
+const SPEND_DROP_MESSAGE = {
+  UA: (avg, today, date) => `Витрати на Meta Ads різко впали до $${Math.round(today)} ${date} (середнє — $${Math.round(avg)}/день) — можливо, кампанію зупинено`,
+  EN: (avg, today, date) => `Meta Ads spend dropped sharply to $${Math.round(today)} on ${date} (avg $${Math.round(avg)}/day) — campaigns may have paused`,
+  DE: (avg, today, date) => `Meta Ads-Ausgaben sind am ${date} stark auf $${Math.round(today)} gefallen (Ø $${Math.round(avg)}/Tag) — Kampagnen könnten pausiert sein`,
+};
+
+const CAC_SPIKE_MESSAGE = {
+  UA: (pct, avgCac, cacToday, date) => `CAC зріс на ${pct}% (з $${avgCac.toFixed(2)} до $${cacToday.toFixed(2)} за клієнта) ${date}`,
+  EN: (pct, avgCac, cacToday, date) => `CAC rose ${pct}% (from $${avgCac.toFixed(2)} to $${cacToday.toFixed(2)} per customer) on ${date}`,
+  DE: (pct, avgCac, cacToday, date) => `CAC ist am ${date} um ${pct}% gestiegen (von $${avgCac.toFixed(2)} auf $${cacToday.toFixed(2)} pro Kunde)`,
+};
 
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
@@ -15,6 +40,11 @@ const GRAPH_API_VERSION = "v19.0";
 
 function toDateStr(d) {
   return d.toISOString().slice(0, 10);
+}
+
+async function getBusinessUserId(businessId) {
+  const { data } = await admin.from("businesses").select("user_id").eq("id", businessId).maybeSingle();
+  return data?.user_id ?? null;
 }
 
 async function fetchMetaSpend(adAccountId, token, sinceDate, untilDate) {
@@ -94,6 +124,68 @@ async function main(businessId) {
         });
       }
 
+      // Перевіряємо аномалії тільки за останню (найсвіжішу) дату з вікна синку —
+      // старіші дні вже перевірялись на попередніх прогонах.
+      if (rows.length) {
+        const latestDate = rows.map((r) => r.date_start).sort().pop();
+        const latestAmount = Number(rows.find((r) => r.date_start === latestDate)?.spend) || 0;
+        const contact = await getUserContact(await getBusinessUserId(integ.business_id));
+
+        const anomaly = await detectExpenseAnomaly({
+          businessId: integ.business_id,
+          source: "meta_ads",
+          category: "advertising",
+          date: latestDate,
+          todayAmount: latestAmount,
+        });
+        if (anomaly?.kind === "spike") {
+          const msg = (SPEND_SPIKE_MESSAGE[contact.userLang] || SPEND_SPIKE_MESSAGE.EN)(anomaly.pct, anomaly.avg, anomaly.today, latestDate);
+          const explanation = await generateAlertExplanation(
+            contact.userLang,
+            `Meta Ads daily spend jumped ${anomaly.pct}% versus the 7-day average (from $${Math.round(anomaly.avg)} to $${Math.round(anomaly.today)}) on ${latestDate}.`
+          );
+          await sendAlert({
+            businessId: integ.business_id,
+            type: "ad_spend_spike_meta_ads",
+            severity: anomaly.pct >= 100 ? "high" : "medium",
+            message: msg,
+            aiExplanation: explanation,
+            ...contact,
+          });
+        } else if (anomaly?.kind === "drop") {
+          const msg = (SPEND_DROP_MESSAGE[contact.userLang] || SPEND_DROP_MESSAGE.EN)(anomaly.avg, anomaly.today, latestDate);
+          const explanation = await generateAlertExplanation(
+            contact.userLang,
+            `Meta Ads daily spend dropped to $${Math.round(anomaly.today)} on ${latestDate}, versus a 7-day average of $${Math.round(anomaly.avg)}/day — this usually means a campaign was paused, disapproved, or a payment method failed.`
+          );
+          await sendAlert({
+            businessId: integ.business_id,
+            type: "ad_spend_drop_meta_ads",
+            severity: "high",
+            message: msg,
+            aiExplanation: explanation,
+            ...contact,
+          });
+        }
+
+        const cacAnomaly = await detectCacAnomaly({ businessId: integ.business_id, date: latestDate });
+        if (cacAnomaly) {
+          const msg = (CAC_SPIKE_MESSAGE[contact.userLang] || CAC_SPIKE_MESSAGE.EN)(cacAnomaly.pct, cacAnomaly.avgCac, cacAnomaly.cacToday, latestDate);
+          const explanation = await generateAlertExplanation(
+            contact.userLang,
+            `Customer acquisition cost (CAC) rose ${cacAnomaly.pct}% versus the 7-day average (from $${cacAnomaly.avgCac.toFixed(2)} to $${cacAnomaly.cacToday.toFixed(2)} per customer) on ${latestDate}, based on $${cacAnomaly.totalSpend.toFixed(2)} total ad spend across ${cacAnomaly.orders} orders.`
+          );
+          await sendAlert({
+            businessId: integ.business_id,
+            type: "cac_spike",
+            severity: cacAnomaly.pct >= 80 ? "high" : "medium",
+            message: msg,
+            aiExplanation: explanation,
+            ...contact,
+          });
+        }
+      }
+
       await admin
         .from("integrations")
         .update({ last_synced_at: new Date().toISOString(), status: "connected" })
@@ -109,6 +201,21 @@ async function main(businessId) {
         businessId: integ.business_id,
       });
       await admin.from("integrations").update({ status: "error" }).eq("id", integ.id);
+
+      const contact = await getUserContact(await getBusinessUserId(integ.business_id));
+      const msg = (SYNC_FAILURE_MESSAGE[contact.userLang] || SYNC_FAILURE_MESSAGE.EN)(err.message);
+      const explanation = await generateAlertExplanation(
+        contact.userLang,
+        `The Meta Ads integration was previously connected and syncing successfully. It just failed with this error: "${err.message}". This usually means the access token expired or lost the ads_read permission.`
+      );
+      await sendAlert({
+        businessId: integ.business_id,
+        type: "sync_failure_meta_ads",
+        severity: "high",
+        message: msg,
+        aiExplanation: explanation,
+        ...contact,
+      });
     }
   }
 }

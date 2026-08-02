@@ -89,10 +89,16 @@ interface Risk {
   integrationId?: string;
 }
 
-// alerts_log.type -> UI category (только "revenue_drop" реально пишется
-// сейчас движком; остальные — задел на будущее, когда появятся другие типы).
+// alerts_log.type -> UI category. Раніше рахував тільки "revenue_drop" (Stripe) —
+// тепер sync-скрипти Shopify/Meta Ads/Google Ads теж шлють алерти (sync-failure,
+// сплеск/падіння рекламних витрат, CAC, собівартість/доставка).
 function alertTypeToCategory(type: string): Risk["category"] {
   if (type === "revenue_drop") return "finance";
+  if (type === "cac_spike") return "cac";
+  if (type === "cogs_spike_shopify") return "margin";
+  if (type === "shipping_spike_shopify") return "shipping";
+  if (type.startsWith("ad_spend_")) return "ads";
+  if (type.startsWith("sync_failure_")) return "integration";
   return "integration";
 }
 
@@ -596,6 +602,8 @@ function getCategoryIcon(category: string) {
     case "inventory": return <Package className="w-4 h-4" />;
     case "finance": return <CreditCard className="w-4 h-4" />;
     case "shipping": return <Truck className="w-4 h-4" />;
+    case "cac": return <Users className="w-4 h-4" />;
+    case "margin": return <TrendingUp className="w-4 h-4" />;
     default: return <AlertCircle className="w-4 h-4" />;
   }
 }

@@ -53,6 +53,12 @@ Schreibe EINEN Satz (max. 30 Wörter) auf Deutsch, professioneller Geschäftston
 Antworte NUR mit diesem Satz, ohne Anführungszeichen oder Erklärungen.`,
 };
 
+const REVENUE_DROP_MESSAGE = {
+  UA: (name, pct, date) => `Виручка "${name}" впала на ${pct}% (${date})`,
+  EN: (name, pct, date) => `Revenue for ${name} dropped ${pct}% on ${date}`,
+  DE: (name, pct, date) => `Umsatz von ${name} ist am ${date} um ${pct}% gesunken`,
+};
+
 async function getAIExplanation(business, today, yesterday, language = "EN", changePct) {
   try {
     const buildPrompt = PROMPTS[language] || PROMPTS.EN;
@@ -226,7 +232,16 @@ async function main(businessId) {
 
           if (change <= -20) {
             const severity = change <= -50 ? "critical" : change <= -35 ? "high" : "medium";
-            const message = `Revenue for ${business.name} dropped ${Math.abs(change).toFixed(0)}% on ${date}`;
+
+            const { data: user } = await admin
+              .from("users")
+              .select("telegram_id, email, email_enabled, language")
+              .eq("id", business.user_id)
+              .maybeSingle();
+
+            const userLang = user?.language || "EN";
+            const buildMessage = REVENUE_DROP_MESSAGE[userLang] || REVENUE_DROP_MESSAGE.EN;
+            const message = buildMessage(business.name, Math.abs(change).toFixed(0), date);
 
            const oneDayAgo = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
 const { data: existingAlerts, error: dedupErr } = await admin
@@ -241,14 +256,6 @@ const { data: existingAlerts, error: dedupErr } = await admin
 
 console.log("DEBUG dedup check:", existingAlerts?.length, "error:", dedupErr);
 if (existingAlerts?.length) continue;
-
-            const { data: user } = await admin
-              .from("users")
-              .select("telegram_id, email, email_enabled, language")
-              .eq("id", business.user_id)
-              .maybeSingle();
-
-            const userLang = user?.language || "EN";
 
             const aiExplanation = await getAIExplanation(
               business,
@@ -265,6 +272,7 @@ if (existingAlerts?.length) continue;
               ai_explanation: aiExplanation,
               status: "open",
               severity,
+              sent_at: new Date().toISOString(),
             });
             console.log("DEBUG alerts_log insert error:", alertErr);
 

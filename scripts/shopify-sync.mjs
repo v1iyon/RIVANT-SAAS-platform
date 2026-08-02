@@ -17,6 +17,25 @@
 import { createClient } from "@supabase/supabase-js";
 import { decrypt } from "../lib/crypto.js";
 import { logError } from "../lib/log-error.js";
+import { sendAlert, getUserContact, generateAlertExplanation, detectExpenseAnomaly } from "../lib/alerts.mjs";
+
+const SYNC_FAILURE_MESSAGE = {
+  UA: (reason) => `Не вдалося синхронізувати Shopify: ${reason}`,
+  EN: (reason) => `Failed to sync Shopify: ${reason}`,
+  DE: (reason) => `Shopify Synchronisierung fehlgeschlagen: ${reason}`,
+};
+
+const COGS_SPIKE_MESSAGE = {
+  UA: (pct, avg, today, date) => `Собівартість товарів зросла на ${pct}% (з $${Math.round(avg)} до $${Math.round(today)}) ${date}`,
+  EN: (pct, avg, today, date) => `Cost of goods jumped ${pct}% (from $${Math.round(avg)} to $${Math.round(today)}) on ${date}`,
+  DE: (pct, avg, today, date) => `Wareneinsatz ist am ${date} um ${pct}% gestiegen (von $${Math.round(avg)} auf $${Math.round(today)})`,
+};
+
+const SHIPPING_SPIKE_MESSAGE = {
+  UA: (pct, avg, today, date) => `Витрати на доставку зросли на ${pct}% (з $${Math.round(avg)} до $${Math.round(today)}) ${date}`,
+  EN: (pct, avg, today, date) => `Shipping costs jumped ${pct}% (from $${Math.round(avg)} to $${Math.round(today)}) on ${date}`,
+  DE: (pct, avg, today, date) => `Versandkosten sind am ${date} um ${pct}% gestiegen (von $${Math.round(avg)} auf $${Math.round(today)})`,
+};
 
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
@@ -47,6 +66,11 @@ async function fetchShopifyOrders(shopDomain, token, sinceIso) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function getBusinessUserId(businessId) {
+  const { data } = await admin.from("businesses").select("user_id").eq("id", businessId).maybeSingle();
+  return data?.user_id ?? null;
 }
 
 // cost of goods для одного variant_id: variant → inventory_item_id → inventory_item.cost.
@@ -194,6 +218,67 @@ async function main(businessId) {
         });
       }
 
+      // Перевіряємо аномалії тільки за останню (найсвіжішу) дату з вікна синку —
+      // старіші дні вже перевірялись на попередніх прогонах. Умисно НЕ додаємо
+      // окремий "order_volume_drop" — падіння продажів вже ловить revenue_drop
+      // зі Stripe-синку, дублювати той самий сигнал іншими словами тільки додасть
+      // зайвих сповіщень, а не користі.
+      const allDates = [...new Set([...Object.keys(byDate), ...Object.keys(cogsByDate)])].sort();
+      if (allDates.length) {
+        const latestDate = allDates[allDates.length - 1];
+        const contact = await getUserContact(await getBusinessUserId(integ.business_id));
+
+        if (byDate[latestDate] != null) {
+          const anomaly = await detectExpenseAnomaly({
+            businessId: integ.business_id,
+            source: "shopify",
+            category: "shipping",
+            date: latestDate,
+            todayAmount: byDate[latestDate],
+          });
+          if (anomaly?.kind === "spike") {
+            const msg = (SHIPPING_SPIKE_MESSAGE[contact.userLang] || SHIPPING_SPIKE_MESSAGE.EN)(anomaly.pct, anomaly.avg, anomaly.today, latestDate);
+            const explanation = await generateAlertExplanation(
+              contact.userLang,
+              `Shopify shipping costs jumped ${anomaly.pct}% versus the 7-day average (from $${Math.round(anomaly.avg)} to $${Math.round(anomaly.today)}) on ${latestDate}.`
+            );
+            await sendAlert({
+              businessId: integ.business_id,
+              type: "shipping_spike_shopify",
+              severity: anomaly.pct >= 100 ? "high" : "medium",
+              message: msg,
+              aiExplanation: explanation,
+              ...contact,
+            });
+          }
+        }
+
+        if (cogsByDate[latestDate] != null) {
+          const anomaly = await detectExpenseAnomaly({
+            businessId: integ.business_id,
+            source: "shopify",
+            category: "cogs",
+            date: latestDate,
+            todayAmount: cogsByDate[latestDate],
+          });
+          if (anomaly?.kind === "spike") {
+            const msg = (COGS_SPIKE_MESSAGE[contact.userLang] || COGS_SPIKE_MESSAGE.EN)(anomaly.pct, anomaly.avg, anomaly.today, latestDate);
+            const explanation = await generateAlertExplanation(
+              contact.userLang,
+              `Shopify cost of goods jumped ${anomaly.pct}% versus the 7-day average (from $${Math.round(anomaly.avg)} to $${Math.round(anomaly.today)}) on ${latestDate}. This directly compresses margin.`
+            );
+            await sendAlert({
+              businessId: integ.business_id,
+              type: "cogs_spike_shopify",
+              severity: anomaly.pct >= 100 ? "high" : "medium",
+              message: msg,
+              aiExplanation: explanation,
+              ...contact,
+            });
+          }
+        }
+      }
+
       await admin
         .from("integrations")
         .update({ last_synced_at: new Date().toISOString(), status: "connected" })
@@ -213,6 +298,21 @@ async function main(businessId) {
       // Помечаем интеграцию как проблемную (видно в /admin), но не отключаем —
       // синк для остальных интеграций продолжается благодаря try/catch на каждой.
       await admin.from("integrations").update({ status: "error" }).eq("id", integ.id);
+
+      const contact = await getUserContact(await getBusinessUserId(integ.business_id));
+      const msg = (SYNC_FAILURE_MESSAGE[contact.userLang] || SYNC_FAILURE_MESSAGE.EN)(err.message);
+      const explanation = await generateAlertExplanation(
+        contact.userLang,
+        `The Shopify integration was previously connected and syncing successfully. It just failed with this error: "${err.message}". This usually means the Admin API access token was revoked or the store URL changed.`
+      );
+      await sendAlert({
+        businessId: integ.business_id,
+        type: "sync_failure_shopify",
+        severity: "high",
+        message: msg,
+        aiExplanation: explanation,
+        ...contact,
+      });
     }
   }
 }

@@ -102,12 +102,16 @@ export async function POST(req) {
       .maybeSingle();
 
     if (existing) {
-      await admin
+      const { error: updateErr } = await admin
         .from("integrations")
         .update({ api_key_encrypted: encrypted, status: "connected", key_preview: keyPreview, config: cleanConfig })
         .eq("id", existing.id);
+      if (updateErr) {
+        console.error("connect-integration update error:", updateErr);
+        return Response.json({ error: `Database error: ${updateErr.message}` }, { status: 500 });
+      }
     } else {
-      await admin.from("integrations").insert({
+      const { error: insertErr } = await admin.from("integrations").insert({
         business_id: business.id,
         provider,
         api_key_encrypted: encrypted,
@@ -115,6 +119,10 @@ export async function POST(req) {
         key_preview: keyPreview,
         config: cleanConfig,
       });
+      if (insertErr) {
+        console.error("connect-integration insert error:", insertErr);
+        return Response.json({ error: `Database error: ${insertErr.message}` }, { status: 500 });
+      }
     }
 
     return Response.json({ success: true });
