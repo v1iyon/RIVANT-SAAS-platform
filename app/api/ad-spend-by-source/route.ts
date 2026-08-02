@@ -1,12 +1,13 @@
+// app/api/ad-spend-by-source/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
 export async function GET(req: Request) {
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+
   const { searchParams } = new URL(req.url);
   const email = searchParams.get("email");
   if (!email) return NextResponse.json({ error: "email required" }, { status: 400 });
@@ -23,10 +24,6 @@ export async function GET(req: Request) {
   const periodStart = new Date(now); periodStart.setDate(now.getDate() - 30);
   const prevPeriodStart = new Date(now); prevPeriodStart.setDate(now.getDate() - 60);
 
-  // ⚠️ ПРОВЕРЬ: названия колонок (business_id / source / amount / date)
-  // должны совпадать с тем, что реально пишут meta-ads-sync.mjs и google-ads sync
-  // в таблицу expenses. Значения source, скорее всего, "meta_ads" и "google_ads" —
-  // это те же строки, что уже используются как provider в IntegrationConnectCard.
   const { data: expenses } = await supabase
     .from("expenses")
     .select("source, amount, date")
