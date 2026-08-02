@@ -83,8 +83,8 @@ export function LossCalculator() {
         <div className="text-center mb-5 p-4 bg-secondary/50 rounded-xl select-none">
           <p className="text-sm text-muted-foreground uppercase tracking-wider mb-2">{t.estimatedLoss || "Estimated Monthly Loss"}</p>
           <div className="flex items-center justify-center gap-2">
-            <TrendingDown className="w-8 h-8 text-destructive" />
-            <span className="text-4xl sm:text-6xl font-bold text-destructive tabular-nums">
+            <TrendingDown className="w-6 h-6 sm:w-7 sm:h-7 text-destructive" />
+            <span className="text-3xl sm:text-5xl font-bold text-destructive tabular-nums">
               {formatCurrency(estimatedLoss)}
             </span>
           </div>
