@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { User, X, Globe } from "lucide-react";
+import { User, X, Globe, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useLanguage, Language } from "@/lib/translations";
 import { createClient } from "@/lib/supabase-browser";
@@ -18,6 +18,7 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
   const [authError, setAuthError] = useState("");
@@ -437,15 +438,26 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
     <label className="block text-sm font-medium text-gray-300 mb-1">
       {t.passwordLabel}
     </label>
-    <input
-      type="password"
-      value={loginPassword}
-      onChange={(e) => setLoginPassword(e.target.value)}
-      className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 text-white text-base"
-      placeholder="••••••••"
-      minLength={6}
-      required
-    />
+    <div className="relative">
+      <input
+        type={showPassword ? "text" : "password"}
+        value={loginPassword}
+        onChange={(e) => setLoginPassword(e.target.value)}
+        className="w-full px-4 py-3 pr-11 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 text-white text-base"
+        placeholder="••••••••"
+        minLength={6}
+        required
+      />
+      <button
+        type="button"
+        onClick={() => setShowPassword((v) => !v)}
+        tabIndex={-1}
+        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-200"
+        aria-label={showPassword ? "Hide password" : "Show password"}
+      >
+        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+      </button>
+    </div>
   </div>
   {authError && <p className="text-red-400 text-sm">{authError}</p>}
   <button
