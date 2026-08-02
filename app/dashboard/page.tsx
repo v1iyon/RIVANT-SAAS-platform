@@ -521,16 +521,17 @@ function SwipeableCacCard({ panels, language }: { panels: CacPanelData[]; langua
 
   const panel = panels[index];
   const hasValue = panel.value != null;
+  const title = index === 1 ? "CAC" : panel.label;
 
   return (
     <div
-      className={`bg-gradient-to-br ${theme.from} to-transparent rounded-xl p-4 border ${theme.border} select-none`}
+      className={`bg-gradient-to-br ${theme.from} to-transparent rounded-xl p-4 border ${theme.border} select-none flex flex-col justify-between min-h-[124px]`}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
-      <div className="flex items-center justify-between mb-1 gap-1">
+      <div className="flex items-center justify-between gap-1">
         <div className={`text-xs font-semibold uppercase ${theme.text} truncate`}>
-          CAC · {panel.label}
+          {title}
         </div>
         <div className="flex items-center gap-0.5 shrink-0">
           <button
@@ -552,17 +553,17 @@ function SwipeableCacCard({ panels, language }: { panels: CacPanelData[]; langua
         </div>
       </div>
 
-      {hasValue ? (
-        <AnimatedNumber value={panel.value as number} prefix="$" changePercent={panel.change} />
-      ) : (
-        <div className="min-h-[44px] flex items-center">
+      <div className="flex-1 flex items-center my-1">
+        {hasValue ? (
+          <AnimatedNumber value={panel.value as number} prefix="$" changePercent={panel.change} />
+        ) : (
           <p className="text-xs text-gray-500">
             {language === "UA" ? "Немає даних для цього джерела" : language === "DE" ? "Keine Daten für diese Quelle" : "No data for this source yet"}
           </p>
-        </div>
-      )}
+        )}
+      </div>
 
-      <div className="flex items-center justify-center gap-1.5 mt-2">
+      <div className="flex items-center justify-center gap-1.5">
         {panels.map((_, i) => (
           <button
             key={i}
