@@ -57,7 +57,7 @@ type ViewType = "overview" | "risks" | "forecast" | "integrations" | "settings";
 
 // Реальні назви місяців, що йдуть від поточної дати (не хардкод) — використовується
 // у вкладці "Прогноз" для тарифу Scale/Trial (90 днів = 3 місяці наперед). Якщо зараз
-// серпень — покаже "Сер, Вер, Жов", наступного місяця саме собою стане "Вер, Жов, Лис".
+// серпень — покаже "Сер, Вер, Жов"; наступного місяця саме собою стане "Вер, Жов, Лис".
 const MONTH_NAMES_BY_LANG: Record<string, string[]> = {
   EN: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
   UA: ["Січ", "Лют", "Бер", "Кві", "Тра", "Чер", "Лип", "Сер", "Вер", "Жов", "Лис", "Гру"],
@@ -483,167 +483,6 @@ function MetricCard({ title, value, change, color, prefix = "$", suffix = "", sp
   );
 }
 
-// ========== КОМПОНЕНТ СВАЙПА РЕКЛАМНИХ ДЖЕРЕЛ (Google / Total / Meta) ==========
-// Стартует по центру на "Total". Свайп/стрелка влево -> Google Ads, вправо -> Meta Ads.
-// Для расходов рост % считается "плохим" (красный), падение - "хорошим" (зелёный) —
-// это специально инвертировано относительно обычных метрик типа Revenue/Profit.
-interface AdSpendData {
-  google: number;
-  meta: number;
-  googlePrev?: number;
-  metaPrev?: number;
-}
-
-function AdSpendSwipeCard({ data, loaded }: { data: AdSpendData; loaded: boolean }) {
-  const { language } = useLanguage();
-  const total = (data.google || 0) + (data.meta || 0);
-  const totalPrev = (data.googlePrev || 0) + (data.metaPrev || 0);
-
-  const slides = [
-    {
-      key: "google",
-      label: "Google Ads",
-      value: data.google || 0,
-      prev: data.googlePrev || 0,
-      color: "text-yellow-400",
-      border: "border-yellow-500/20",
-      from: "from-yellow-500/10",
-      dot: "bg-yellow-500",
-    },
-    {
-      key: "total",
-      label:
-        language === "UA"
-          ? "Загальні витрати на рекламу"
-          : language === "DE"
-          ? "Gesamte Werbeausgaben"
-          : "Total ad spend",
-      value: total,
-      prev: totalPrev,
-      color: "text-white",
-      border: "border-gray-700",
-      from: "from-gray-700/20",
-      dot: "bg-gray-300",
-    },
-    {
-      key: "meta",
-      label: "Meta Ads",
-      value: data.meta || 0,
-      prev: data.metaPrev || 0,
-      color: "text-blue-400",
-      border: "border-blue-500/20",
-      from: "from-blue-500/10",
-      dot: "bg-blue-500",
-    },
-  ];
-
-  const [current, setCurrent] = useState(1); // старт по центру = Total
-  const touchStartX = useRef<number | null>(null);
-  const dragDeltaX = useRef(0);
-  const mouseDownX = useRef<number | null>(null);
-
-  const goTo = (i: number) => {
-    if (i < 0 || i >= slides.length) return;
-    setCurrent(i);
-  };
-
-  const onTouchStart = (e: React.TouchEvent) => {
-    touchStartX.current = e.touches[0].clientX;
-  };
-  const onTouchMove = (e: React.TouchEvent) => {
-    if (touchStartX.current == null) return;
-    dragDeltaX.current = e.touches[0].clientX - touchStartX.current;
-  };
-  const onTouchEnd = () => {
-    if (Math.abs(dragDeltaX.current) > 40) {
-      if (dragDeltaX.current < 0) goTo(current + 1);
-      else goTo(current - 1);
-    }
-    touchStartX.current = null;
-    dragDeltaX.current = 0;
-  };
-  const onMouseDown = (e: React.MouseEvent) => {
-    mouseDownX.current = e.clientX;
-  };
-  const onMouseUp = (e: React.MouseEvent) => {
-    if (mouseDownX.current == null) return;
-    const delta = e.clientX - mouseDownX.current;
-    if (Math.abs(delta) > 40) {
-      if (delta < 0) goTo(current + 1);
-      else goTo(current - 1);
-    }
-    mouseDownX.current = null;
-  };
-
-  const slide = slides[current];
-  const change = slide.prev ? (((slide.value - slide.prev) / slide.prev) * 100).toFixed(1) : "0.0";
-  const isWorse = parseFloat(change) > 0; // для расходов рост — плохо
-
-  if (!loaded) {
-    return (
-      <div className="bg-gray-900/40 rounded-xl p-4 border border-gray-800 h-[132px] flex items-center justify-center">
-        <div className="w-5 h-5 border-2 border-gray-600 border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
-
-  return (
-    <div
-      className={`bg-gradient-to-br ${slide.from} to-transparent rounded-xl p-4 border ${slide.border} select-none touch-pan-y transition-colors duration-200`}
-      onTouchStart={onTouchStart}
-      onTouchMove={onTouchMove}
-      onTouchEnd={onTouchEnd}
-      onMouseDown={onMouseDown}
-      onMouseUp={onMouseUp}
-    >
-      <div className="flex items-center justify-between mb-1">
-        <button
-          onClick={() => goTo(current - 1)}
-          disabled={current === 0}
-          className="text-gray-600 hover:text-gray-300 disabled:opacity-20 disabled:hover:text-gray-600 transition-colors p-1 -m-1"
-          aria-label="prev"
-        >
-          <ChevronDown className="w-4 h-4 rotate-90" />
-        </button>
-        <div className={`text-xs font-semibold uppercase truncate px-2 ${slide.color}`}>{slide.label}</div>
-        <button
-          onClick={() => goTo(current + 1)}
-          disabled={current === slides.length - 1}
-          className="text-gray-600 hover:text-gray-300 disabled:opacity-20 disabled:hover:text-gray-600 transition-colors p-1 -m-1"
-          aria-label="next"
-        >
-          <ChevronDown className="w-4 h-4 -rotate-90" />
-        </button>
-      </div>
-
-      <div className="text-2xl font-bold text-white text-center">
-        ${Math.round(slide.value).toLocaleString()}
-      </div>
-      <div
-        className={`text-xs flex items-center justify-center gap-0.5 mt-1 ${
-          isWorse ? "text-red-400" : "text-green-400"
-        }`}
-      >
-        {parseFloat(change) > 0 ? "+" : ""}
-        {change}%
-      </div>
-
-      <div className="flex justify-center gap-1.5 mt-3">
-        {slides.map((s, i) => (
-          <button
-            key={s.key}
-            onClick={() => goTo(i)}
-            className={`w-1.5 h-1.5 rounded-full transition-colors ${
-              i === current ? s.dot : "bg-gray-700"
-            }`}
-            aria-label={s.label}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function getStatusBadge(status: string, t: any) {
   switch(status) {
     case "connected":
@@ -681,9 +520,6 @@ export default function DashboardPage() {
 
 const [forecastData, setForecastData] = useState<any>(null);
 const [forecastLoaded, setForecastLoaded] = useState(false);
-
-const [adSpendData, setAdSpendData] = useState<AdSpendData>({ google: 0, meta: 0, googlePrev: 0, metaPrev: 0 });
-const [adSpendLoaded, setAdSpendLoaded] = useState(false);
 
   const lastRow = metricsRows[metricsRows.length - 1];
   const prevRow = metricsRows[metricsRows.length - 2];
@@ -797,26 +633,6 @@ useEffect(() => {
     })
     .finally(() => setForecastLoaded(true));
 }, [profileEmail, language]);
-
-useEffect(() => {
-  if (!profileEmail) return;
-  setAdSpendLoaded(false);
-  fetch(`/api/ad-spend-by-source?email=${encodeURIComponent(profileEmail)}`, { cache: "no-store" })
-    .then((res) => res.json())
-    .then((data) =>
-      setAdSpendData({
-        google: data.google ?? 0,
-        meta: data.meta ?? 0,
-        googlePrev: data.googlePrev ?? 0,
-        metaPrev: data.metaPrev ?? 0,
-      })
-    )
-    .catch((e) => {
-      console.error("Failed to load ad spend by source", e);
-      setAdSpendData({ google: 0, meta: 0, googlePrev: 0, metaPrev: 0 });
-    })
-    .finally(() => setAdSpendLoaded(true));
-}, [profileEmail]);
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data }: any) => {
@@ -1623,13 +1439,6 @@ if (!subInfo) {
     prevValue={0}
   />
 )}
-                  </div>
-
-                  <div>
-                    <div className="text-xs text-gray-500 uppercase tracking-wider mb-2 px-1">
-                      {language === "UA" ? "Витрати на рекламу за джерелом" : language === "DE" ? "Werbeausgaben nach Quelle" : "Ad spend by source"}
-                    </div>
-                    <AdSpendSwipeCard data={adSpendData} loaded={adSpendLoaded} />
                   </div>
 
                   <RevenueExpensesChart history={chartHistory} />
