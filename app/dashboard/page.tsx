@@ -1674,15 +1674,15 @@ if (!subInfo) {
                   <p className="text-xs text-gray-400 leading-snug">
                     {selectedProviders.length > 0
                       ? (language === "UA"
-                          ? <>Growth: обрано <span className="font-semibold text-gray-200">{selectedProviders[0]}</span> на цей billing-період. Змінити — після продовження або Scale.</>
+                          ? <>На тарифі Growth можна підключити лише одну додаткову інтеграцію (крім Stripe) — ви обрали <span className="font-semibold text-gray-200">{selectedProviders[0]}</span>. Замінити на іншу можна тільки після продовження підписки або переходу на Scale.</>
                           : language === "DE"
-                          ? <>Growth: <span className="font-semibold text-gray-200">{selectedProviders[0]}</span> für diesen Zeitraum gewählt. Änderung nach Verlängerung oder Scale.</>
-                          : <>Growth: <span className="font-semibold text-gray-200">{selectedProviders[0]}</span> selected this billing period. Change after renewal or on Scale.</>)
+                          ? <>Im Growth-Plan ist nur eine zusätzliche Integration (neben Stripe) möglich — Sie haben <span className="font-semibold text-gray-200">{selectedProviders[0]}</span> gewählt. Wechsel erst nach Verlängerung oder Upgrade auf Scale.</>
+                          : <>The Growth plan allows only one additional integration (besides Stripe) — you've picked <span className="font-semibold text-gray-200">{selectedProviders[0]}</span>. Switching to another is only possible after renewal or upgrading to Scale.</>)
                       : (language === "UA"
-                          ? "Growth: 1 додаткова інтеграція на вибір, фіксується до кінця billing-періоду."
+                          ? "На тарифі Growth можна підключити одну додаткову інтеграцію (крім Stripe) — цей вибір буде зафіксовано до кінця поточного billing-періоду."
                           : language === "DE"
-                          ? "Growth: 1 zusätzliche Integration wählbar, gilt bis Ende des Abrechnungszeitraums."
-                          : "Growth: pick 1 additional integration — locked in for this billing period.")}
+                          ? "Im Growth-Plan können Sie eine zusätzliche Integration (neben Stripe) wählen — diese Wahl gilt bis zum Ende des aktuellen Abrechnungszeitraums."
+                          : "The Growth plan lets you connect one additional integration (besides Stripe) — your pick will be locked in until the end of this billing period.")}
                   </p>
                 </div>
               )}
@@ -2072,7 +2072,7 @@ if (!subInfo) {
                       {exportingFormat ? (language === "UA" ? "Експорт..." : language === "DE" ? "Exportiere..." : "Exporting...") : (T.settingsExport || "Export")}
                     </Button>
                     {exportMenuOpen && (
-                      <div className="absolute right-0 top-full mt-1 z-10 bg-gray-900 border border-gray-700 rounded-lg shadow-xl overflow-hidden min-w-[140px]">
+                      <div className="absolute right-0 bottom-full mb-1 z-10 bg-gray-900 border border-gray-700 rounded-lg shadow-xl overflow-hidden min-w-[140px]">
                         <button onClick={() => handleExportFormat("json")} className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 transition-colors">JSON</button>
                         <button onClick={() => handleExportFormat("xlsx")} className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 transition-colors">Excel (.xlsx)</button>
                         <button onClick={() => handleExportFormat("pdf")} className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 transition-colors">PDF (.pdf)</button>
