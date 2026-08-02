@@ -103,7 +103,7 @@ export function PricingSection() {
 
   return (
    <section className="py-6 relative overflow-hidden">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-10">
           <h2 className="text-4xl font-bold text-foreground mb-4">
             {T.pricingTitle ?? "Pricing"} <span className="text-primary">{T.pricingTitleHighlight ?? "Plans"}</span>
@@ -111,11 +111,11 @@ export function PricingSection() {
         </div>
 
         {/* Pricing Cards */}
-        <div id="pricing" className="grid grid-cols-1 md:grid-cols-3 gap-5 scroll-mt-24">
+        <div id="pricing" className="grid grid-cols-1 md:grid-cols-3 gap-8 scroll-mt-24">
           {plans.map((plan) => (
             <div
               key={plan.name}
-              className={`relative rounded-2xl p-6 flex flex-col h-full transition-all duration-300 border hover:scale-105 hover:z-20 ${
+              className={`relative rounded-2xl p-8 flex flex-col h-full transition-all duration-300 border hover:scale-105 hover:z-20 ${
                 plan.popular
                   ? "bg-[#0A0A0A] border-primary shadow-[0_0_30px_-10px_rgba(59,130,246,0.5)]"
                   : "bg-[#0A0A0A] border-white/10 hover:border-white/20"
@@ -135,10 +135,10 @@ export function PricingSection() {
               <div className="mb-6 text-4xl font-bold text-white">
                 ${plan.price}<span className="text-sm text-muted-foreground font-normal">{t.perMonth}</span>
               </div>
-              <div className="flex-1 mb-6">
-                <ul className="space-y-3">
+              <div className="flex-1 mb-8">
+                <ul className="space-y-4">
                   {plan.features.map((f, i) => (
-                    <li key={i} className="flex items-start gap-2.5 text-sm text-muted-foreground">
+                    <li key={i} className="flex items-start gap-3 text-sm text-muted-foreground">
                       <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" /> {f}
                     </li>
                   ))}
