@@ -24,6 +24,8 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   X,
   Trash2,
   Globe,
@@ -114,6 +116,8 @@ interface MetricsRow {
   margin_pct: number;
   orders: number;
   cac: number | null;
+  cacMeta: number | null;
+  cacGoogle: number | null;
 }
 
 
@@ -483,6 +487,95 @@ function MetricCard({ title, value, change, color, prefix = "$", suffix = "", sp
   );
 }
 
+// ========== СВАЙП-КАРТОЧКА CAC (Meta Ads / Загальне / Google Ads) ==========
+// Порядок навмисно: індекс 0 = Meta Ads (свайп вправо від центру = вліво по
+// екрану), 1 = Загальне (стартова позиція), 2 = Google Ads (свайп вліво від
+// центру = вправо по екрану) — як просили: "справа Google Ads, зліва Meta Ads,
+// по центру — загальні дані по обох джерелах".
+interface CacPanelData {
+  label: string;
+  value: number | null;
+  change: number;
+  prev: number | null;
+}
+
+function SwipeableCacCard({ panels, language }: { panels: CacPanelData[]; language: string }) {
+  const [index, setIndex] = useState(1);
+  const touchStartX = useRef<number | null>(null);
+  const theme = METRIC_CARD_THEMES["bg-orange-500"];
+
+  const goTo = (i: number) => setIndex(Math.max(0, Math.min(panels.length - 1, i)));
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+  };
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX.current == null) return;
+    const delta = e.changedTouches[0].clientX - touchStartX.current;
+    if (Math.abs(delta) > 40) {
+      if (delta < 0) goTo(index + 1);
+      else goTo(index - 1);
+    }
+    touchStartX.current = null;
+  };
+
+  const panel = panels[index];
+  const hasValue = panel.value != null;
+
+  return (
+    <div
+      className={`bg-gradient-to-br ${theme.from} to-transparent rounded-xl p-4 border ${theme.border} select-none`}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+    >
+      <div className="flex items-center justify-between mb-1 gap-1">
+        <div className={`text-xs font-semibold uppercase ${theme.text} truncate`}>
+          CAC · {panel.label}
+        </div>
+        <div className="flex items-center gap-0.5 shrink-0">
+          <button
+            onClick={() => goTo(index - 1)}
+            disabled={index === 0}
+            className="text-gray-500 hover:text-gray-300 disabled:opacity-20 disabled:cursor-not-allowed p-0.5"
+            aria-label="previous"
+          >
+            <ChevronLeft className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={() => goTo(index + 1)}
+            disabled={index === panels.length - 1}
+            className="text-gray-500 hover:text-gray-300 disabled:opacity-20 disabled:cursor-not-allowed p-0.5"
+            aria-label="next"
+          >
+            <ChevronRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {hasValue ? (
+        <AnimatedNumber value={panel.value as number} prefix="$" changePercent={panel.change} />
+      ) : (
+        <div className="min-h-[44px] flex items-center">
+          <p className="text-xs text-gray-500">
+            {language === "UA" ? "Немає даних для цього джерела" : language === "DE" ? "Keine Daten für diese Quelle" : "No data for this source yet"}
+          </p>
+        </div>
+      )}
+
+      <div className="flex items-center justify-center gap-1.5 mt-2">
+        {panels.map((_, i) => (
+          <button
+            key={i}
+            onClick={() => goTo(i)}
+            className={`w-1.5 h-1.5 rounded-full transition-colors ${i === index ? "bg-orange-400" : "bg-gray-700"}`}
+            aria-label={`panel ${i + 1}`}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function getStatusBadge(status: string, t: any) {
   switch(status) {
     case "connected":
@@ -528,10 +621,14 @@ const [forecastLoaded, setForecastLoaded] = useState(false);
   const currentProfit = lastRow?.profit ?? 0;
   const currentMargin = lastRow?.margin_pct ?? 0;
   const currentCac = lastRow?.cac ?? null;
+  const currentCacMeta = lastRow?.cacMeta ?? null;
+  const currentCacGoogle = lastRow?.cacGoogle ?? null;
   const prevRevenue = prevRow?.revenue ?? currentRevenue;
   const prevProfit = prevRow?.profit ?? currentProfit;
   const prevMargin = prevRow?.margin_pct ?? currentMargin;
   const prevCac = prevRow?.cac ?? currentCac;
+  const prevCacMeta = prevRow?.cacMeta ?? currentCacMeta;
+  const prevCacGoogle = prevRow?.cacGoogle ?? currentCacGoogle;
 
   const revenueQueue = buildSparkline(metricsRows, (r) => r.revenue);
   const profitQueue = buildSparkline(metricsRows, (r) => r.profit);
@@ -760,6 +857,8 @@ useEffect(() => {
   const profitChange = pctChange(currentProfit, prevProfit);
   const marginChange = (currentMargin - prevMargin).toFixed(1);
   const cacChange = currentCac != null && prevCac ? pctChange(currentCac, prevCac) : "0.0";
+  const cacMetaChange = currentCacMeta != null && prevCacMeta ? pctChange(currentCacMeta, prevCacMeta) : "0.0";
+  const cacGoogleChange = currentCacGoogle != null && prevCacGoogle ? pctChange(currentCacGoogle, prevCacGoogle) : "0.0";
 
  const handleConnectTelegram = async () => {
   const res = await fetch("/api/telegram-connect", {
@@ -1408,37 +1507,19 @@ if (!subInfo) {
                       sparklineData={marginQueue}
                       prevValue={prevMargin}
                     />
-                    {currentCac != null ? (
-  <MetricCard
-    title={T.cac || "CAC"}
-    value={currentCac}
-    change={parseFloat(cacChange)}
-    color="bg-orange-500"
-    prefix="$"
-    sparklineData={[]}
-    prevValue={prevCac ?? currentCac}
-  />
-) : metricsRows.length > 0 ? (
-  <div className="bg-gray-900/40 rounded-xl p-4 border border-gray-800 flex flex-col justify-between">
-    <div className="flex items-center gap-2 text-gray-500">
-      <Users className="w-4 h-4" />
-      <span className="text-xs">{T.cac || "CAC"}</span>
-    </div>
-    <div className="text-sm text-gray-500 mt-2">
-      {language === "UA" ? "Немає джерела даних (реклама не підключена)" : language === "DE" ? "Keine Datenquelle (Werbung nicht verbunden)" : "No data source yet (ad platform not connected)"}
-    </div>
-  </div>
-) : (
-  <MetricCard
-    title={T.cac || "CAC"}
-    value={0}
-    change={0}
-    color="bg-orange-500"
-    prefix="$"
-    sparklineData={[]}
-    prevValue={0}
-  />
-)}
+                    <SwipeableCacCard
+                      language={language}
+                      panels={[
+                        { label: "Meta Ads", value: currentCacMeta, change: parseFloat(cacMetaChange), prev: prevCacMeta },
+                        {
+                          label: language === "UA" ? "Загальне" : language === "DE" ? "Gesamt" : "Combined",
+                          value: currentCac,
+                          change: parseFloat(cacChange),
+                          prev: prevCac,
+                        },
+                        { label: "Google Ads", value: currentCacGoogle, change: parseFloat(cacGoogleChange), prev: prevCacGoogle },
+                      ]}
+                    />
                   </div>
 
                   <RevenueExpensesChart history={chartHistory} />

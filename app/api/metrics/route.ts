@@ -55,6 +55,8 @@ export async function GET(req: Request) {
     margin_pct: Number(r.margin_pct) || 0,
     orders: Number(r.orders) || 0,
     cac: null as number | null,
+    cacMeta: null as number | null,
+    cacGoogle: null as number | null,
   }));
 
   // Подмешиваем реальные расходы из expenses (Shopify shipping, Meta Ads
@@ -63,17 +65,21 @@ export async function GET(req: Request) {
   const minDate = rows[0].date;
   const { data: expenseRows } = await admin
     .from("expenses")
-    .select("date, amount, category")
+    .select("date, amount, category, source")
     .eq("business_id", business.id)
     .gte("date", minDate)
     .limit(2000);
 
-  const extraByDate: Record<string, { total: number; advertising: number }> = {};
+  const extraByDate: Record<string, { total: number; advertising: number; meta_ads: number; google_ads: number }> = {};
   for (const e of expenseRows || []) {
-    if (!extraByDate[e.date]) extraByDate[e.date] = { total: 0, advertising: 0 };
+    if (!extraByDate[e.date]) extraByDate[e.date] = { total: 0, advertising: 0, meta_ads: 0, google_ads: 0 };
     const amount = Number(e.amount) || 0;
     extraByDate[e.date].total += amount;
-    if (e.category === "advertising") extraByDate[e.date].advertising += amount;
+    if (e.category === "advertising") {
+      extraByDate[e.date].advertising += amount;
+      if (e.source === "meta_ads") extraByDate[e.date].meta_ads += amount;
+      if (e.source === "google_ads") extraByDate[e.date].google_ads += amount;
+    }
   }
 
   for (const row of rows) {
@@ -82,10 +88,12 @@ export async function GET(req: Request) {
     row.expenses += extra.total;
     row.profit = row.revenue - row.expenses;
     row.margin_pct = row.revenue > 0 ? Number(((row.profit / row.revenue) * 100).toFixed(1)) : 0;
-    // CAC = рекламные расходы / кол-во заказов за тот же день. Как только
-    // появится Google Ads, тут же станет суммой обеих интеграций — но CAC-карта
-    // на фронте останется одной цифрой, пока подключён только один рекламный источник.
+    // CAC — три варианта для свайп-карточки на дашборде: только Meta Ads,
+    // только Google Ads, и общий (сумма обеих). Null — если у конкретного
+    // источника не было расходов в этот день (нет данных, не "$0").
     row.cac = extra.advertising > 0 && row.orders > 0 ? Number((extra.advertising / row.orders).toFixed(2)) : null;
+    row.cacMeta = extra.meta_ads > 0 && row.orders > 0 ? Number((extra.meta_ads / row.orders).toFixed(2)) : null;
+    row.cacGoogle = extra.google_ads > 0 && row.orders > 0 ? Number((extra.google_ads / row.orders).toFixed(2)) : null;
   }
 
   return Response.json({ hasData: true, rows });
