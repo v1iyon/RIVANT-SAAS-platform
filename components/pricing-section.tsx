@@ -156,7 +156,7 @@ export function PricingSection() {
               </div>
               <div className="flex-1 flex items-center">
                 {plan.name === (T.growth ?? "Growth") && T.growthLockNote && (
-                  <p className="text-[11px] text-slate-500 leading-snug">{T.growthLockNote}</p>
+                  <p className="text-[11px] text-slate-500 leading-snug mb-3">{T.growthLockNote}</p>
                 )}
               </div>
               <Button
