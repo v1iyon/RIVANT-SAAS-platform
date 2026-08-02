@@ -142,6 +142,9 @@ export function PricingSection() {
                   </li>
                 ))}
               </ul>
+              {plan.name === (T.growth ?? "Growth") && T.growthLockNote && (
+                <p className="text-xs text-slate-500 mb-4 leading-snug">{T.growthLockNote}</p>
+              )}
               <Button
                 className="w-full bg-primary hover:bg-blue-600 text-white font-semibold py-6 text-lg"
                 onClick={() => handleGetStarted(plan.name)}

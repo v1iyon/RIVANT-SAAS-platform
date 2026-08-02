@@ -1760,22 +1760,41 @@ if (!subInfo) {
               />
               <IntegrationConnectCard
                 email={profileEmail}
-                provider="quickbooks"
-                displayName="QuickBooks"
-                placeholder="access token..."
+                provider="google_ads"
+                displayName="Google Ads"
+                placeholder="refresh token..."
                 isExpiredTrial={isExpiredTrial}
                 planTier={subInfo?.plan ?? null}
                 selectedProviders={selectedProviders}
                 onSelected={(p) => setSelectedProviders([p])}
                 onLockedClick={() => router.push("/#pricing")}
+                extraField={{
+                  key: "customer_id",
+                  label: language === "UA" ? "Customer ID (без дефісів)" : language === "DE" ? "Customer ID (ohne Bindestriche)" : "Customer ID (without dashes)",
+                  placeholder: "1234567890",
+                }}
                 hint={
                   language === "UA"
-                    ? "QuickBooks Developer → ваш додаток → Keys & OAuth → скопіюйте access token."
+                    ? "Google Ads API Center → створіть Developer Token і OAuth-клієнт, отримайте refresh token через Google OAuth Playground."
                     : language === "DE"
-                    ? "QuickBooks Developer → Ihre App → Keys & OAuth → Access Token kopieren."
-                    : "QuickBooks Developer → your app → Keys & OAuth → copy the access token."
+                    ? "Google Ads API Center → Developer Token und OAuth-Client erstellen, Refresh Token über Google OAuth Playground abrufen."
+                    : "Google Ads API Center → create a Developer Token and OAuth client, get a refresh token via Google OAuth Playground."
                 }
               />
+
+              <div className="bg-gray-900/20 rounded-xl p-4 border border-gray-800 opacity-50">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-gray-800 flex items-center justify-center">
+                      <Link2 className="w-5 h-5 text-gray-400" />
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-white">QuickBooks</h4>
+                      <p className="text-xs text-gray-500">Coming soon</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
 
               <div className="bg-gray-900/20 rounded-xl p-4 border border-gray-800 opacity-50">
                 <div className="flex items-center justify-between">

@@ -3,12 +3,17 @@
 // Этап 3 плана — sync-модуль для Shopify. Паттерн 1:1 с sync-stripe-core.mjs:
 // расшифровать ключ -> запрос к API провайдера -> запись в expenses -> логирование ошибок.
 //
-// ВАЖНО про объём данных: сейчас пишем в expenses только СТОИМОСТЬ ДОСТАВКИ
-// (shipping), потому что она прямо доступна в объекте заказа. Себестоимость
-// товара (cost of goods) в Shopify лежит на уровне inventory_item.cost —
-// это отдельный API-запрос на КАЖДЫЙ variant, сюда сознательно не включено,
-// чтобы не плодить сотни лишних запросов на каждый синк. Можно добавить
-// отдельным шагом позже, если понадобится.
+// Пишем в expenses и СТОИМОСТЬ ДОСТАВКИ (shipping, есть прямо в заказе), и
+// СЕБЕСТОИМОСТЬ ТОВАРА (cost of goods). Себестоимость лежит на уровне
+// inventory_item.cost, а не в заказе — поэтому на каждый УНИКАЛЬНЫЙ variant
+// в окне синка уходит 2 доп. запроса к Shopify (variant → inventory_item_id,
+// потом inventory_item → cost). Кэшируем в рамках одного прогона, чтобы один
+// и тот же товар не запрашивался повторно, если его купили несколько раз.
+// Важно: Shopify REST ограничивает ~2 запроса/сек (leaky bucket), поэтому
+// запросы идут последовательно с небольшой паузой — при большом ассортименте
+// синк может занять заметное время (сотни SKU = пара минут). Если вариант
+// не имеет cost, выставленного в Shopify (поле пустое), он просто
+// пропускается — его нельзя посчитать, это не баг.
 import { createClient } from "@supabase/supabase-js";
 import { decrypt } from "../lib/crypto.js";
 import { logError } from "../lib/log-error.js";
@@ -27,7 +32,7 @@ function normalizeShopDomain(raw) {
 }
 
 async function fetchShopifyOrders(shopDomain, token, sinceIso) {
-  const url = `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/orders.json?status=any&created_at_min=${encodeURIComponent(sinceIso)}&limit=250&fields=id,created_at,shipping_lines,total_shipping_price_set`;
+  const url = `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/orders.json?status=any&created_at_min=${encodeURIComponent(sinceIso)}&limit=250&fields=id,created_at,shipping_lines,total_shipping_price_set,line_items`;
   const res = await fetch(url, { headers: { "X-Shopify-Access-Token": token } });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
@@ -38,6 +43,70 @@ async function fetchShopifyOrders(shopDomain, token, sinceIso) {
   // в этот прогон (нет пагинации). Для большинства маленьких магазинов это не
   // проблема при синке раз в час, но стоит иметь в виду при росте объёма.
   return data.orders || [];
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// cost of goods для одного variant_id: variant → inventory_item_id → inventory_item.cost.
+// Возвращает число (юнит-себестоимость в валюте магазина) или null, если Shopify
+// не отдал cost (поле не заполнено продавцом) либо variant/inventory_item недоступны.
+async function fetchVariantCost(shopDomain, token, variantId) {
+  try {
+    const variantRes = await fetch(
+      `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/variants/${variantId}.json?fields=id,inventory_item_id`,
+      { headers: { "X-Shopify-Access-Token": token } }
+    );
+    if (!variantRes.ok) return null;
+    const variantData = await variantRes.json();
+    const inventoryItemId = variantData?.variant?.inventory_item_id;
+    if (!inventoryItemId) return null;
+
+    await sleep(550); // грубый троттлинг под лимит Shopify REST (~2 req/sec)
+
+    const itemRes = await fetch(
+      `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/inventory_items/${inventoryItemId}.json?fields=id,cost`,
+      { headers: { "X-Shopify-Access-Token": token } }
+    );
+    if (!itemRes.ok) return null;
+    const itemData = await itemRes.json();
+    const cost = Number(itemData?.inventory_item?.cost);
+    return Number.isFinite(cost) ? cost : null;
+  } catch {
+    return null;
+  }
+}
+
+// Себестоимость по всем заказам окна синка. Каждый уникальный variant_id
+// запрашивается у Shopify максимум один раз за прогон (кэш в variantCostCache),
+// даже если товар встречается в нескольких заказах.
+async function computeCogsByDate(shopDomain, token, orders) {
+  const uniqueVariantIds = [
+    ...new Set(
+      orders.flatMap((o) => (o.line_items || []).map((li) => li.variant_id).filter(Boolean))
+    ),
+  ];
+
+  const variantCostCache = new Map();
+  for (const variantId of uniqueVariantIds) {
+    const cost = await fetchVariantCost(shopDomain, token, variantId);
+    variantCostCache.set(variantId, cost);
+    await sleep(550);
+  }
+
+  const byDate = {};
+  for (const order of orders) {
+    const date = new Date(order.created_at).toISOString().slice(0, 10);
+    let orderCogs = 0;
+    for (const li of order.line_items || []) {
+      const unitCost = li.variant_id ? variantCostCache.get(li.variant_id) : null;
+      if (unitCost == null) continue; // нет данных о себестоимости — пропускаем, не выдумываем
+      orderCogs += unitCost * (Number(li.quantity) || 0);
+    }
+    if (orderCogs > 0) byDate[date] = (byDate[date] || 0) + orderCogs;
+  }
+  return byDate;
 }
 
 // Пишем в expenses идемпотентно: сначала удаляем старую запись за этот
@@ -113,12 +182,26 @@ async function main(businessId) {
         });
       }
 
+      const cogsByDate = await computeCogsByDate(shopDomain, token, orders);
+      for (const [date, amount] of Object.entries(cogsByDate)) {
+        await upsertExpense({
+          businessId: integ.business_id,
+          date,
+          amount: Number(amount.toFixed(2)),
+          category: "cogs",
+          source: "shopify",
+          description: "Shopify cost of goods (auto-synced)",
+        });
+      }
+
       await admin
         .from("integrations")
         .update({ last_synced_at: new Date().toISOString(), status: "connected" })
         .eq("id", integ.id);
 
-      console.log(`Shopify synced business ${integ.business_id}: ${Object.keys(byDate).length} day(s)`);
+      console.log(
+        `Shopify synced business ${integ.business_id}: ${Object.keys(byDate).length} day(s) shipping, ${Object.keys(cogsByDate).length} day(s) cogs`
+      );
     } catch (err) {
       console.error(`Failed to sync Shopify integration ${integ.id}:`, err.message);
       await logError({

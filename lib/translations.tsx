@@ -112,8 +112,9 @@ export const translations = {
     "Weekly email digest",
     "30-day data history"
   ],
+    growthLockNote: "Your chosen integration is locked in for the current billing period. Switch anytime by upgrading to Scale.",
     growthFeatures: [
-    "Stripe integration",
+    "Stripe + 1 integration of your choice (Shopify, Meta Ads, or Google Ads)",
     "Hourly data sync",
     "COGS tracking & margin analytics",
     "Instant Telegram alerts",
@@ -122,7 +123,7 @@ export const translations = {
     "90-day data history"
   ],
    scaleFeatures: [
-    "Stripe integration",
+    "All integrations included (Stripe, Shopify, Meta Ads, Google Ads)",
     "Hourly data sync",
     "COGS tracking & margin analytics",
     "Instant Telegram alerts",
@@ -392,8 +393,9 @@ registerSubtitle: "Start your 14-day free trial"
     "Щотижневі email-звіти",
     "Зберігання історії за 30 днів"
   ],
+    growthLockNote: "Обрана інтеграція фіксується до кінця поточного billing-періоду. Змінити можна в будь-який момент, перейшовши на Scale.",
     growthFeatures: [
-    "Інтеграція зі Stripe",
+    "Stripe + 1 інтеграція на вибір (Shopify, Meta Ads або Google Ads)",
     "Щогодинна синхронізація даних",
     "Облік витрат і розрахунок маржинальності",
     "Миттєві сповіщення в Telegram",
@@ -402,7 +404,7 @@ registerSubtitle: "Start your 14-day free trial"
     "Зберігання історії за 90 днів"
   ],
    scaleFeatures: [
-    "Інтеграція зі Stripe",
+    "Усі інтеграції (Stripe, Shopify, Meta Ads, Google Ads)",
     "Щогодинна синхронізація даних",
     "Облік витрат і розрахунок маржинальності",
     "Миттєві сповіщення в Telegram",
@@ -675,8 +677,9 @@ minutes: "Minuten",
     "Wöchentlicher E-Mail-Bericht",
     "30 Tage Datenhistorie"
   ],
+    growthLockNote: "Die gewählte Integration ist für den aktuellen Abrechnungszeitraum fixiert. Ein Wechsel ist jederzeit durch ein Upgrade auf Scale möglich.",
    growthFeatures: [
-    "Stripe-Integration",
+    "Stripe + 1 Integration nach Wahl (Shopify, Meta Ads oder Google Ads)",
     "Stündliche Datensynchronisation",
     "Selbstkosten- und Margenanalyse",
     "Echtzeit-Telegram-Benachrichtigungen",
@@ -685,7 +688,7 @@ minutes: "Minuten",
     "90 Tage Datenhistorie"
   ],
     scaleFeatures: [
-    "Stripe-Integration",
+    "Alle Integrationen (Stripe, Shopify, Meta Ads, Google Ads)",
     "Stündliche Datensynchronisation",
     "Selbstkosten- und Margenanalyse",
     "Echtzeit-Telegram-Benachrichtigungen",
