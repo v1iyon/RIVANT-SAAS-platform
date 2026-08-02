@@ -50,7 +50,6 @@ const INITIAL_INTEGRATIONS: Integration[] = [
   { id: "shopify", name: "Shopify", icon: "🛍️", status: "connected", lastSync: "2 min ago", lastSyncTime: new Date() },
   { id: "meta", name: "Meta Ads", icon: "📱", status: "connected", lastSync: "5 min ago", lastSyncTime: new Date() },
   { id: "google", name: "Google Ads", icon: "🔍", status: "connected", lastSync: "12 min ago", lastSyncTime: new Date() },
-  { id: "quickbooks", name: "QuickBooks", icon: "📊", status: "connected", lastSync: "1 hour ago", lastSyncTime: new Date(Date.now() - 3600000) },
   { id: "klaviyo", name: "Klaviyo", icon: "✉️", status: "setup_required", lastSync: "Not connected", lastSyncTime: new Date(0) },
 ];
 
@@ -546,15 +545,19 @@ function RevenueExpensesChart() {
 
 function DemoIntegrationCard({
   name, placeholder, hint, keyInput, setKeyInput, connected, setConnected, keyPreview, setKeyPreview, language,
+  extraField, extraValue, setExtraValue,
 }: {
   name: string; placeholder: string; hint: string;
   keyInput: string; setKeyInput: (v: string) => void;
   connected: boolean; setConnected: (v: boolean) => void;
   keyPreview: string; setKeyPreview: (v: string) => void;
   language: string;
+  extraField?: { label: string; placeholder: string };
+  extraValue?: string; setExtraValue?: (v: string) => void;
 }) {
   const handleConnect = () => {
     if (!keyInput.trim()) return;
+    if (extraField && !extraValue?.trim()) return;
     const key = keyInput.trim();
     setKeyPreview(key.slice(0, 8) + "..." + key.slice(-4));
     setConnected(true);
@@ -591,6 +594,17 @@ function DemoIntegrationCard({
 
       {!connected && (
         <>
+          {extraField && (
+            <input
+              type="text"
+              value={extraValue}
+              onChange={(e) => setExtraValue?.(e.target.value)}
+              placeholder={extraField.placeholder}
+              autoComplete="off"
+              className="w-full mt-4 bg-gray-800/60 border border-gray-700 rounded-lg px-3 py-2.5 text-sm text-gray-300 font-mono placeholder:text-gray-500 focus:outline-none focus:border-blue-500/50 transition-colors"
+            />
+          )}
+          {extraField && <p className="text-xs text-gray-500 mt-2">{extraField.label}</p>}
           <input
             type="text"
             value={keyInput}
@@ -602,7 +616,7 @@ function DemoIntegrationCard({
             spellCheck={false}
             data-lpignore="true"
             data-1p-ignore="true"
-            className="w-full mt-4 bg-gray-800/60 border border-gray-700 rounded-lg px-3 py-2.5 text-sm text-gray-300 font-mono placeholder:text-gray-500 focus:outline-none focus:border-blue-500/50 transition-colors"
+            className={`w-full ${extraField ? "mt-2" : "mt-4"} bg-gray-800/60 border border-gray-700 rounded-lg px-3 py-2.5 text-sm text-gray-300 font-mono placeholder:text-gray-500 focus:outline-none focus:border-blue-500/50 transition-colors`}
           />
           <p className="text-xs text-gray-500 mt-2">{hint}</p>
           <Button onClick={handleConnect} className="mt-4 font-semibold px-5 bg-blue-500 hover:bg-blue-600 text-white">
@@ -650,9 +664,10 @@ const [metaKeyInput, setMetaKeyInput] = useState("");
 const [metaConnected, setMetaConnected] = useState(false);
 const [metaKeyPreview, setMetaKeyPreview] = useState("");
 
-const [qbKeyInput, setQbKeyInput] = useState("");
-const [qbConnected, setQbConnected] = useState(false);
-const [qbKeyPreview, setQbKeyPreview] = useState("");
+const [googleAdsKeyInput, setGoogleAdsKeyInput] = useState("");
+const [googleAdsConnected, setGoogleAdsConnected] = useState(false);
+const [googleAdsKeyPreview, setGoogleAdsKeyPreview] = useState("");
+const [googleAdsCustomerId, setGoogleAdsCustomerId] = useState("");
 
   const handleConnectStripe = () => {
     if (!stripeKeyInput.trim()) return;
@@ -1199,12 +1214,17 @@ const [qbKeyPreview, setQbKeyPreview] = useState("");
   language={language}
 />
 <DemoIntegrationCard
-  name="QuickBooks"
-  placeholder="access token..."
-  hint={language === "UA" ? "QuickBooks Developer → ваш додаток → Keys & OAuth → скопіюйте access token." : language === "DE" ? "QuickBooks Developer → Ihre App → Keys & OAuth → Access Token kopieren." : "QuickBooks Developer → your app → Keys & OAuth → copy the access token."}
-  keyInput={qbKeyInput} setKeyInput={setQbKeyInput}
-  connected={qbConnected} setConnected={setQbConnected}
-  keyPreview={qbKeyPreview} setKeyPreview={setQbKeyPreview}
+  name="Google Ads"
+  placeholder="refresh token..."
+  hint={language === "UA" ? "Google Ads API Center → створіть Developer Token і OAuth-клієнт, отримайте refresh token через Google OAuth Playground." : language === "DE" ? "Google Ads API Center → Developer Token und OAuth-Client erstellen, Refresh Token über Google OAuth Playground abrufen." : "Google Ads API Center → create a Developer Token and OAuth client, get a refresh token via Google OAuth Playground."}
+  keyInput={googleAdsKeyInput} setKeyInput={setGoogleAdsKeyInput}
+  connected={googleAdsConnected} setConnected={setGoogleAdsConnected}
+  keyPreview={googleAdsKeyPreview} setKeyPreview={setGoogleAdsKeyPreview}
+  extraField={{
+    label: language === "UA" ? "Customer ID (без дефісів)" : language === "DE" ? "Customer ID (ohne Bindestriche)" : "Customer ID (without dashes)",
+    placeholder: "1234567890",
+  }}
+  extraValue={googleAdsCustomerId} setExtraValue={setGoogleAdsCustomerId}
   language={language}
 />
 
@@ -1214,7 +1234,7 @@ const [qbKeyPreview, setQbKeyPreview] = useState("");
                       <Link className="w-5 h-5 text-gray-500" />
                     </div>
                     <div>
-                      <h4 className="font-semibold text-gray-400 text-sm">Google Analytics</h4>
+                      <h4 className="font-semibold text-gray-400 text-sm">Google Analytics, QuickBooks</h4>
                       <p className="text-xs text-gray-600">
                         {language === "UA" ? "Скоро" : language === "DE" ? "Demnächst" : "Coming soon"}
                       </p>
