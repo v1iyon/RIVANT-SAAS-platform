@@ -85,7 +85,7 @@ async function getAIExplanation(business, today, yesterday, language = "EN", cha
 }
 
 async function fetchStripeCharges(apiKey, sinceUnix) {
-  const url = `https://api.stripe.com/v1/charges?created[gte]=${sinceUnix}&limit=100`;
+  const url = `https://api.stripe.com/v1/charges?created[gte]=${sinceUnix}&limit=100&expand[]=data.balance_transaction`;
   const res = await fetch(url, { headers: { Authorization: `Bearer ${apiKey}` } });
   if (!res.ok) throw new Error(`Stripe error: ${res.status}`);
   const data = await res.json();
@@ -123,9 +123,12 @@ async function main(businessId) {
       const byDate = {};
       for (const c of successful) {
         const date = new Date(c.created * 1000).toISOString().slice(0, 10);
-        if (!byDate[date]) byDate[date] = { revenue: 0, orders: 0 };
+        if (!byDate[date]) byDate[date] = { revenue: 0, orders: 0, stripeFee: 0 };
         byDate[date].revenue += c.amount / 100;
         byDate[date].orders += 1;
+        // c.balance_transaction expanded above; может быть null, если ещё не заселилось (pending)
+        const feeCents = c.balance_transaction?.fee ?? 0;
+        byDate[date].stripeFee += feeCents / 100;
       }
 
       const { data: business, error: bizErr } = await admin
@@ -175,7 +178,9 @@ async function main(businessId) {
           .eq("date", prevDate)
           .maybeSingle();
 
-        const cost = Number((agg.revenue * (costPct / 100)).toFixed(2));
+        const cogsCost = agg.revenue * (costPct / 100);
+        const stripeFee = agg.stripeFee || 0;
+        const cost = Number((cogsCost + stripeFee).toFixed(2));
         const marginPct = agg.revenue > 0
           ? Number((((agg.revenue - cost) / agg.revenue) * 100).toFixed(1))
           : 0;
