@@ -135,7 +135,11 @@ export function PricingSection() {
               <div className="mb-6 text-4xl font-bold text-white">
                 ${plan.price}<span className="text-sm text-muted-foreground font-normal">{t.perMonth}</span>
               </div>
-              <div className="flex-1 mb-8">
+              {/* flex-1 висить лише на списку фіч — саме тут "з'їдається" вся зайва
+                  висота картки, а не під приміткою Growth. Завдяки цьому кнопка
+                  лишається на одній лінії у всіх 3 картках (як і раніше), але
+                  примітка тепер стоїть впритул до кнопки, а не з великим розривом. */}
+              <div className="flex-1">
                 <ul className="space-y-4">
                   {plan.features.map((f, i) => (
                     <li key={i} className="flex items-start gap-3 text-sm text-muted-foreground">
@@ -143,10 +147,10 @@ export function PricingSection() {
                     </li>
                   ))}
                 </ul>
-                {plan.name === (T.growth ?? "Growth") && T.growthLockNote && (
-                  <p className="text-[11px] text-slate-500 mt-3 leading-snug">{T.growthLockNote}</p>
-                )}
               </div>
+              {plan.name === (T.growth ?? "Growth") && T.growthLockNote && (
+                <p className="text-[11px] text-slate-500 mb-4 leading-snug">{T.growthLockNote}</p>
+              )}
               <Button
                 className="w-full bg-primary hover:bg-blue-600 text-white font-semibold py-6 text-lg"
                 onClick={() => handleGetStarted(plan.name)}

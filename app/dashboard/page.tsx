@@ -1750,20 +1750,33 @@ if (!subInfo) {
                       // реальних календарних місяцях наперед від сьогодні (не
                       // хардкод: серпень зараз -> Сер/Вер/Жов, за місяць саме собою
                       // стане Вер/Жов/Лис).
+                      // Реальний "фактичний дохід" для першого стовпця (як у демо-лайв,
+                      // де Лип/Сер мали actual, а Вер — ще ні, бо в майбутньому). Рахуємо
+                      // суму реальної виручки з metricsRows за поточний календарний
+                      // місяць від 1 числа до сьогодні. Для 2-го і 3-го стовпця (майбутні
+                      // місяці) фактичних даних ще не існує — там бар просто не рендериться.
+                      const now = new Date();
+                      const monthStartStr = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+                      const todayStr = now.toISOString().slice(0, 10);
+                      const actualRevenueThisMonth = metricsRows
+                        .filter((r) => r.date >= monthStartStr && r.date <= todayStr)
+                        .reduce((sum, r) => sum + r.revenue, 0);
+
                       const bars =
                         forecastData.horizonDays === 30
                           ? [
-                              { label: `${T.forecastWeekLabel || "Week"} 1`, revenue: forecastData.revenue7, expenses: forecastData.expenses7 },
-                              { label: `${T.forecastWeekLabel || "Week"} 2`, revenue: forecastData.revenue14, expenses: forecastData.expenses14 },
-                              { label: `${T.forecastWeekLabel || "Week"} 3`, revenue: forecastData.revenue21, expenses: forecastData.expenses21 },
-                              { label: `${T.forecastWeekLabel || "Week"} 4`, revenue: forecastData.revenue30, expenses: forecastData.expenses30 },
+                              { label: `${T.forecastWeekLabel || "Week"} 1`, revenue: forecastData.revenue7, expenses: forecastData.expenses7, revenueActual: null as number | null },
+                              { label: `${T.forecastWeekLabel || "Week"} 2`, revenue: forecastData.revenue14, expenses: forecastData.expenses14, revenueActual: null as number | null },
+                              { label: `${T.forecastWeekLabel || "Week"} 3`, revenue: forecastData.revenue21, expenses: forecastData.expenses21, revenueActual: null as number | null },
+                              { label: `${T.forecastWeekLabel || "Week"} 4`, revenue: forecastData.revenue30, expenses: forecastData.expenses30, revenueActual: null as number | null },
                             ]
                           : getUpcomingMonthLabels(3, language).map((label, i) => ({
                               label,
                               revenue: [forecastData.revenue30, forecastData.revenue60, forecastData.revenue90][i],
                               expenses: [forecastData.expenses30, forecastData.expenses60, forecastData.expenses90][i],
+                              revenueActual: i === 0 ? actualRevenueThisMonth : (null as number | null),
                             }));
-                      const maxRevenue = Math.max(...bars.map((b) => b.revenue), 1);
+                      const maxRevenue = Math.max(...bars.map((b) => b.revenue), ...bars.map((b) => b.revenueActual || 0), 1);
                       const maxExpenses = Math.max(...bars.map((b) => b.expenses), 1);
                       const scale = Math.max(maxRevenue, maxExpenses) / 100;
                       return (
@@ -1771,6 +1784,9 @@ if (!subInfo) {
                           <div className="flex justify-around items-end h-28 gap-1 sm:gap-4">
                             {bars.map((m, i) => (
                               <div key={i} className="flex justify-center gap-1 sm:gap-2 items-end flex-1 min-w-0 h-full">
+                                {m.revenueActual != null && (
+                                  <div className="w-4 sm:w-8 bg-blue-500/30 rounded-t" style={{ height: `${Math.min(Math.max(m.revenueActual / scale, 2), 100)}px` }} />
+                                )}
                                 <div className="w-4 sm:w-8 bg-blue-500 rounded-t" style={{ height: `${Math.min(Math.max(m.revenue / scale, 2), 100)}px` }} />
                                 <div className="w-4 sm:w-8 bg-rose-500/60 rounded-t" style={{ height: `${Math.min(Math.max(m.expenses / scale, 2), 100)}px` }} />
                               </div>
@@ -1792,6 +1808,7 @@ if (!subInfo) {
                     })()}
                     <div className="flex justify-center gap-6 mt-4 pt-3 text-[10px] text-gray-600 border-t border-gray-800">
                       <div className="flex items-center gap-1"><div className="w-3 h-3 bg-blue-500 rounded-sm" /><span>{T.demoRevenueForecast || "Revenue Forecast"}</span></div>
+                      <div className="flex items-center gap-1"><div className="w-3 h-3 bg-blue-500/30 rounded-sm" /><span>{T.demoActualRevenue || "Actual Revenue"}</span></div>
                       <div className="flex items-center gap-1"><div className="w-3 h-3 bg-rose-500/60 rounded-sm" /><span>{T.demoExpensesForecast || "Expenses"}</span></div>
                     </div>
                   </div>

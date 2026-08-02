@@ -672,7 +672,7 @@ const [metaKeyPreview, setMetaKeyPreview] = useState("");
 const [googleAdsKeyInput, setGoogleAdsKeyInput] = useState("");
 const [googleAdsConnected, setGoogleAdsConnected] = useState(false);
 const [googleAdsKeyPreview, setGoogleAdsKeyPreview] = useState("");
-const [googleAdsCustomerId, setGoogleAdsCustomerId] = useState("");
+const [googleAdsExtraValues, setGoogleAdsExtraValues] = useState<Record<string, string>>({});
 
   const handleConnectStripe = () => {
     if (!stripeKeyInput.trim()) return;
@@ -1221,19 +1221,34 @@ const [googleAdsCustomerId, setGoogleAdsCustomerId] = useState("");
 <DemoIntegrationCard
   name="Google Ads"
   placeholder="refresh token..."
-  hint={language === "UA" ? "Google Ads API Center → створіть Developer Token і OAuth-клієнт, отримайте refresh token через Google OAuth Playground." : language === "DE" ? "Google Ads API Center → Developer Token und OAuth-Client erstellen, Refresh Token über Google OAuth Playground abrufen." : "Google Ads API Center → create a Developer Token and OAuth client, get a refresh token via Google OAuth Playground."}
+  hint={language === "UA" ? "Google Ads → Tools → API Center: створіть Developer Token. Google Cloud Console → OAuth Client ID (тип Desktop). Google OAuth Playground → свій Client ID/Secret у Settings → авторизуйтесь зі scope 'https://www.googleapis.com/auth/adwords' → отримайте refresh token." : language === "DE" ? "Google Ads → Tools → API Center: Developer Token erstellen. Google Cloud Console → OAuth Client ID (Typ Desktop). Google OAuth Playground → eigene Client ID/Secret in Settings → mit Scope 'https://www.googleapis.com/auth/adwords' autorisieren → Refresh Token abrufen." : "Google Ads → Tools → API Center: create a Developer Token. Google Cloud Console → create an OAuth Client ID (Desktop type). Google OAuth Playground → enter your own Client ID/Secret in Settings → authorize with scope 'https://www.googleapis.com/auth/adwords' → get the refresh token."}
   keyInput={googleAdsKeyInput} setKeyInput={setGoogleAdsKeyInput}
   connected={googleAdsConnected} setConnected={setGoogleAdsConnected}
   keyPreview={googleAdsKeyPreview} setKeyPreview={setGoogleAdsKeyPreview}
   extraFields={[
     {
-      key: "customerId",
+      key: "customer_id",
       label: language === "UA" ? "Customer ID (без дефісів)" : language === "DE" ? "Customer ID (ohne Bindestriche)" : "Customer ID (without dashes)",
       placeholder: "1234567890",
     },
+    {
+      key: "client_id",
+      label: language === "UA" ? "OAuth Client ID (Google Cloud Console)" : language === "DE" ? "OAuth-Client-ID (Google Cloud Console)" : "OAuth Client ID (Google Cloud Console)",
+      placeholder: "xxxxxxxxxxxx.apps.googleusercontent.com",
+    },
+    {
+      key: "client_secret",
+      label: language === "UA" ? "OAuth Client Secret" : language === "DE" ? "OAuth Client Secret" : "OAuth Client Secret",
+      placeholder: "GOCSPX-...",
+    },
+    {
+      key: "developer_token",
+      label: language === "UA" ? "Developer Token (Google Ads API Center)" : language === "DE" ? "Developer Token (Google Ads API Center)" : "Developer Token (Google Ads API Center)",
+      placeholder: "ABcdeFGH93KL-NOPQ_STUv",
+    },
   ]}
-  extraValues={{ customerId: googleAdsCustomerId }}
-  setExtraValues={(v) => setGoogleAdsCustomerId(v.customerId || "")}
+  extraValues={googleAdsExtraValues}
+  setExtraValues={setGoogleAdsExtraValues}
   language={language}
 />
 
