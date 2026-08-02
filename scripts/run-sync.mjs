@@ -1,11 +1,13 @@
 import { runSync as runStripeSync } from "./sync-stripe-core.mjs";
 import { runSync as runShopifySync } from "./shopify-sync.mjs";
 import { runSync as runMetaAdsSync } from "./meta-ads-sync.mjs";
+import { runSync as runGoogleAdsSync } from "./google-ads-sync.mjs";
 
 const jobs = [
   { name: "stripe", run: runStripeSync },
   { name: "shopify", run: runShopifySync },
   { name: "meta_ads", run: runMetaAdsSync },
+  { name: "google_ads", run: runGoogleAdsSync },
 ];
 
 let hadFailure = false;

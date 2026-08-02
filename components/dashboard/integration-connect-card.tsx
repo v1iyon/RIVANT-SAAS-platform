@@ -26,6 +26,10 @@ interface Props {
   // Деяким провайдерам (Shopify — домен магазину, Meta Ads — Ad Account ID) мало
   // самого ключа. Якщо задано — рендериться друге поле, обов'язкове для підключення.
   extraField?: { key: string; label: string; placeholder: string };
+  // Google Ads потребує одразу кількох полів (Customer ID, OAuth Client ID/Secret,
+  // Developer Token) на додачу до refresh token в основному полі — використовуємо
+  // це замість extraField, коли треба більше одного додаткового поля.
+  extraFields?: { key: string; label: string; placeholder: string }[];
 }
 
 // Trial навмисно НЕ в цьому списку: під час трайлу доступ повний, як на Scale,
@@ -45,10 +49,14 @@ export function IntegrationConnectCard({
   onLockedClick,
   onSelected,
   extraField,
+  extraFields,
 }: Props) {
   const { language } = useLanguage();
+  // Нормалізуємо обидва варіанти (одне поле / кілька полів) в один масив,
+  // щоб решта компонента не знала про різницю.
+  const fields = extraFields ?? (extraField ? [extraField] : []);
   const [apiKey, setApiKey] = useState("");
-  const [extraValue, setExtraValue] = useState("");
+  const [extraValues, setExtraValues] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<"checking" | "idle" | "loading" | "connected" | "error">("checking");
   const [errorMsg, setErrorMsg] = useState("");
   const [lastSynced, setLastSynced] = useState<string | null>(null);
@@ -66,7 +74,13 @@ export function IntegrationConnectCard({
           setStatus("connected");
           setLastSynced(row.last_synced_at);
           setKeyPreview(row.key_preview);
-          if (extraField && row.config?.[extraField.key]) setExtraValue(row.config[extraField.key]);
+          if (fields.length && row.config) {
+            const prefill: Record<string, string> = {};
+            for (const f of fields) {
+              if (row.config[f.key]) prefill[f.key] = row.config[f.key];
+            }
+            setExtraValues(prefill);
+          }
         } else {
           setStatus("idle");
         }
@@ -110,10 +124,12 @@ export function IntegrationConnectCard({
       return;
     }
     if (!apiKey.trim()) return;
-    if (extraField && !extraValue.trim()) {
-      setStatus("error");
-      setErrorMsg(`${extraField.label} is required`);
-      return;
+    for (const f of fields) {
+      if (!extraValues[f.key]?.trim()) {
+        setStatus("error");
+        setErrorMsg(`${f.label} is required`);
+        return;
+      }
     }
     setStatus("loading");
     setErrorMsg("");
@@ -125,7 +141,7 @@ export function IntegrationConnectCard({
           email,
           provider,
           apiKey: apiKey.trim(),
-          config: extraField ? { [extraField.key]: extraValue.trim() } : {},
+          config: Object.fromEntries(fields.map((f) => [f.key, extraValues[f.key]?.trim() || ""])),
         }),
       });
       const data = await res.json();
@@ -260,8 +276,8 @@ export function IntegrationConnectCard({
           <p className="text-xs text-gray-500">
             {status === "connected"
               ? lastSynced
-                ? `${texts.lastSyncedLabel}: ${new Date(lastSynced).toLocaleString()}${extraField && extraValue ? ` · ${extraValue}` : ""}`
-                : `${texts.connectedWaiting}${extraField && extraValue ? ` · ${extraValue}` : ""}`
+                ? `${texts.lastSyncedLabel}: ${new Date(lastSynced).toLocaleString()}${fields[0] && extraValues[fields[0].key] ? ` · ${extraValues[fields[0].key]}` : ""}`
+                : `${texts.connectedWaiting}${fields[0] && extraValues[fields[0].key] ? ` · ${extraValues[fields[0].key]}` : ""}`
               : texts.connectDesc}
           </p>
         </div>
@@ -279,17 +295,19 @@ export function IntegrationConnectCard({
 
       {status !== "connected" && (
         <div className="space-y-2">
-          {extraField && (
-            <input
-              type="text"
-              value={extraValue}
-              onChange={(e) => setExtraValue(e.target.value)}
-              placeholder={extraField.placeholder}
-              autoComplete="off"
-              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-600"
-            />
-          )}
-          {extraField && <p className="text-xs text-gray-500">{extraField.label}</p>}
+          {fields.map((f) => (
+            <div key={f.key}>
+              <input
+                type="text"
+                value={extraValues[f.key] || ""}
+                onChange={(e) => setExtraValues((prev) => ({ ...prev, [f.key]: e.target.value }))}
+                placeholder={f.placeholder}
+                autoComplete="off"
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-600"
+              />
+              <p className="text-xs text-gray-500 mt-1">{f.label}</p>
+            </div>
+          ))}
           <input
             type="text"
             value={apiKey}

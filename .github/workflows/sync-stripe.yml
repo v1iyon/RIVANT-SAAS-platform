@@ -1,4 +1,4 @@
-name: Sync integrations (Stripe, Shopify, Meta Ads)
+name: Sync integrations (Stripe, Shopify, Meta Ads, Google Ads)
 
 on:
   schedule:

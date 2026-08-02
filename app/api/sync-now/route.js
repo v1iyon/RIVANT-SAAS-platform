@@ -38,6 +38,9 @@ export async function POST(req) {
     if (!provider || provider === "meta_ads") {
       jobs.push(import("../../../scripts/meta-ads-sync.mjs").then((m) => m.runSync(business.id)));
     }
+    if (!provider || provider === "google_ads") {
+      jobs.push(import("../../../scripts/google-ads-sync.mjs").then((m) => m.runSync(business.id)));
+    }
 
     const results = await Promise.allSettled(jobs);
     const failures = results.filter((r) => r.status === "rejected");

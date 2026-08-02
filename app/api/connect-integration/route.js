@@ -17,6 +17,24 @@ function looksLikeAKey(value) {
   return typeof value === "string" && value.trim().length >= 8;
 }
 
+// Shopify и Meta Ads требуют одно доп. поле (домен магазина / Ad Account ID).
+// Google Ads требует сразу четыре: Customer ID, OAuth Client ID/Secret, Developer Token —
+// без них refresh token из основного поля нечем обменять на access token.
+const REQUIRED_CONFIG_FIELDS = {
+  shopify: ["shop_domain"],
+  meta_ads: ["ad_account_id"],
+  google_ads: ["customer_id", "client_id", "client_secret", "developer_token"],
+};
+
+// client_secret и developer_token — секреты не хуже самого API-ключа. /api/integrations-status
+// отдаёт весь config клиенту как есть (чтобы UI мог показать сохранённый Customer ID и т.п.) —
+// поэтому эти поля нельзя класть в config как есть, только в зашифрованный payload вместе
+// с apiKey. customer_id и client_id секретами не являются (client_id по дизайну OAuth публичный,
+// customer_id — просто номер аккаунта) — их можно смело отдавать обратно в UI.
+const SENSITIVE_CONFIG_FIELDS = {
+  google_ads: ["client_secret", "developer_token"],
+};
+
 export async function POST(req) {
   try {
     const { email, provider, apiKey, config } = await req.json();
@@ -31,12 +49,12 @@ export async function POST(req) {
       return Response.json({ error: "Key looks too short — check you copied it fully" }, { status: 400 });
     }
 
-    // Shopify и Meta Ads требуют доп. поле помимо ключа — домен магазина
-    // и Ad Account ID соответственно. Google Ads/QuickBooks (OAuth) сюда пока не входят.
-    const REQUIRED_CONFIG_FIELD = { shopify: "shop_domain", meta_ads: "ad_account_id" };
-    const requiredField = REQUIRED_CONFIG_FIELD[provider];
-    if (requiredField && !config?.[requiredField]?.trim()) {
-      return Response.json({ error: `${requiredField} is required for ${provider}` }, { status: 400 });
+    // Shopify и Meta Ads требуют одно доп. поле помимо ключа, Google Ads — сразу четыре
+    // (см. REQUIRED_CONFIG_FIELDS выше).
+    const requiredFields = REQUIRED_CONFIG_FIELDS[provider] || [];
+    const missingField = requiredFields.find((f) => !config?.[f]?.trim());
+    if (missingField) {
+      return Response.json({ error: `${missingField} is required for ${provider}` }, { status: 400 });
     }
 
     const { data: user } = await admin.from("users").select("id").eq("email", email).maybeSingle();
@@ -54,9 +72,27 @@ export async function POST(req) {
       );
     }
 
-    const encrypted = encrypt(apiKey.trim());
+    const cleanConfig = config && typeof config === "object" ? { ...config } : {};
+
+    // Вырезаем секретные поля (client_secret, developer_token у Google Ads) из config —
+    // они уйдут в зашифрованный payload вместе с apiKey, а не будут храниться в открытом
+    // виде и отдаваться клиенту через /api/integrations-status.
+    const sensitiveFields = SENSITIVE_CONFIG_FIELDS[provider] || [];
+    const secretExtras = {};
+    for (const f of sensitiveFields) {
+      if (cleanConfig[f] !== undefined) {
+        secretExtras[f] = cleanConfig[f];
+        delete cleanConfig[f];
+      }
+    }
+
+    // Для провайдеров без доп. секретов (Stripe/Shopify/Meta Ads) шифруем просто строку
+    // apiKey как раньше — их sync-модули (decrypt(...)) ожидают обычную строку, не JSON.
+    const secretPayload = sensitiveFields.length
+      ? JSON.stringify({ refresh_token: apiKey.trim(), ...secretExtras })
+      : apiKey.trim();
+    const encrypted = encrypt(secretPayload);
     const keyPreview = apiKey.trim().slice(0, 8) + "..." + apiKey.trim().slice(-4);
-    const cleanConfig = config && typeof config === "object" ? config : {};
 
     const { data: existing } = await admin
       .from("integrations")

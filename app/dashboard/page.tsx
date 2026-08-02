@@ -1808,17 +1808,34 @@ if (!subInfo) {
                 selectedProviders={selectedProviders}
                 onSelected={(p) => setSelectedProviders([p])}
                 onLockedClick={() => router.push("/#pricing")}
-                extraField={{
-                  key: "customer_id",
-                  label: language === "UA" ? "Customer ID (без дефісів)" : language === "DE" ? "Customer ID (ohne Bindestriche)" : "Customer ID (without dashes)",
-                  placeholder: "1234567890",
-                }}
+                extraFields={[
+                  {
+                    key: "customer_id",
+                    label: language === "UA" ? "Customer ID (без дефісів)" : language === "DE" ? "Customer ID (ohne Bindestriche)" : "Customer ID (without dashes)",
+                    placeholder: "1234567890",
+                  },
+                  {
+                    key: "client_id",
+                    label: language === "UA" ? "OAuth Client ID (Google Cloud Console)" : language === "DE" ? "OAuth-Client-ID (Google Cloud Console)" : "OAuth Client ID (Google Cloud Console)",
+                    placeholder: "xxxxxxxxxxxx.apps.googleusercontent.com",
+                  },
+                  {
+                    key: "client_secret",
+                    label: language === "UA" ? "OAuth Client Secret" : language === "DE" ? "OAuth Client Secret" : "OAuth Client Secret",
+                    placeholder: "GOCSPX-...",
+                  },
+                  {
+                    key: "developer_token",
+                    label: language === "UA" ? "Developer Token (Google Ads API Center)" : language === "DE" ? "Developer Token (Google Ads API Center)" : "Developer Token (Google Ads API Center)",
+                    placeholder: "ABcdeFGH93KL-NOPQ_STUv",
+                  },
+                ]}
                 hint={
                   language === "UA"
-                    ? "Google Ads API Center → створіть Developer Token і OAuth-клієнт, отримайте refresh token через Google OAuth Playground."
+                    ? "Google Ads → Tools → API Center: створіть Developer Token. Google Cloud Console → OAuth Client ID (тип Desktop). Google OAuth Playground → свій Client ID/Secret у Settings → авторизуйтесь зі scope 'https://www.googleapis.com/auth/adwords' → отримайте refresh token."
                     : language === "DE"
-                    ? "Google Ads API Center → Developer Token und OAuth-Client erstellen, Refresh Token über Google OAuth Playground abrufen."
-                    : "Google Ads API Center → create a Developer Token and OAuth client, get a refresh token via Google OAuth Playground."
+                    ? "Google Ads → Tools → API Center: Developer Token erstellen. Google Cloud Console → OAuth Client ID (Typ Desktop). Google OAuth Playground → eigene Client ID/Secret in Settings → mit Scope 'https://www.googleapis.com/auth/adwords' autorisieren → Refresh Token abrufen."
+                    : "Google Ads → Tools → API Center: create a Developer Token. Google Cloud Console → create an OAuth Client ID (Desktop type). Google OAuth Playground → enter your own Client ID/Secret in Settings → authorize with scope 'https://www.googleapis.com/auth/adwords' → get the refresh token."
                 }
               />
 
@@ -1829,7 +1846,21 @@ if (!subInfo) {
                       <Link2 className="w-5 h-5 text-gray-400" />
                     </div>
                     <div>
-                      <h4 className="font-semibold text-white">Google Analytics, QuickBooks</h4>
+                      <h4 className="font-semibold text-white">QuickBooks</h4>
+                      <p className="text-xs text-gray-500">Coming soon</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-gray-900/20 rounded-xl p-4 border border-gray-800 opacity-50">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-gray-800 flex items-center justify-center">
+                      <Link2 className="w-5 h-5 text-gray-400" />
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-white">Google Analytics</h4>
                       <p className="text-xs text-gray-500">Coming soon</p>
                     </div>
                   </div>
