@@ -55,6 +55,26 @@ import { createClient } from "@/lib/supabase-browser";
 
 type ViewType = "overview" | "risks" | "forecast" | "integrations" | "settings";
 
+// Реальні назви місяців, що йдуть від поточної дати (не хардкод) — використовується
+// у вкладці "Прогноз" для тарифу Scale/Trial (90 днів = 3 місяці наперед). Якщо зараз
+// серпень — покаже "Сер, Вер, Жов"; наступного місяця саме собою стане "Вер, Жов, Лис".
+const MONTH_NAMES_BY_LANG: Record<string, string[]> = {
+  EN: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+  UA: ["Січ", "Лют", "Бер", "Кві", "Тра", "Чер", "Лип", "Сер", "Вер", "Жов", "Лис", "Гру"],
+  DE: ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"],
+};
+
+function getUpcomingMonthLabels(count: number, language: string): string[] {
+  const names = MONTH_NAMES_BY_LANG[language] || MONTH_NAMES_BY_LANG.EN;
+  const now = new Date();
+  const labels: string[] = [];
+  for (let i = 0; i < count; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+    labels.push(names[d.getMonth()]);
+  }
+  return labels;
+}
+
 interface Risk {
   id: string | number;
   title: string;
@@ -1606,8 +1626,10 @@ if (!subInfo) {
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="bg-gradient-to-br from-blue-500/10 to-transparent rounded-xl p-5 border border-blue-500/20">
-                      <div className="text-sm text-blue-400 font-semibold mb-1">{T.projectedRevenue || "Projected Revenue (90d)"}</div>
-                      <div className="text-3xl font-bold text-white">${Math.round(forecastData.revenue90).toLocaleString()}</div>
+                      <div className="text-sm text-blue-400 font-semibold mb-1">
+                        {(T.projectedRevenue || "Projected Revenue")} ({forecastData.horizonDays}{T.forecastDaysUnit || "d"})
+                      </div>
+                      <div className="text-3xl font-bold text-white">${Math.round(forecastData.horizonDays === 30 ? forecastData.revenue30 : forecastData.revenue90).toLocaleString()}</div>
                       <div className={`text-sm mt-2 ${forecastData.dailyGrowthPct >= 0 ? "text-green-400" : "text-red-400"}`}>
                         {forecastData.dailyGrowthPct >= 0 ? "+" : ""}{forecastData.dailyGrowthPct.toFixed(2)}%/{language === "UA" ? "день (тренд)" : language === "DE" ? "Tag (Trend)" : "day (trend)"}
                       </div>
@@ -1616,8 +1638,10 @@ if (!subInfo) {
                       </div>
                     </div>
                     <div className="bg-gradient-to-br from-orange-500/10 to-transparent rounded-xl p-5 border border-orange-500/20">
-                      <div className="text-sm text-orange-400 font-semibold mb-1">{T.projectedExpenses || "Projected Expenses (90d)"}</div>
-                      <div className="text-3xl font-bold text-white">${Math.round(forecastData.expenses90).toLocaleString()}</div>
+                      <div className="text-sm text-orange-400 font-semibold mb-1">
+                        {(T.projectedExpenses || "Projected Expenses")} ({forecastData.horizonDays}{T.forecastDaysUnit || "d"})
+                      </div>
+                      <div className="text-3xl font-bold text-white">${Math.round(forecastData.horizonDays === 30 ? forecastData.expenses30 : forecastData.expenses90).toLocaleString()}</div>
                       <div className="text-sm text-gray-500 mt-2">
                         {language === "UA" ? "лінійна екстраполяція витрат" : language === "DE" ? "lineare Extrapolation der Kosten" : "linear extrapolation of costs"}
                       </div>
@@ -1626,40 +1650,56 @@ if (!subInfo) {
 
                   <div className="bg-gray-900/30 rounded-xl p-3 sm:p-5 border border-gray-800 overflow-hidden">
                     <h3 className="font-semibold text-white text-base mb-4">
-                      {language === "UA" ? "Прогноз (накопичувальний)" : language === "DE" ? "Prognose (kumulativ)" : "Cumulative forecast"}
+                      {forecastData.horizonDays === 30
+                        ? (T.forecastWeeklyTitle || "Next 30 days")
+                        : (T.forecastMonthlyTitle || "Next 3 months")}
                     </h3>
-                    <div className="flex justify-around items-end h-28 gap-1 sm:gap-4">
-                      {[
-                        { label: "30d", revenue: forecastData.revenue30, expenses: forecastData.expenses30 },
-                        { label: "60d", revenue: forecastData.revenue60, expenses: forecastData.expenses60 },
-                        { label: "90d", revenue: forecastData.revenue90, expenses: forecastData.expenses90 },
-                      ].map((m, i) => {
-                        // 100px max bar height inside a 112px (h-28) box — leaves
-                        // headroom so bars can never touch/overlap the heading above.
-                        const scale = Math.max(forecastData.revenue90, forecastData.expenses90, 1) / 100;
-                        return (
-                          <div key={i} className="flex justify-center gap-1 sm:gap-2 items-end flex-1 min-w-0 h-full">
-                            <div className="w-4 sm:w-8 bg-blue-500 rounded-t" style={{ height: `${Math.min(Math.max(m.revenue / scale, 2), 100)}px` }} />
-                            <div className="w-4 sm:w-8 bg-rose-500/60 rounded-t" style={{ height: `${Math.min(Math.max(m.expenses / scale, 2), 100)}px` }} />
+                    {(() => {
+                      // Growth (30д) — тижнева розбивка накопичувального прогнозу
+                      // в межах поточного місяця. Scale/Trial (90д) — розбивка по
+                      // реальних календарних місяцях наперед від сьогодні (не
+                      // хардкод: серпень зараз -> Сер/Вер/Жов, за місяць саме собою
+                      // стане Вер/Жов/Лис).
+                      const bars =
+                        forecastData.horizonDays === 30
+                          ? [
+                              { label: `${T.forecastWeekLabel || "Week"} 1`, revenue: forecastData.revenue7, expenses: forecastData.expenses7 },
+                              { label: `${T.forecastWeekLabel || "Week"} 2`, revenue: forecastData.revenue14, expenses: forecastData.expenses14 },
+                              { label: `${T.forecastWeekLabel || "Week"} 3`, revenue: forecastData.revenue21, expenses: forecastData.expenses21 },
+                              { label: `${T.forecastWeekLabel || "Week"} 4`, revenue: forecastData.revenue30, expenses: forecastData.expenses30 },
+                            ]
+                          : getUpcomingMonthLabels(3, language).map((label, i) => ({
+                              label,
+                              revenue: [forecastData.revenue30, forecastData.revenue60, forecastData.revenue90][i],
+                              expenses: [forecastData.expenses30, forecastData.expenses60, forecastData.expenses90][i],
+                            }));
+                      const maxRevenue = Math.max(...bars.map((b) => b.revenue), 1);
+                      const maxExpenses = Math.max(...bars.map((b) => b.expenses), 1);
+                      const scale = Math.max(maxRevenue, maxExpenses) / 100;
+                      return (
+                        <>
+                          <div className="flex justify-around items-end h-28 gap-1 sm:gap-4">
+                            {bars.map((m, i) => (
+                              <div key={i} className="flex justify-center gap-1 sm:gap-2 items-end flex-1 min-w-0 h-full">
+                                <div className="w-4 sm:w-8 bg-blue-500 rounded-t" style={{ height: `${Math.min(Math.max(m.revenue / scale, 2), 100)}px` }} />
+                                <div className="w-4 sm:w-8 bg-rose-500/60 rounded-t" style={{ height: `${Math.min(Math.max(m.expenses / scale, 2), 100)}px` }} />
+                              </div>
+                            ))}
                           </div>
-                        );
-                      })}
-                    </div>
-                    <div className="flex justify-around gap-1 sm:gap-4 mt-2">
-                      {[
-                        { label: "30d", revenue: forecastData.revenue30, expenses: forecastData.expenses30 },
-                        { label: "60d", revenue: forecastData.revenue60, expenses: forecastData.expenses60 },
-                        { label: "90d", revenue: forecastData.revenue90, expenses: forecastData.expenses90 },
-                      ].map((m, i) => (
-                        <div key={i} className="flex flex-col items-center gap-1 flex-1 min-w-0">
-                          <span className="text-xs sm:text-sm text-gray-400 font-medium truncate max-w-full">{m.label}</span>
-                          <div className="flex gap-1.5 sm:gap-2 text-[9px] sm:text-[10px]">
-                            <span className="text-blue-400">↑${Math.round(m.revenue / 1000)}k</span>
-                            <span className="text-rose-400">↓${Math.round(m.expenses / 1000)}k</span>
+                          <div className="flex justify-around gap-1 sm:gap-4 mt-2">
+                            {bars.map((m, i) => (
+                              <div key={i} className="flex flex-col items-center gap-1 flex-1 min-w-0">
+                                <span className="text-xs sm:text-sm text-gray-400 font-medium truncate max-w-full">{m.label}</span>
+                                <div className="flex gap-1.5 sm:gap-2 text-[9px] sm:text-[10px]">
+                                  <span className="text-blue-400">↑${Math.round(m.revenue / 1000)}k</span>
+                                  <span className="text-rose-400">↓${Math.round(m.expenses / 1000)}k</span>
+                                </div>
+                              </div>
+                            ))}
                           </div>
-                        </div>
-                      ))}
-                    </div>
+                        </>
+                      );
+                    })()}
                     <div className="flex justify-center gap-6 mt-4 pt-3 text-[10px] text-gray-600 border-t border-gray-800">
                       <div className="flex items-center gap-1"><div className="w-3 h-3 bg-blue-500 rounded-sm" /><span>{T.demoRevenueForecast || "Revenue Forecast"}</span></div>
                       <div className="flex items-center gap-1"><div className="w-3 h-3 bg-rose-500/60 rounded-sm" /><span>{T.demoExpensesForecast || "Expenses"}</span></div>
@@ -1789,7 +1829,21 @@ if (!subInfo) {
                       <Link2 className="w-5 h-5 text-gray-400" />
                     </div>
                     <div>
-                      <h4 className="font-semibold text-white">Google Analytics, QuickBooks</h4>
+                      <h4 className="font-semibold text-white">QuickBooks</h4>
+                      <p className="text-xs text-gray-500">Coming soon</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-gray-900/20 rounded-xl p-4 border border-gray-800 opacity-50">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-gray-800 flex items-center justify-center">
+                      <Link2 className="w-5 h-5 text-gray-400" />
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-white">Google Analytics</h4>
                       <p className="text-xs text-gray-500">Coming soon</p>
                     </div>
                   </div>

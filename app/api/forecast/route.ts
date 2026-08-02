@@ -39,6 +39,20 @@ async function getBusinessId(email: string) {
   return business?.id ?? null;
 }
 
+// Growth — прогноз на 30 днів, Scale і Trial (повний доступ на час трайлу) — на 90.
+// Рахуємо на бекенді, а не ховаємо на фронті, щоб цифри понад ліміт тарифу
+// взагалі не потрапляли в responce.
+async function getForecastHorizonDays(email: string): Promise<number> {
+  const { data: appUser } = await admin.from("users").select("id").eq("email", email).maybeSingle();
+  if (!appUser) return 90;
+  const { data: sub } = await admin
+    .from("subscriptions")
+    .select("plan")
+    .eq("user_id", appUser.id)
+    .maybeSingle();
+  return sub?.plan === "growth" ? 30 : 90;
+}
+
 async function isStripeConnected(businessId: string) {
   const { data } = await admin
     .from("integrations")
@@ -88,10 +102,11 @@ async function generateExplanation(
   stats: {
     days: number;
     tier: string;
+    horizonDays: number;
     dailyGrowthPct: number;
     marginSlope: number;
-    revenue90: number;
-    expenses90: number;
+    revenueHorizon: number;
+    expensesHorizon: number;
     r2: number;
   }
 ) {
@@ -101,6 +116,7 @@ async function generateExplanation(
 
 Hard rules:
 - Use ONLY the numbers given to you below. Never invent revenue figures, seasonality, holidays, or market events not present in the data.
+- The forecast horizon is exactly ${stats.horizonDays} days — refer to that horizon only, never mention any other number of days for the projection.
 - If days < 30, explicitly say seasonality cannot be assessed yet from the available history.
 - If tier is "low", clearly state the forecast is preliminary and confidence will improve as more days of data accumulate — do not present the numbers as certain.
 - Do not repeat the raw numbers verbatim in a list; weave them into short prose instead.
@@ -109,10 +125,11 @@ Hard rules:
   const user = `Computed statistics (already calculated by linear regression, not by you):
 - Days of historical data: ${stats.days}
 - Confidence tier: ${stats.tier}
+- Forecast horizon: ${stats.horizonDays} days
 - Daily revenue trend: ${stats.dailyGrowthPct.toFixed(2)}% per day
 - Daily margin trend: ${stats.marginSlope.toFixed(2)} percentage points per day
-- Projected revenue over next 90 days: $${Math.round(stats.revenue90).toLocaleString()}
-- Projected expenses over next 90 days: $${Math.round(stats.expenses90).toLocaleString()}
+- Projected revenue over the next ${stats.horizonDays} days: $${Math.round(stats.revenueHorizon).toLocaleString()}
+- Projected expenses over the next ${stats.horizonDays} days: $${Math.round(stats.expensesHorizon).toLocaleString()}
 - Regression fit (R²) for revenue: ${Math.round(stats.r2 * 100)}%
 
 Write the explanation now.`;
@@ -181,35 +198,56 @@ if (!stripeConnected) return Response.json({ sufficient: false, days: 0, tier: "
     return Response.json({ sufficient: false, days, tier });
   }
 
+  const horizonDays = await getForecastHorizonDays(email);
+
   const revenueReg = linearRegression(metricsRows.map((r) => r.revenue));
   const expensesReg = linearRegression(metricsRows.map((r) => r.cost));
   const marginReg = linearRegression(metricsRows.map((r) => r.margin_pct));
   const fromDay = days;
 
-  const revenue30 = projectTotal(revenueReg, fromDay, 30);
-  const revenue60 = projectTotal(revenueReg, fromDay, 60);
-  const revenue90 = projectTotal(revenueReg, fromDay, 90);
-  const expenses30 = projectTotal(expensesReg, fromDay, 30);
-  const expenses60 = projectTotal(expensesReg, fromDay, 60);
-  const expenses90 = projectTotal(expensesReg, fromDay, 90);
-
   const avgRecentRevenue =
     metricsRows.slice(-7).reduce((s, r) => s + r.revenue, 0) / Math.min(7, days);
   const dailyGrowthPct = avgRecentRevenue > 0 ? (revenueReg.slope / avgRecentRevenue) * 100 : 0;
 
-  const forecastNumbers = {
+  // Growth (30 днів) отримує тижневу розбивку (7/14/21/30) для міні-графіка
+  // на найближчий місяць. Scale/Trial (90 днів) — місячну розбивку (30/60/90),
+  // як і раніше. За межі horizonDays цифри в об'єкт відповіді НЕ потрапляють —
+  // це ліміт тарифу, а не просто приховане на фронті.
+  const revenueHorizon = projectTotal(revenueReg, fromDay, horizonDays);
+  const expensesHorizon = projectTotal(expensesReg, fromDay, horizonDays);
+
+  const forecastNumbers: Record<string, unknown> = {
     sufficient: true as const,
     days,
     tier,
-    revenue30, revenue60, revenue90,
-    expenses30, expenses60, expenses90,
+    horizonDays,
     dailyGrowthPct,
     marginSlope: marginReg.slope,
     confidence: Math.round(revenueReg.r2 * 100),
   };
 
-  // Проверяем кэш — не дёргаем Anthropic API, если объяснение свежее и
-  // считалось для того же количества дней и того же языка.
+  if (horizonDays === 30) {
+    forecastNumbers.revenue7 = projectTotal(revenueReg, fromDay, 7);
+    forecastNumbers.revenue14 = projectTotal(revenueReg, fromDay, 14);
+    forecastNumbers.revenue21 = projectTotal(revenueReg, fromDay, 21);
+    forecastNumbers.revenue30 = revenueHorizon;
+    forecastNumbers.expenses7 = projectTotal(expensesReg, fromDay, 7);
+    forecastNumbers.expenses14 = projectTotal(expensesReg, fromDay, 14);
+    forecastNumbers.expenses21 = projectTotal(expensesReg, fromDay, 21);
+    forecastNumbers.expenses30 = expensesHorizon;
+  } else {
+    forecastNumbers.revenue30 = projectTotal(revenueReg, fromDay, 30);
+    forecastNumbers.revenue60 = projectTotal(revenueReg, fromDay, 60);
+    forecastNumbers.revenue90 = revenueHorizon;
+    forecastNumbers.expenses30 = projectTotal(expensesReg, fromDay, 30);
+    forecastNumbers.expenses60 = projectTotal(expensesReg, fromDay, 60);
+    forecastNumbers.expenses90 = expensesHorizon;
+  }
+
+  // Кэш forecast_cache — одна строка на бизнес, поэтому кладём горизонт прямо
+  // в поле language ("UA::30"), чтобы апгрейд/даунгрейд тарифа не подсовывал
+  // закэшированное объяснение с упоминанием чужого горизонта прогноза.
+  const cacheLanguageKey = `${language}::${horizonDays}`;
   const { data: cached } = await admin
     .from("forecast_cache")
     .select("days, language, explanation, generated_at")
@@ -219,7 +257,7 @@ if (!stripeConnected) return Response.json({ sufficient: false, days: 0, tier: "
   const cacheIsFresh =
     cached &&
     cached.days === days &&
-    cached.language === language &&
+    cached.language === cacheLanguageKey &&
     Date.now() - new Date(cached.generated_at).getTime() < CACHE_TTL_MS;
 
   let explanation: string;
@@ -231,16 +269,17 @@ if (!stripeConnected) return Response.json({ sufficient: false, days: 0, tier: "
       explanation = await generateExplanation(language, {
         days,
         tier,
+        horizonDays,
         dailyGrowthPct,
         marginSlope: marginReg.slope,
-        revenue90,
-        expenses90,
+        revenueHorizon,
+        expensesHorizon,
         r2: revenueReg.r2,
       });
       await admin.from("forecast_cache").upsert({
         business_id: businessId,
         days,
-        language,
+        language: cacheLanguageKey,
         explanation,
         generated_at: new Date().toISOString(),
       });
