@@ -1789,21 +1789,7 @@ if (!subInfo) {
                       <Link2 className="w-5 h-5 text-gray-400" />
                     </div>
                     <div>
-                      <h4 className="font-semibold text-white">QuickBooks</h4>
-                      <p className="text-xs text-gray-500">Coming soon</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-gray-900/20 rounded-xl p-4 border border-gray-800 opacity-50">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-gray-800 flex items-center justify-center">
-                      <Link2 className="w-5 h-5 text-gray-400" />
-                    </div>
-                    <div>
-                      <h4 className="font-semibold text-white">Google Analytics</h4>
+                      <h4 className="font-semibold text-white">Google Analytics, QuickBooks</h4>
                       <p className="text-xs text-gray-500">Coming soon</p>
                     </div>
                   </div>
