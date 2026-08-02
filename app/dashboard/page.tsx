@@ -847,6 +847,7 @@ const savePhone = async () => {
     window.open(`/api/export-data?email=${encodeURIComponent(profileEmail)}`, "_blank");
   };
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
   const [exportingFormat, setExportingFormat] = useState(false);
   const handleExportFormat = async (format: "json" | "xlsx" | "pdf") => {
     setExportMenuOpen(false);
@@ -869,6 +870,24 @@ const savePhone = async () => {
       setExportingFormat(false);
     }
   };
+
+  // Закрываем меню экспорта при клике вне него или при скролле —
+  // раньше закрывалось только повторным кликом на "Export"/пункт меню.
+  useEffect(() => {
+    if (!exportMenuOpen) return;
+    const handleOutside = (e: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setExportMenuOpen(false);
+      }
+    };
+    const handleScroll = () => setExportMenuOpen(false);
+    document.addEventListener("mousedown", handleOutside);
+    window.addEventListener("scroll", handleScroll, true);
+    return () => {
+      document.removeEventListener("mousedown", handleOutside);
+      window.removeEventListener("scroll", handleScroll, true);
+    };
+  }, [exportMenuOpen]);
 
   const submitReview = async () => {
     setReviewMsg("");
@@ -2066,7 +2085,7 @@ if (!subInfo) {
     {language === "UA" ? "Видалити" : language === "DE" ? "Löschen" : "Delete"}
   </Button>
 </div>
-                  <div className="flex items-center justify-between pt-2 border-t border-border relative">
+                  <div ref={exportMenuRef} className="flex items-center justify-between pt-2 border-t border-border relative">
                     <div><p className="font-medium text-foreground">{T.settingsExportData || "Export All Data"}</p><p className="text-xs text-muted-foreground">{T.settingsExportDataDesc || "Download all your business data"}</p></div>
                     <Button variant="outline" size="sm" onClick={() => setExportMenuOpen((v) => !v)} disabled={exportingFormat}>
                       {exportingFormat ? (language === "UA" ? "Експорт..." : language === "DE" ? "Exportiere..." : "Exporting...") : (T.settingsExport || "Export")}
