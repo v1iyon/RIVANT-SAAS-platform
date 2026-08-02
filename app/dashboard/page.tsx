@@ -533,7 +533,7 @@ function SwipeableCacCard({ panels, language }: { panels: CacPanelData[]; langua
         <div className={`text-xs font-semibold uppercase ${theme.text} truncate`}>
           {title}
         </div>
-        <div className="flex items-center gap-0.5 shrink-0">
+        <div className="hidden sm:flex items-center gap-0.5 shrink-0">
           <button
             onClick={() => goTo(index - 1)}
             disabled={index === 0}
