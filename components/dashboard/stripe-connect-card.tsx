@@ -75,6 +75,14 @@ export function StripeConnectCard({ email, locked = false, onLockedClick }: Prop
       }
       setApiKey("");
       loadStatus();
+      // Не ждём часовой cron — сразу дёргаем синк для этого бизнеса.
+      // Пусть работает в фоне; если упадёт — данные всё равно подтянутся
+      // на следующем плановом прогоне, поэтому не блокируем UI на этом await.
+      fetch("/api/sync-now", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, provider: "stripe" }),
+      }).catch((e) => console.error("sync-now failed", e));
     } catch {
       setStatus("error");
       setErrorMsg("Network error");

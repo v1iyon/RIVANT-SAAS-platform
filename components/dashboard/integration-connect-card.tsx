@@ -151,6 +151,11 @@ export function IntegrationConnectCard({
 
       setApiKey("");
       loadStatus();
+      fetch("/api/sync-now", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, provider }),
+      }).catch((e) => console.error("sync-now failed", e));
     } catch {
       setStatus("error");
       setErrorMsg("Network error");

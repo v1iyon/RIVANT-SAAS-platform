@@ -52,12 +52,14 @@ async function upsertExpense({ businessId, date, amount, category, source, descr
   }
 }
 
-async function main() {
-  const { data: integrations, error: fetchErr } = await admin
+async function main(businessId) {
+  let query = admin
     .from("integrations")
     .select("id, business_id, api_key_encrypted, config")
     .eq("provider", "meta_ads")
     .eq("status", "connected");
+  if (businessId) query = query.eq("business_id", businessId);
+  const { data: integrations, error: fetchErr } = await query;
 
   if (fetchErr) {
     console.error("Failed to fetch meta_ads integrations:", fetchErr.message);
@@ -111,7 +113,7 @@ async function main() {
   }
 }
 
-export async function runSync() {
-  await main();
+export async function runSync(businessId) {
+  await main(businessId);
   return { synced: true, timestamp: new Date().toISOString() };
 }

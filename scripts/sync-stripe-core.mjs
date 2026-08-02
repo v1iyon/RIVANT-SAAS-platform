@@ -92,12 +92,14 @@ async function fetchStripeCharges(apiKey, sinceUnix) {
   return data.data || [];
 }
 
-async function main() {
-  const { data: integrations, error: fetchErr } = await admin
+async function main(businessId) {
+  let query = admin
     .from("integrations")
     .select("id, business_id, api_key_encrypted")
     .eq("provider", "stripe")
     .eq("status", "connected");
+  if (businessId) query = query.eq("business_id", businessId);
+  const { data: integrations, error: fetchErr } = await query;
 
   console.log("DEBUG fetchErr:", fetchErr);
   console.log("DEBUG integrations found:", integrations?.length, JSON.stringify(integrations?.map(i => i.id)));
@@ -288,7 +290,7 @@ if (existingAlerts?.length) continue;
   }
 }
 
-export async function runSync() {
-  await main();
+export async function runSync(businessId) {
+  await main(businessId);
   return { synced: true, timestamp: new Date().toISOString() };
 }

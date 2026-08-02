@@ -41,6 +41,7 @@ import {
   BellRing,
   Zap,
   Truck,
+  Download,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -272,11 +273,36 @@ function TickerSparkline({ history, color, currentValue, previousValue }: { hist
 }
 
 // ========== КОМПОНЕНТ ГЛАВНОГО ГРАФИКА ==========
-function RevenueExpensesChart({ history }: { history: { day: number; date: string; revenue: number; expenses: number; profit: number; margin: number }[] }) {
-  const { t } = useLanguage();
+function RevenueExpensesChart({ history, rawRows, businessName }: {
+  history: { day: number; date: string; revenue: number; expenses: number; profit: number; margin: number }[];
+  rawRows: MetricsRow[];
+  businessName: string;
+}) {
+  const { t, language } = useLanguage();
   const T = t as any;
   const [hoveredBar, setHoveredBar] = useState<number | null>(null);
   const [selectedMetric, setSelectedMetric] = useState<"revenue" | "expenses" | "profit">("revenue");
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  const handleExport = async (format: "pdf" | "xlsx") => {
+    setExportOpen(false);
+    if (!rawRows || rawRows.length === 0) return;
+    setExporting(true);
+    try {
+      if (format === "xlsx") {
+        const { exportMetricsToExcel } = await import("@/lib/export-metrics");
+        await exportMetricsToExcel(rawRows, businessName);
+      } else {
+        const { exportMetricsToPdf } = await import("@/lib/export-metrics");
+        await exportMetricsToPdf(rawRows, businessName);
+      }
+    } catch (e) {
+      console.error("Export failed", e);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const isEmpty = !history || history.length === 0;
   // Пока нет реальных данных — рисуем тот же скелет графика с нулями,
@@ -323,10 +349,28 @@ function RevenueExpensesChart({ history }: { history: { day: number; date: strin
           <BarChart3 className="w-5 h-5 text-blue-400" />
           <h3 className="text-lg font-bold text-white">{T.revenueVsExpenses || "Revenue vs Expenses (30 days)"}</h3>
         </div>
-        <div className="flex gap-2 bg-gray-800/50 rounded-lg p-1">
-          <button onClick={() => setSelectedMetric("revenue")} className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all ${selectedMetric === "revenue" ? "bg-blue-500/30 text-blue-400" : "text-gray-500 hover:text-gray-300"}`}>{T.revenue || "Revenue"}</button>
-          <button onClick={() => setSelectedMetric("expenses")} className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all ${selectedMetric === "expenses" ? "bg-rose-500/30 text-rose-400" : "text-gray-500 hover:text-gray-300"}`}>{T.expenses || "Expenses"}</button>
-          <button onClick={() => setSelectedMetric("profit")} className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all ${selectedMetric === "profit" ? "bg-green-500/30 text-green-400" : "text-gray-500 hover:text-gray-300"}`}>{T.profit || "Profit"}</button>
+        <div className="flex items-center gap-2">
+          <div className="flex gap-2 bg-gray-800/50 rounded-lg p-1">
+            <button onClick={() => setSelectedMetric("revenue")} className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all ${selectedMetric === "revenue" ? "bg-blue-500/30 text-blue-400" : "text-gray-500 hover:text-gray-300"}`}>{T.revenue || "Revenue"}</button>
+            <button onClick={() => setSelectedMetric("expenses")} className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all ${selectedMetric === "expenses" ? "bg-rose-500/30 text-rose-400" : "text-gray-500 hover:text-gray-300"}`}>{T.expenses || "Expenses"}</button>
+            <button onClick={() => setSelectedMetric("profit")} className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all ${selectedMetric === "profit" ? "bg-green-500/30 text-green-400" : "text-gray-500 hover:text-gray-300"}`}>{T.profit || "Profit"}</button>
+          </div>
+          <div className="relative">
+            <button
+              onClick={() => setExportOpen((v) => !v)}
+              disabled={exporting || !rawRows?.length}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs sm:text-sm font-medium bg-gray-800/50 text-gray-300 hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+            >
+              <Download className="w-3.5 h-3.5" />
+              {exporting ? (language === "UA" ? "Експорт..." : language === "DE" ? "Exportiere..." : "Exporting...") : (language === "UA" ? "Експорт" : language === "DE" ? "Export" : "Export")}
+            </button>
+            {exportOpen && (
+              <div className="absolute right-0 top-full mt-1 z-10 bg-gray-900 border border-gray-700 rounded-lg shadow-xl overflow-hidden min-w-[140px]">
+                <button onClick={() => handleExport("xlsx")} className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 transition-colors">Excel (.xlsx)</button>
+                <button onClick={() => handleExport("pdf")} className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 transition-colors">PDF (.pdf)</button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1376,7 +1420,7 @@ if (!subInfo) {
 )}
                   </div>
 
-                  <RevenueExpensesChart history={chartHistory} />
+                  <RevenueExpensesChart history={chartHistory} rawRows={metricsRows} businessName={businessName} />
             </div>
           )}
 
@@ -1642,6 +1686,25 @@ if (!subInfo) {
 
          {activeView === "integrations" && (
             <div className="space-y-4">
+              {subInfo?.plan === "growth" && (
+                <div className="bg-blue-500/5 rounded-xl p-4 border border-blue-500/20 flex items-start gap-3">
+                  <Link2 className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" />
+                  <p className="text-sm text-gray-300">
+                    {selectedProviders.length > 0
+                      ? (language === "UA"
+                          ? <>На тарифі Growth доступна 1 додаткова інтеграція. Ви обрали <span className="font-semibold text-white">{selectedProviders[0]}</span> на цей billing-період — змінити вибір можна після продовження підписки або переходу на Scale.</>
+                          : language === "DE"
+                          ? <>Im Growth-Plan ist 1 zusätzliche Integration verfügbar. Sie haben <span className="font-semibold text-white">{selectedProviders[0]}</span> für diesen Abrechnungszeitraum gewählt — Änderung erst bei Verlängerung oder Upgrade auf Scale.</>
+                          : <>Growth plan includes 1 additional integration. You've selected <span className="font-semibold text-white">{selectedProviders[0]}</span> for this billing period — you can change it after renewal or by upgrading to Scale.</>)
+                      : (language === "UA"
+                          ? "На тарифі Growth доступна 1 додаткова інтеграція (крім Stripe) на вибір. Вибір фіксується до кінця billing-періоду."
+                          : language === "DE"
+                          ? "Im Growth-Plan ist 1 zusätzliche Integration (neben Stripe) wählbar. Die Wahl gilt bis zum Ende des Abrechnungszeitraums."
+                          : "The Growth plan includes 1 additional integration (besides Stripe) of your choice. Your pick is locked in for the rest of the billing period.")}
+                  </p>
+                </div>
+              )}
+
               <StripeConnectCard
   email={profileEmail}
   locked={isExpiredTrial}
