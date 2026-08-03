@@ -480,7 +480,7 @@ function MetricCard({ title, value, change, color, prefix = "$", suffix = "", sp
 }) {
   const theme = METRIC_CARD_THEMES[color] || METRIC_CARD_THEMES["bg-blue-500"];
   return (
-   <div className={`bg-gradient-to-br ${theme.from} to-transparent rounded-xl p-4 border ${theme.border}`}>
+  <div className={`bg-gradient-to-br ${theme.from} to-transparent rounded-xl p-4 pb-5 border ${theme.border}`}>
       <div className={`text-xs font-semibold mb-1 uppercase ${theme.text}`}>{title}</div>
       <AnimatedNumber value={value} prefix={prefix} suffix={suffix} changePercent={change} />
       <TickerSparkline
