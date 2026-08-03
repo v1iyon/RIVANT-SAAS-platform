@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Calculator, Play, ArrowRight, Sparkles } from "lucide-react";
+import { Calculator, Play, ArrowRight } from "lucide-react";
 import { useLanguage } from "@/lib/translations";
 
 interface HeroSectionProps {
@@ -20,9 +20,18 @@ export function HeroSection({ onOpenCalculator, onOpenDemo }: HeroSectionProps) 
       </div>
 
       <div className="relative z-10 max-w-7xl mx-auto text-center">
+        {/* Компактна плашка про 14-денний триал — замінює попередній напис
+            "Новий рівень контролю над фінансами" та дублюючу велику плашку,
+            яка була нижче. Один рядок, невеликий шрифт. */}
         <div className="inline-flex items-center gap-2 px-3 py-1 bg-secondary/80 rounded-full mb-4">
-          <Sparkles className="w-4 h-4 text-primary" />
-          <span className="text-xs text-muted-foreground">{t.trustedBy}</span>
+          <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse shrink-0" />
+          <span className="text-xs text-muted-foreground">
+            {language === "UA"
+              ? "14 днів безкоштовно — без картки"
+              : language === "DE"
+              ? "14 Tage kostenlos — keine Kreditkarte nötig"
+              : "14 days free — no card required"}
+          </span>
         </div>
 
         <h1 className="text-3xl sm:text-7xl font-bold tracking-tight mb-3">
@@ -31,22 +40,9 @@ export function HeroSection({ onOpenCalculator, onOpenDemo }: HeroSectionProps) 
           <span className="text-primary">{t.heroTitle2}</span>
         </h1>
 
-        <p className="text-base sm:text-xl text-muted-foreground max-w-2xl mx-auto mb-4 leading-relaxed">
+        <p className="text-base sm:text-xl text-muted-foreground max-w-2xl mx-auto mb-6 leading-relaxed">
           {t.heroSubtitle}
         </p>
-
-        {/* Плашка про безкоштовний триал — щоб було видно одразу на головній,
-            а не тільки після переходу на тарифи. */}
-        <div className="inline-flex items-center gap-2 px-4 py-2 bg-primary/10 border border-primary/30 rounded-full mb-6">
-          <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse shrink-0" />
-          <span className="text-xs sm:text-sm text-primary font-medium">
-            {language === "UA"
-              ? "14 днів безкоштовно — усі функції та інтеграції доступні одразу, без картки"
-              : language === "DE"
-              ? "14 Tage kostenlos — alle Funktionen und Integrationen sofort verfügbar, keine Kreditkarte nötig"
-              : "14 days free — every feature and integration unlocked from day one, no card required"}
-          </span>
-        </div>
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
           <Button

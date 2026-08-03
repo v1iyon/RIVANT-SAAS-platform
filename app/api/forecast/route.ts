@@ -190,7 +190,32 @@ if (!stripeConnected) return Response.json({ sufficient: false, days: 0, tier: "
     return Response.json({ sufficient: false, days: 0 });
   }
 
-  const metricsRows: MetricsRow[] = rows || [];
+  // Подмешиваем реальные расходы (Shopify shipping/cogs, Meta/Google Ads) —
+  // без этого cost/margin_pct тут отражают только Stripe-комиссию и прогноз
+  // расходится с кабинетом и ботом (одна и та же проблема унификации маржи,
+  // формула должна быть одинаковой во всех модулях: кабінет, бот, прогнози, експорт).
+  const rawRows = rows || [];
+  if (rawRows.length) {
+    const minDate = rawRows[0].date;
+    const { data: expenseRows } = await admin
+      .from("expenses")
+      .select("date, amount")
+      .eq("business_id", businessId)
+      .gte("date", minDate)
+      .limit(2000);
+    const extraByDate: Record<string, number> = {};
+    for (const e of expenseRows || []) {
+      extraByDate[e.date] = (extraByDate[e.date] || 0) + (Number(e.amount) || 0);
+    }
+    for (const r of rawRows) {
+      const extra = extraByDate[r.date];
+      if (!extra) continue;
+      r.cost = Number(r.cost) + extra;
+      r.margin_pct = r.revenue > 0 ? Number((((r.revenue - r.cost) / r.revenue) * 100).toFixed(1)) : 0;
+    }
+  }
+
+  const metricsRows: MetricsRow[] = rawRows;
   const days = metricsRows.length;
   const tier = getTier(days);
 

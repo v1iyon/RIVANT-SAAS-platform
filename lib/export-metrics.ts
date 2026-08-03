@@ -49,14 +49,40 @@ export async function exportMetricsToPdf(rows: ExportRow[], businessName: string
 
   const doc = new jsPDF();
 
+  // Реальный логотип (не просто текст "Rivant") — /icon8.png лежит в public/,
+  // грузим и конвертируем в data URL, чтобы вставить через doc.addImage.
+  let logoDataUrl: string | null = null;
+  try {
+    const res = await fetch("/icon8.png");
+    const blob = await res.blob();
+    logoDataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch (e) {
+    console.error("Failed to load logo for PDF export:", e);
+  }
+
+  let titleY = 16;
+  if (logoDataUrl) {
+    try {
+      doc.addImage(logoDataUrl, "PNG", 14, 8, 32, 8);
+      titleY = 26;
+    } catch (e) {
+      console.error("Failed to embed logo in PDF:", e);
+    }
+  }
+
   doc.setFontSize(16);
-  doc.text(`${businessName || "Business"} — Metrics Report`, 14, 16);
+  doc.text(`${businessName || "Business"} — Metrics Report`, 14, titleY);
   doc.setFontSize(9);
   doc.setTextColor(120);
-  doc.text(`Generated ${new Date().toLocaleString()} · Rivant`, 14, 22);
+  doc.text(`Generated ${new Date().toLocaleString()} · Rivant`, 14, titleY + 6);
 
   autoTable(doc, {
-    startY: 28,
+    startY: titleY + 12,
     head: [["Date", "Revenue", "Expenses", "Profit", "Margin %", "Orders", "CAC"]],
     body: rows.map((r) => [
       r.date,
