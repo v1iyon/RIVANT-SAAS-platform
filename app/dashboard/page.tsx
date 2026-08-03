@@ -532,7 +532,7 @@ function SwipeableCacCard({ panels, language }: { panels: CacPanelData[]; langua
 
   return (
   <div
-    className={`bg-gradient-to-br ${theme.from} to-transparent rounded-xl p-4 border ${theme.border} select-none flex flex-col min-h-[124px]`}
+    className={`bg-gradient-to-br ${theme.from} to-transparent rounded-xl p-4 border ${theme.border} select-none flex flex-col`}
     onTouchStart={handleTouchStart}
     onTouchEnd={handleTouchEnd}
   >
@@ -578,7 +578,7 @@ function SwipeableCacCard({ panels, language }: { panels: CacPanelData[]; langua
       />
     )}
 
-    <div className="flex items-center justify-center gap-1.5 mt-auto pt-2">
+    <div className="flex items-center justify-center gap-1.5 pt-2">
       {panels.map((_, i) => (
         <button
           key={i}
@@ -1502,7 +1502,7 @@ if (!subInfo) {
 
           {activeView === "overview" && (
             <div className="space-y-5">
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 items-start">
                     <MetricCard
                       title={T.revenue || "Revenue"}
                       value={currentRevenue}
