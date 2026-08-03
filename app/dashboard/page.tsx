@@ -531,65 +531,65 @@ function SwipeableCacCard({ panels, language }: { panels: CacPanelData[]; langua
   const title = index === 1 ? "CAC" : panel.label;
 
   return (
-    <div
-      className={`bg-gradient-to-br ${theme.from} to-transparent rounded-xl p-4 border ${theme.border} select-none flex flex-col justify-between min-h-[124px]`}
-      onTouchStart={handleTouchStart}
-      onTouchEnd={handleTouchEnd}
-    >
-      <div className="flex items-center justify-between gap-1">
-        <div className={`text-xs font-semibold uppercase ${theme.text} truncate`}>
-          {title}
-        </div>
-        <div className="hidden sm:flex items-center gap-0.5 shrink-0">
-          <button
-            onClick={() => goTo(index - 1)}
-            disabled={index === 0}
-            className="text-gray-500 hover:text-gray-300 disabled:opacity-20 disabled:cursor-not-allowed p-0.5"
-            aria-label="previous"
-          >
-            <ChevronLeft className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={() => goTo(index + 1)}
-            disabled={index === panels.length - 1}
-            className="text-gray-500 hover:text-gray-300 disabled:opacity-20 disabled:cursor-not-allowed p-0.5"
-            aria-label="next"
-          >
-            <ChevronRight className="w-3.5 h-3.5" />
-          </button>
-        </div>
+  <div
+    className={`bg-gradient-to-br ${theme.from} to-transparent rounded-xl p-4 border ${theme.border} select-none flex flex-col min-h-[124px]`}
+    onTouchStart={handleTouchStart}
+    onTouchEnd={handleTouchEnd}
+  >
+    <div className="flex items-center justify-between gap-1">
+      <div className={`text-xs font-semibold uppercase ${theme.text} truncate`}>
+        {title}
       </div>
-
-      <div className="flex-1 flex items-center my-1">
-        {hasValue ? (
-          <AnimatedNumber value={panel.value as number} prefix="$" changePercent={panel.change} />
-        ) : (
-          <p className="text-xs text-gray-500">
-            {language === "UA" ? "Немає даних для цього джерела" : language === "DE" ? "Keine Daten für diese Quelle" : "No data for this source yet"}
-          </p>
-        )}
-      </div>
-      {hasValue && (
-        <TickerSparkline
-          history={panel.sparklineData}
-          color={theme.ticker}
-          currentValue={panel.value as number}
-          previousValue={panel.prev ?? (panel.value as number)}
-        />
-      )}
-
-      <div className="flex items-center justify-center gap-1.5">
-        {panels.map((_, i) => (
-          <button
-            key={i}
-            onClick={() => goTo(i)}
-            className={`w-1.5 h-1.5 rounded-full transition-colors ${i === index ? "bg-orange-400" : "bg-gray-700"}`}
-            aria-label={`panel ${i + 1}`}
-          />
-        ))}
+      <div className="hidden sm:flex items-center gap-0.5 shrink-0">
+        <button
+          onClick={() => goTo(index - 1)}
+          disabled={index === 0}
+          className="text-gray-500 hover:text-gray-300 disabled:opacity-20 disabled:cursor-not-allowed p-0.5"
+          aria-label="previous"
+        >
+          <ChevronLeft className="w-3.5 h-3.5" />
+        </button>
+        <button
+          onClick={() => goTo(index + 1)}
+          disabled={index === panels.length - 1}
+          className="text-gray-500 hover:text-gray-300 disabled:opacity-20 disabled:cursor-not-allowed p-0.5"
+          aria-label="next"
+        >
+          <ChevronRight className="w-3.5 h-3.5" />
+        </button>
       </div>
     </div>
-  );
+
+    <div className="mb-1">
+      {hasValue ? (
+        <AnimatedNumber value={panel.value as number} prefix="$" changePercent={panel.change} />
+      ) : (
+        <p className="text-xs text-gray-500 mt-2">
+          {language === "UA" ? "Немає даних для цього джерела" : language === "DE" ? "Keine Daten für diese Quelle" : "No data for this source yet"}
+        </p>
+      )}
+    </div>
+    {hasValue && (
+      <TickerSparkline
+        history={panel.sparklineData}
+        color={theme.ticker}
+        currentValue={panel.value as number}
+        previousValue={panel.prev ?? (panel.value as number)}
+      />
+    )}
+
+    <div className="flex items-center justify-center gap-1.5 mt-auto pt-2">
+      {panels.map((_, i) => (
+        <button
+          key={i}
+          onClick={() => goTo(i)}
+          className={`w-1.5 h-1.5 rounded-full transition-colors ${i === index ? "bg-orange-400" : "bg-gray-700"}`}
+          aria-label={`panel ${i + 1}`}
+        />
+      ))}
+    </div>
+  </div>
+);
 }
 
 function getStatusBadge(status: string, t: any) {
