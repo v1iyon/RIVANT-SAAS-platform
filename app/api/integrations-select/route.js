@@ -65,12 +65,14 @@ export async function POST(req) {
       );
     }
 
-    // Growth — максимум 1 доп. интеграция сверх Stripe, Scale — без ограничения по количеству.
+    // Growth — максимум 1 доп. интеграция сверх Stripe, Scale и Trial — без
+    // ограничения по количеству (триал должен реально давать попробовать всё,
+    // иначе плашка "усі інтеграції безкоштовно" на лендинге была бы неправдой).
     if (sub.plan === "growth" && providers.length > 1) {
       return Response.json({ error: "Growth plan allows only 1 additional integration" }, { status: 400 });
     }
-    if (sub.plan !== "growth" && sub.plan !== "scale") {
-      return Response.json({ error: "Additional integrations require Growth or Scale plan" }, { status: 403 });
+    if (sub.plan !== "growth" && sub.plan !== "scale" && sub.plan !== "trial") {
+      return Response.json({ error: "Additional integrations require an active plan" }, { status: 403 });
     }
 
     await admin.from("subscriptions").update({ integrations_selected: providers }).eq("user_id", user.id);

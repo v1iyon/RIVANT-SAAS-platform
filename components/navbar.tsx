@@ -118,6 +118,53 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
     setIsMobileMenuOpen(false);
   };
 
+  // Supabase (и просто network errors типа "Failed to fetch") отдают текст
+  // ошибки на английском независимо от языка сайта — раньше это летело в UI
+  // как есть. Мапим самые частые случаи на текст на текущем языке интерфейса,
+  // а для непредвиденных ошибок — честный дженерик текст, а не сырой английский.
+  const translateAuthError = (rawMessage: string): string => {
+    const msg = (rawMessage || "").toLowerCase();
+    const dict: Record<string, Record<Language, string>> = {
+      network: {
+        EN: "Network error. Please check your connection and try again.",
+        UA: "Помилка мережі. Перевірте з'єднання і спробуйте ще раз.",
+        DE: "Netzwerkfehler. Bitte prüfen Sie Ihre Verbindung und versuchen Sie es erneut.",
+      },
+      invalidCredentials: {
+        EN: "Incorrect email or password.",
+        UA: "Невірна пошта або пароль.",
+        DE: "Falsche E-Mail oder falsches Passwort.",
+      },
+      emailNotConfirmed: {
+        EN: "Please confirm your email before signing in.",
+        UA: "Підтвердіть пошту перед входом.",
+        DE: "Bitte bestätigen Sie Ihre E-Mail, bevor Sie sich anmelden.",
+      },
+      alreadyRegistered: {
+        EN: "This email is already registered. Try signing in instead.",
+        UA: "Ця пошта вже зареєстрована. Спробуйте увійти.",
+        DE: "Diese E-Mail ist bereits registriert. Bitte melden Sie sich stattdessen an.",
+      },
+      passwordTooShort: {
+        EN: "Password must be at least 6 characters.",
+        UA: "Пароль має містити щонайменше 6 символів.",
+        DE: "Das Passwort muss mindestens 6 Zeichen lang sein.",
+      },
+      generic: {
+        EN: "Something went wrong. Please try again.",
+        UA: "Щось пішло не так. Спробуйте ще раз.",
+        DE: "Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut.",
+      },
+    };
+    let key: keyof typeof dict = "generic";
+    if (msg.includes("failed to fetch") || msg.includes("network") || msg.includes("load failed")) key = "network";
+    else if (msg.includes("invalid login credentials") || msg.includes("invalid email or password")) key = "invalidCredentials";
+    else if (msg.includes("email not confirmed")) key = "emailNotConfirmed";
+    else if (msg.includes("already registered") || msg.includes("already exists") || msg.includes("user already")) key = "alreadyRegistered";
+    else if (msg.includes("password") && (msg.includes("short") || msg.includes("6 char") || msg.includes("at least"))) key = "passwordTooShort";
+    return dict[key][language] || dict[key].EN;
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError("");
@@ -130,7 +177,7 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
       });
       setAuthLoading(false);
       if (error) {
-        setAuthError(error.message);
+        setAuthError(translateAuthError(error.message));
         return;
       }
       try {
@@ -142,13 +189,20 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
         if (!syncRes.ok) {
           const errBody = await syncRes.json().catch(() => ({}));
           console.error("auth-sync failed:", syncRes.status, errBody);
-          setAuthError(errBody.error || "Не удалось создать профиль. Попробуйте ещё раз.");
+          setAuthError(
+            errBody.error ||
+              (language === "UA"
+                ? "Не вдалося створити профіль. Спробуйте ще раз."
+                : language === "DE"
+                ? "Profil konnte nicht erstellt werden. Bitte versuchen Sie es erneut."
+                : "Could not create profile. Please try again.")
+          );
           setAuthLoading(false);
           return;
         }
       } catch (e) {
         console.error("auth-sync network error:", e);
-        setAuthError("Ошибка сети при создании профиля. Проверьте соединение.");
+        setAuthError(translateAuthError("failed to fetch"));
         setAuthLoading(false);
         return;
       }
@@ -159,7 +213,7 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
       });
       setAuthLoading(false);
       if (error) {
-        setAuthError(error.message);
+        setAuthError(translateAuthError(error.message));
         return;
       }
 
@@ -188,7 +242,7 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
     const { data: challenge, error: chErr } = await supabase.auth.mfa.challenge({ factorId: mfaFactorId });
     if (chErr) {
       setAuthLoading(false);
-      setAuthError(chErr.message);
+      setAuthError(translateAuthError(chErr.message));
       return;
     }
     const { error: verErr } = await supabase.auth.mfa.verify({
@@ -198,7 +252,7 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
     });
     setAuthLoading(false);
     if (verErr) {
-      setAuthError(verErr.message);
+      setAuthError(translateAuthError(verErr.message));
       return;
     }
     setIsLoggedIn(true);

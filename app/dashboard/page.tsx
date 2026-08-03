@@ -503,6 +503,7 @@ interface CacPanelData {
   value: number | null;
   change: number;
   prev: number | null;
+  sparklineData: number[];
 }
 
 function SwipeableCacCard({ panels, language }: { panels: CacPanelData[]; language: string }) {
@@ -568,6 +569,14 @@ function SwipeableCacCard({ panels, language }: { panels: CacPanelData[]; langua
           </p>
         )}
       </div>
+      {hasValue && (
+        <TickerSparkline
+          history={panel.sparklineData}
+          color={theme.ticker}
+          currentValue={panel.value as number}
+          previousValue={panel.prev ?? (panel.value as number)}
+        />
+      )}
 
       <div className="flex items-center justify-center gap-1.5">
         {panels.map((_, i) => (
@@ -642,6 +651,11 @@ const [forecastLoaded, setForecastLoaded] = useState(false);
   const revenueQueue = buildSparkline(metricsRows, (r) => r.revenue);
   const profitQueue = buildSparkline(metricsRows, (r) => r.profit);
   const marginQueue = buildSparkline(metricsRows, (r) => r.margin_pct);
+  // CAC-спарклайни для свайп-картки — null (нема даних за день) замінюємо
+  // на 0, інакше TickerSparkline ламається на Math.max/min з null.
+  const cacQueue = buildSparkline(metricsRows, (r) => r.cac ?? 0);
+  const cacMetaQueue = buildSparkline(metricsRows, (r) => r.cacMeta ?? 0);
+  const cacGoogleQueue = buildSparkline(metricsRows, (r) => r.cacGoogle ?? 0);
   const chartHistory = toChartHistory(metricsRows);
 
   const [risks, setRisks] = useState<Risk[]>([]);
@@ -1519,14 +1533,15 @@ if (!subInfo) {
                     <SwipeableCacCard
                       language={language}
                       panels={[
-                        { label: "Meta Ads", value: currentCacMeta, change: parseFloat(cacMetaChange), prev: prevCacMeta },
+                        { label: "Meta Ads", value: currentCacMeta, change: parseFloat(cacMetaChange), prev: prevCacMeta, sparklineData: cacMetaQueue },
                         {
                           label: language === "UA" ? "Загальне" : language === "DE" ? "Gesamt" : "Combined",
                           value: currentCac,
                           change: parseFloat(cacChange),
                           prev: prevCac,
+                          sparklineData: cacQueue,
                         },
-                        { label: "Google Ads", value: currentCacGoogle, change: parseFloat(cacGoogleChange), prev: prevCacGoogle },
+                        { label: "Google Ads", value: currentCacGoogle, change: parseFloat(cacGoogleChange), prev: prevCacGoogle, sparklineData: cacGoogleQueue },
                       ]}
                     />
                   </div>

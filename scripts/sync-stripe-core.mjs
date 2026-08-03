@@ -184,6 +184,39 @@ async function main(businessId) {
       const costPct = shopifyConnected ? 0 : Number(business.cost_pct) || 30;
       console.log("DEBUG byDate:", JSON.stringify(byDate), "shopifyConnected:", shopifyConnected);
 
+      // ВАЖНО (фикс спама уведомлений): sinceUnix = now - 48h, поэтому byDate
+      // почти всегда содержит ДВЕ даты — вчера и сегодня. Раньше alert-логика
+      // (auto-resolve/dedup/insert) прогонялась для КАЖДОЙ даты в цикле. Из-за
+      // этого на каждом часовом синке "вчера" (уже полностью прошедший, обычно
+      // стабильный день) пересчитывался заново и его change>-20 срабатывал
+      // auto-resolve — который резолвит ВСЕ open алерты типа revenue_drop для
+      // бизнеса, включая тот, что только что создан для "сегодня". На следующем
+      // прогоне dedup уже не находил open-алерт (он был resolved минуту назад)
+      // и создавал новый — отсюда алерт каждый час вместо одного раза в 24ч, и
+      // Risks tab всегда пустой (алерт resolved раньше, чем человек откроет
+      // кабинет). Теперь alert-логика гоняется только для САМОЙ ПОЗДНЕЙ даты —
+      // остальные даты по-прежнему обновляют metrics_computed, но не трогают
+      // alerts_log.
+      const latestDate = Object.keys(byDate).sort().pop();
+
+      // Тянет реальные расходы (advertising/shipping/cogs — все категории,
+      // как в /api/metrics) за конкретную дату и пересчитывает маржу с их
+      // учётом. Раньше в Telegram/AI-алерт улетала margin_pct прямо из
+      // metrics_computed — она считалась ТОЛЬКО из Stripe-комиссии/COGS-оценки,
+      // без учёта Shopify shipping и рекламных расходов, поэтому бот показывал
+      // другую маржу (66.8%), чем кабинет (47%, с учётом всех расходов).
+      async function getFullMargin(businessId, forDate, revenue, baseCost) {
+        const { data: expenseRows } = await admin
+          .from("expenses")
+          .select("amount")
+          .eq("business_id", businessId)
+          .eq("date", forDate);
+        const extraTotal = (expenseRows || []).reduce((s, r) => s + Number(r.amount), 0);
+        const fullCost = Number((baseCost + extraTotal).toFixed(2));
+        const marginPct = revenue > 0 ? Number((((revenue - fullCost) / revenue) * 100).toFixed(1)) : 0;
+        return { fullCost, marginPct };
+      }
+
       for (const [date, agg] of Object.entries(byDate)) {
         const prevDate = new Date(new Date(date).getTime() - 24 * 3600 * 1000)
           .toISOString()
@@ -215,6 +248,8 @@ async function main(businessId) {
           { onConflict: "business_id,date" }
         );
         console.log("DEBUG upsert result for", date, "error:", upsertErr);
+
+        if (date !== latestDate) continue; // см. комментарий про фикс спама выше
 
         if (prev && prev.revenue > 0) {
           const change = ((agg.revenue - prev.revenue) / prev.revenue) * 100;
@@ -257,10 +292,17 @@ const { data: existingAlerts, error: dedupErr } = await admin
 console.log("DEBUG dedup check:", existingAlerts?.length, "error:", dedupErr);
 if (existingAlerts?.length) continue;
 
+            const { marginPct: todayFullMargin, fullCost: todayFullCost } = await getFullMargin(
+              business.id, date, agg.revenue, cost
+            );
+            const { marginPct: prevFullMargin, fullCost: prevFullCost } = await getFullMargin(
+              business.id, prevDate, prev.revenue, prev.cost
+            );
+
             const aiExplanation = await getAIExplanation(
               business,
-              { revenue: agg.revenue, cost, margin_pct: marginPct },
-              { revenue: prev.revenue, cost: prev.cost, margin_pct: prev.margin_pct },
+              { revenue: agg.revenue, cost: todayFullCost, margin_pct: todayFullMargin },
+              { revenue: prev.revenue, cost: prevFullCost, margin_pct: prevFullMargin },
               userLang,
               change
             );
