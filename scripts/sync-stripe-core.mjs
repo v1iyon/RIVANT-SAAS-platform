@@ -60,34 +60,45 @@ const REVENUE_DROP_MESSAGE = {
 };
 
 async function getAIExplanation(business, today, yesterday, language = "EN", changePct) {
-  try {
-    const buildPrompt = PROMPTS[language] || PROMPTS.EN;
-    const prompt = buildPrompt(business, today, yesterday, changePct);
+  const buildPrompt = PROMPTS[language] || PROMPTS.EN;
+  const prompt = buildPrompt(business, today, yesterday, changePct);
 
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": process.env.ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-5",
-        max_tokens: 150,
-        messages: [{ role: "user", content: prompt }],
-      }),
-    });
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": process.env.ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-5",
+          max_tokens: 150,
+          messages: [{ role: "user", content: prompt }],
+        }),
+      });
 
-    if (!res.ok) {
-      const errBody = await res.text();
-      throw new Error(`Anthropic API error: ${res.status} — ${errBody}`);
+      if (!res.ok) {
+        const errBody = await res.text();
+        throw new Error(`Anthropic API error: ${res.status} — ${errBody}`);
+      }
+      const data = await res.json();
+      return data.content?.[0]?.text?.trim() || null;
+    } catch (err) {
+      console.error(`AI explanation failed (attempt ${attempt}/2):`, err.message);
+      if (attempt === 2) {
+        await logError({
+          source: "ai_explanation",
+          message: err.message,
+          businessId: business.id,
+        });
+        return null;
+      }
+      await new Promise((r) => setTimeout(r, 1000));
     }
-    const data = await res.json();
-    return data.content?.[0]?.text?.trim() || null;
-  } catch (err) {
-    console.error("AI explanation failed:", err.message);
-    return null;
   }
+  return null;
 }
 
 async function fetchStripeCharges(apiKey, sinceUnix) {
