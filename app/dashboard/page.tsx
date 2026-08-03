@@ -532,8 +532,7 @@ function SwipeableCacCard({ panels, language }: { panels: CacPanelData[]; langua
 
   return (
   <div
-className={`bg-gradient-to-br ${theme.from} to-transparent rounded-xl p-4 ${hasValue ? "pb-2" : "pb-1"} border ${theme.border} select-none flex flex-col`}
-    onTouchStart={handleTouchStart}
+className={`bg-gradient-to-br ${theme.from} to-transparent rounded-xl p-4 pb-2 border ${theme.border} select-none flex flex-col`}
     onTouchEnd={handleTouchEnd}
   >
     <div className="flex items-center justify-between gap-1">
