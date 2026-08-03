@@ -578,7 +578,7 @@ function SwipeableCacCard({ panels, language }: { panels: CacPanelData[]; langua
         />
       )}
 
-      <div className="flex items-center justify-center gap-1.5 mt-2.5">
+      <div className="flex items-center justify-center gap-1.5">
         {panels.map((_, i) => (
           <button
             key={i}

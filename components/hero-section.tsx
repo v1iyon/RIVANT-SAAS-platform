@@ -20,17 +20,17 @@ export function HeroSection({ onOpenCalculator, onOpenDemo }: HeroSectionProps) 
       </div>
 
       <div className="relative z-10 max-w-7xl mx-auto text-center">
-        {/* Компактна плашка про 14-денний триал — замінює попередній напис
-            "Новий рівень контролю над фінансами" та дублюючу велику плашку,
-            яка була нижче. Один рядок, невеликий шрифт. */}
+        {/* Компактна плашка про 14-денний триал. Текст навмисно з акцентом
+            на "для нових користувачів" — звучить як запрошення, а не просто
+            технічна умова. Один рядок, невеликий шрифт. */}
         <div className="inline-flex items-center gap-2 px-3 py-1 bg-secondary/80 rounded-full mb-4">
           <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse shrink-0" />
           <span className="text-xs text-muted-foreground">
             {language === "UA"
-              ? "14 днів безкоштовно — без картки"
+              ? "14 днів безкоштовно для нових користувачів"
               : language === "DE"
-              ? "14 Tage kostenlos — keine Kreditkarte nötig"
-              : "14 days free — no card required"}
+              ? "14 Tage kostenlos für neue Nutzer"
+              : "14 days free for new users"}
           </span>
         </div>
 
