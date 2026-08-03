@@ -53,7 +53,7 @@ export async function exportMetricsToPdf(rows: ExportRow[], businessName: string
   // грузим и конвертируем в data URL, чтобы вставить через doc.addImage.
   let logoDataUrl: string | null = null;
   try {
-    const res = await fetch("/public/icon6.jpg");
+    const res = await fetch("/icon08.png");
     const blob = await res.blob();
     logoDataUrl = await new Promise((resolve, reject) => {
       const reader = new FileReader();
