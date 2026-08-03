@@ -560,7 +560,7 @@ className={`bg-gradient-to-br ${theme.from} to-transparent rounded-xl p-4 pb-0 b
       </div>
     </div>
 
-    <div className="mb-1 min-h-[50px]">
+    <div className="mb-1 min-h-[52px]">
       {hasValue ? (
         <AnimatedNumber value={panel.value as number} prefix="$" changePercent={panel.change} />
       ) : (
@@ -570,12 +570,14 @@ className={`bg-gradient-to-br ${theme.from} to-transparent rounded-xl p-4 pb-0 b
       )}
     </div>
     {hasValue ? (
-      <TickerSparkline
-        history={panel.sparklineData}
-        color={theme.ticker}
-        currentValue={panel.value as number}
-        previousValue={panel.prev ?? (panel.value as number)}
-      />
+      <div className="-mt-1">
+        <TickerSparkline
+          history={panel.sparklineData}
+          color={theme.ticker}
+          currentValue={panel.value as number}
+          previousValue={panel.prev ?? (panel.value as number)}
+        />
+      </div>
     ) : (
       <div className="h-8 mt-2" aria-hidden="true" />
     )}
