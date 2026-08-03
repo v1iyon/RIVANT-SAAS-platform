@@ -532,7 +532,7 @@ function SwipeableCacCard({ panels, language }: { panels: CacPanelData[]; langua
 
   return (
   <div
-className={`bg-gradient-to-br ${theme.from} to-transparent rounded-xl p-4 border ${theme.border} select-none flex flex-col`}
+className={`bg-gradient-to-br ${theme.from} to-transparent rounded-xl p-4 pb-1 border ${theme.border} select-none flex flex-col`}
     onTouchStart={handleTouchStart}
     onTouchEnd={handleTouchEnd}
   >
@@ -560,7 +560,7 @@ className={`bg-gradient-to-br ${theme.from} to-transparent rounded-xl p-4 border
       </div>
     </div>
 
-    <div className="mb-1">
+    <div className="mb-1 min-h-[52px]">
       {hasValue ? (
         <AnimatedNumber value={panel.value as number} prefix="$" changePercent={panel.change} />
       ) : (
