@@ -560,7 +560,7 @@ className={`bg-gradient-to-br ${theme.from} to-transparent rounded-xl p-4 pb-0 b
       </div>
     </div>
 
-    <div className="mb-1 min-h-[52px]">
+    <div className="mb-1 min-h-[50px]">
       {hasValue ? (
         <AnimatedNumber value={panel.value as number} prefix="$" changePercent={panel.change} />
       ) : (
