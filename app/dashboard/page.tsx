@@ -569,13 +569,15 @@ function SwipeableCacCard({ panels, language }: { panels: CacPanelData[]; langua
         </p>
       )}
     </div>
-    {hasValue && (
+    {hasValue ? (
       <TickerSparkline
         history={panel.sparklineData}
         color={theme.ticker}
         currentValue={panel.value as number}
         previousValue={panel.prev ?? (panel.value as number)}
       />
+    ) : (
+      <div className="h-8 mt-2" aria-hidden="true" />
     )}
 
     <div className="flex items-center justify-center gap-1.5 pt-2">
