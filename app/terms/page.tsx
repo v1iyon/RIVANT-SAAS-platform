@@ -15,8 +15,9 @@ export default function TermsOfServicePage() {
         <h2 className="text-lg font-semibold text-white">1. The Service</h2>
         <p>
           RIVANT provides business analytics, forecasting, and alerting tools based on
-          data you connect (including but not limited to Stripe and CSV uploads).
-          Features available depend on your subscription plan (Starter, Growth, Scale).
+          data you connect (including but not limited to Stripe, Google Ads, Meta Ads,
+          Shopify, QuickBooks, and CSV uploads). Features available depend on your
+          subscription plan (Starter, Growth, Scale).
         </p>
 
         <h2 className="text-lg font-semibold text-white">2. Accounts</h2>
@@ -49,9 +50,10 @@ export default function TermsOfServicePage() {
 
         <h2 className="text-lg font-semibold text-white">6. Data & Third-Party Integrations</h2>
         <p>
-          When you connect third-party services (e.g. Stripe) or upload CSV files, you
-          confirm you have the right to share this data with us. We process this data
-          solely to provide analytics to you. See our Privacy Policy for details.
+          When you connect third-party services (e.g. Stripe, Google Ads, Meta Ads,
+          Shopify, QuickBooks) or upload CSV files, you confirm you have the right to
+          share this data with us. We process this data solely to provide analytics to
+          you. See our Privacy Policy for details.
         </p>
 
         <h2 className="text-lg font-semibold text-white">7. Termination</h2>
