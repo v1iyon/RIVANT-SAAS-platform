@@ -13,8 +13,9 @@ export default function PrivacyPolicyPage() {
         <h2 className="text-lg font-semibold text-white">1. Information We Collect</h2>
         <p>
           - Account information: email address, name, phone number (optional).<br />
-          - Business data: revenue, expenses, and other metrics you connect via Stripe
-          or upload via CSV.<br />
+          - Business data: revenue, expenses, and advertising performance metrics from
+          third-party services you connect, including Stripe, Google Ads, Meta Ads,
+          Shopify, and QuickBooks, or upload via CSV.<br />
           - Usage data: how you interact with the dashboard, for the purpose of
           improving the product.
         </p>
@@ -30,8 +31,25 @@ export default function PrivacyPolicyPage() {
         <p>
           We do not sell your data. We share data only with service providers necessary
           to operate RIVANT, including Supabase (database hosting), Paddle (payment
-          processing), and Stripe (if you connect your own Stripe account for read-only
-          data access).
+          processing), and the advertising and business platforms you connect
+          (Stripe, Google Ads, Meta Ads, Shopify, QuickBooks) for read-only data access.
+        </p>
+        <p>
+          Data obtained through the Google Ads API is used solely to display advertising
+          spend and performance metrics on your own RIVANT dashboard. We do not share
+          this data with any third party except the infrastructure providers listed
+          above, necessary to store it securely, and we do not use it for advertising,
+          profiling, or any purpose other than providing our service to you. Our use and
+          transfer of information received from Google APIs complies with the{" "}
+          <a
+            href="https://developers.google.com/terms/api-services-user-data-policy"
+            className="underline"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Google API Services User Data Policy
+          </a>
+          , including the Limited Use requirements.
         </p>
 
         <h2 className="text-lg font-semibold text-white">4. Data Storage & Security</h2>
