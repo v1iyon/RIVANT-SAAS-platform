@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { useLanguage } from "@/lib/translations";
-import { getSeverityLabel } from "@/lib/severity";
 import { 
   LayoutDashboard, AlertTriangle, TrendingUp, Link2, 
   Bell, X, AlertCircle, ArrowUpRight, ArrowDownRight, Trash2,
@@ -270,8 +269,8 @@ function TickerSparkline({ history, color, currentValue, previousValue }: { hist
           return (
             <div
               key={i}
-              className={`flex-1 rounded-sm origin-bottom transition-all duration-200 min-w-[6px] ${
-                isNew ? (isPositive ? 'bg-green-500 shadow-lg shadow-green-500/30 scale-x-110 scale-y-105' : 'bg-red-500 shadow-lg shadow-red-500/30 scale-x-110 scale-y-105') : color
+              className={`flex-1 rounded-sm transition-all duration-200 min-w-[6px] ${
+                isNew ? (isPositive ? 'bg-green-500 shadow-lg shadow-green-500/30 scale-110' : 'bg-red-500 shadow-lg shadow-red-500/30 scale-110') : color
               } ${isFirst && isAnimating ? 'opacity-0' : 'opacity-100'}`}
               style={{ height: `${height}px`, transition: 'opacity 0.2s ease-out, height 0.3s ease-out' }}
             />
@@ -547,11 +546,6 @@ function RevenueExpensesChart() {
 function DemoIntegrationCard({
   name, placeholder, hint, keyInput, setKeyInput, connected, setConnected, keyPreview, setKeyPreview, language,
   extraFields, extraValues, setExtraValues,
-  // Для провайдерів, у яких на реальному кабінеті OAuth-кнопка (Google Ads) —
-  // замість форми з полями показуємо ту саму одну кнопку. По кліку одразу
-  // ставимо connected=true: це демо, реального редіректу на Google бути не
-  // повинно, а UI має виглядати ідентично особистому кабінету.
-  oauthMode,
 }: {
   name: string; placeholder: string; hint: string;
   keyInput: string; setKeyInput: (v: string) => void;
@@ -560,7 +554,6 @@ function DemoIntegrationCard({
   language: string;
   extraFields?: { key: string; label: string; placeholder: string } | { key: string; label: string; placeholder: string }[];
   extraValues?: Record<string, string>; setExtraValues?: (v: Record<string, string>) => void;
-  oauthMode?: boolean;
 }) {
   const fields = Array.isArray(extraFields) ? extraFields : extraFields ? [extraFields] : [];
   const handleConnect = () => {
@@ -572,11 +565,6 @@ function DemoIntegrationCard({
     setKeyPreview(key.slice(0, 8) + "..." + key.slice(-4));
     setConnected(true);
     setKeyInput("");
-  };
-  const handleOAuthConnect = () => {
-    // Ніякого window.location.href — це демо, одразу показуємо "Підключено".
-    setKeyPreview(language === "UA" ? "google-ads" : "google-ads");
-    setConnected(true);
   };
   const handleDisconnect = () => {
     setConnected(false);
@@ -1041,7 +1029,7 @@ const [googleAdsExtraValues, setGoogleAdsExtraValues] = useState<Record<string, 
                         <div className="flex-1">
                           <div className="flex items-center justify-between flex-wrap gap-2">
                             <div className="flex items-center gap-2">
-                              <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${risk.severity === "high" ? "bg-red-500/20 text-red-400" : risk.severity === "medium" ? "bg-yellow-500/20 text-yellow-400" : "bg-blue-500/20 text-blue-400"}`}>{getSeverityLabel(risk.severity, language)}</span>
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${risk.severity === "high" ? "bg-red-500/20 text-red-400" : risk.severity === "medium" ? "bg-yellow-500/20 text-yellow-400" : "bg-blue-500/20 text-blue-400"}`}>{risk.severity.toUpperCase()}</span>
                               <span className="text-xs text-gray-500">{risk.time}</span>
                             </div>
                             {/* FIX: увеличенная тап-зона крестика удаления риска (p-2 -m-2) */}
