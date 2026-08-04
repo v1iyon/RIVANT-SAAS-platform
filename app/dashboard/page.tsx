@@ -692,6 +692,12 @@ const [deleteError, setDeleteError] = useState("");
   const [passwordMsg, setPasswordMsg] = useState("");
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
+  // Google Ads OAuth: після редіректу з /api/auth/google-ads/callback
+  // (?google_ads=connected|pick|error) — див. useEffect нижче.
+  const [gadsPickerCustomers, setGadsPickerCustomers] = useState<string[] | null>(null);
+  const [gadsPickerLoading, setGadsPickerLoading] = useState(false);
+  const [gadsPickerError, setGadsPickerError] = useState("");
+  const [gadsToast, setGadsToast] = useState<{ kind: "success" | "error"; text: string } | null>(null);
   const [profileName, setProfileName] = useState("");
   const [profileEmail, setProfileEmail] = useState("");
   const [profilePhone, setProfilePhone] = useState("");
@@ -744,6 +750,99 @@ const [companySaved, setCompanySaved] = useState(false);
     window.removeEventListener("focus", refreshTelegramStatus);
   };
 }, [profileEmail]);
+
+  // Обробка редіректу з /api/auth/google-ads/callback: ?google_ads=connected —
+  // одразу запускаємо синк і показуємо тост; ?google_ads=pick — підвантажуємо
+  // список Customer ID з /pending і відкриваємо модалку вибору; ?google_ads=error —
+  // показуємо помилку. У всіх випадках чистимо query-параметри з адресного рядка.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const gads = params.get("google_ads");
+    if (!gads) return;
+
+    const cleanUrl = () => {
+      params.delete("google_ads");
+      params.delete("google_ads_error");
+      const rest = params.toString();
+      window.history.replaceState({}, "", rest ? `${window.location.pathname}?${rest}` : window.location.pathname);
+    };
+
+    if (gads === "connected") {
+      setGadsToast({
+        kind: "success",
+        text: language === "UA" ? "Google Ads підключено! Синхронізуємо дані..." : language === "DE" ? "Google Ads verbunden! Daten werden synchronisiert..." : "Google Ads connected! Syncing data...",
+      });
+      if (profileEmail) {
+        fetch("/api/sync-now", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: profileEmail, provider: "google_ads" }),
+        }).catch((e) => console.error("sync-now after google_ads oauth failed", e));
+      }
+      cleanUrl();
+      setTimeout(() => setGadsToast(null), 6000);
+    } else if (gads === "pick") {
+      setGadsPickerLoading(true);
+      setGadsPickerError("");
+      fetch("/api/auth/google-ads/pending")
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.customerIds?.length) {
+            setGadsPickerCustomers(d.customerIds);
+          } else {
+            setGadsPickerError(
+              language === "UA" ? "Час вибору вичерпано, спробуйте підключити знову." : language === "DE" ? "Auswahlzeit abgelaufen, bitte erneut verbinden." : "Selection window expired, please connect again."
+            );
+          }
+        })
+        .catch(() => setGadsPickerError(language === "UA" ? "Не вдалося завантажити список акаунтів." : language === "DE" ? "Konnte Kontenliste nicht laden." : "Failed to load account list."))
+        .finally(() => setGadsPickerLoading(false));
+      cleanUrl();
+    } else if (gads === "error") {
+      setGadsToast({
+        kind: "error",
+        text: language === "UA" ? "Не вдалося підключити Google Ads. Спробуйте ще раз." : language === "DE" ? "Google Ads konnte nicht verbunden werden. Bitte erneut versuchen." : "Couldn't connect Google Ads. Please try again.",
+      });
+      cleanUrl();
+      setTimeout(() => setGadsToast(null), 6000);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profileEmail]);
+
+  const handlePickGoogleAdsCustomer = async (customerId: string) => {
+    setGadsPickerLoading(true);
+    setGadsPickerError("");
+    try {
+      const res = await fetch("/api/auth/google-ads/finish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customerId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setGadsPickerError(data.error || "Failed to connect");
+        setGadsPickerLoading(false);
+        return;
+      }
+      setGadsPickerCustomers(null);
+      setGadsPickerLoading(false);
+      setGadsToast({
+        kind: "success",
+        text: language === "UA" ? "Google Ads підключено! Синхронізуємо дані..." : language === "DE" ? "Google Ads verbunden! Daten werden synchronisiert..." : "Google Ads connected! Syncing data...",
+      });
+      if (profileEmail) {
+        fetch("/api/sync-now", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: profileEmail, provider: "google_ads" }),
+        }).catch((e) => console.error("sync-now after google_ads oauth failed", e));
+      }
+      setTimeout(() => setGadsToast(null), 6000);
+    } catch {
+      setGadsPickerError("Network error");
+      setGadsPickerLoading(false);
+    }
+  };
 
 useEffect(() => {
   if (!profileEmail) return;
@@ -1928,40 +2027,22 @@ if (!subInfo) {
                 email={profileEmail}
                 provider="google_ads"
                 displayName="Google Ads"
-                placeholder="refresh token..."
+                placeholder=""
                 isExpiredTrial={isExpiredTrial}
                 planTier={subInfo?.plan ?? null}
                 selectedProviders={selectedProviders}
                 onSelected={(p) => setSelectedProviders([p])}
                 onLockedClick={() => router.push("/#pricing")}
-                extraFields={[
-                  {
-                    key: "customer_id",
-                    label: language === "UA" ? "Customer ID (без дефісів)" : language === "DE" ? "Customer ID (ohne Bindestriche)" : "Customer ID (without dashes)",
-                    placeholder: "1234567890",
-                  },
-                  {
-                    key: "client_id",
-                    label: language === "UA" ? "OAuth Client ID (Google Cloud Console)" : language === "DE" ? "OAuth-Client-ID (Google Cloud Console)" : "OAuth Client ID (Google Cloud Console)",
-                    placeholder: "xxxxxxxxxxxx.apps.googleusercontent.com",
-                  },
-                  {
-                    key: "client_secret",
-                    label: language === "UA" ? "OAuth Client Secret" : language === "DE" ? "OAuth Client Secret" : "OAuth Client Secret",
-                    placeholder: "GOCSPX-...",
-                  },
-                  {
-                    key: "developer_token",
-                    label: language === "UA" ? "Developer Token (Google Ads API Center)" : language === "DE" ? "Developer Token (Google Ads API Center)" : "Developer Token (Google Ads API Center)",
-                    placeholder: "ABcdeFGH93KL-NOPQ_STUv",
-                  },
-                ]}
+                oauthStartHref={`/api/auth/google-ads/start?email=${encodeURIComponent(profileEmail)}`}
+                oauthButtonLabel={
+                  language === "UA" ? "Підключити через Google" : language === "DE" ? "Über Google verbinden" : "Connect with Google"
+                }
                 hint={
                   language === "UA"
-                    ? "Google Ads → Tools → API Center: створіть Developer Token. Google Cloud Console → OAuth Client ID (тип Desktop). Google OAuth Playground → свій Client ID/Secret у Settings → авторизуйтесь зі scope 'https://www.googleapis.com/auth/adwords' → отримайте refresh token."
+                    ? "Ви перейдете на сторінку Google, підтвердите доступ до Google Ads і повернетесь сюди — без ручного вводу токенів."
                     : language === "DE"
-                    ? "Google Ads → Tools → API Center: Developer Token erstellen. Google Cloud Console → OAuth Client ID (Typ Desktop). Google OAuth Playground → eigene Client ID/Secret in Settings → mit Scope 'https://www.googleapis.com/auth/adwords' autorisieren → Refresh Token abrufen."
-                    : "Google Ads → Tools → API Center: create a Developer Token. Google Cloud Console → create an OAuth Client ID (Desktop type). Google OAuth Playground → enter your own Client ID/Secret in Settings → authorize with scope 'https://www.googleapis.com/auth/adwords' → get the refresh token."
+                    ? "Sie werden zu Google weitergeleitet, bestätigen den Zugriff auf Google Ads und kehren hierher zurück — ganz ohne manuelle Token-Eingabe."
+                    : "You'll be redirected to Google, approve access to Google Ads, and land back here — no manual token entry."
                 }
               />
 
@@ -2305,6 +2386,67 @@ if (!subInfo) {
       </nav>
 
       <input ref={photoInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} />
+
+      {gadsToast && (
+        <div className="fixed top-4 right-4 z-[110] max-w-[320px]">
+          <div
+            className={`rounded-xl p-4 border shadow-2xl text-sm ${
+              gadsToast.kind === "success" ? "bg-green-950/90 border-green-500/30 text-green-300" : "bg-red-950/90 border-red-500/30 text-red-300"
+            }`}
+          >
+            {gadsToast.text}
+          </div>
+        </div>
+      )}
+
+      {(gadsPickerCustomers || gadsPickerLoading || gadsPickerError) && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-[90vw] max-w-[380px] shadow-2xl">
+            <h2 className="text-lg font-semibold text-white mb-2">
+              {language === "UA" ? "Оберіть Google Ads акаунт" : language === "DE" ? "Google Ads-Konto wählen" : "Choose a Google Ads account"}
+            </h2>
+            <p className="text-sm text-gray-400 mb-4">
+              {language === "UA"
+                ? "У вас доступ до кількох акаунтів під цим Google-логіном. Оберіть, який підключити."
+                : language === "DE"
+                ? "Sie haben Zugriff auf mehrere Konten unter diesem Google-Login. Wählen Sie eines aus."
+                : "You have access to several accounts under this Google login. Pick which one to connect."}
+            </p>
+
+            {gadsPickerError && <p className="text-sm text-red-400 mb-3">{gadsPickerError}</p>}
+
+            {gadsPickerLoading && !gadsPickerCustomers && (
+              <div className="h-4 w-32 bg-gray-800 rounded animate-pulse mb-3" />
+            )}
+
+            {gadsPickerCustomers && (
+              <div className="space-y-2 mb-4 max-h-[240px] overflow-y-auto">
+                {gadsPickerCustomers.map((cid) => (
+                  <button
+                    key={cid}
+                    disabled={gadsPickerLoading}
+                    onClick={() => handlePickGoogleAdsCustomer(cid)}
+                    className="w-full text-left px-3 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-white text-sm font-mono transition-colors disabled:opacity-50"
+                  >
+                    {cid}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <Button
+              variant="outline"
+              className="w-full border-gray-700 text-gray-300 hover:bg-gray-800"
+              onClick={() => {
+                setGadsPickerCustomers(null);
+                setGadsPickerError("");
+              }}
+            >
+              {language === "UA" ? "Скасувати" : language === "DE" ? "Abbrechen" : "Cancel"}
+            </Button>
+          </div>
+        </div>
+      )}
 
       {showLogoutModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">

@@ -30,6 +30,12 @@ interface Props {
   // Developer Token) на додачу до refresh token в основному полі — використовуємо
   // це замість extraField, коли треба більше одного додаткового поля.
   extraFields?: { key: string; label: string; placeholder: string }[];
+  // Якщо задано — картка показує кнопку "Підключити через Google" (редірект на
+  // /api/auth/google-ads/start), а не ручні поля. Ручний ввід Client ID/Secret/
+  // Developer Token/refresh token більше не потрібен — все це налаштоване
+  // app-wide на сервері, користувач лише проходить Google consent screen.
+  oauthStartHref?: string;
+  oauthButtonLabel?: string;
 }
 
 // Trial навмисно НЕ в цьому списку: під час трайлу доступ повний, як на Scale,
@@ -50,6 +56,8 @@ export function IntegrationConnectCard({
   onSelected,
   extraField,
   extraFields,
+  oauthStartHref,
+  oauthButtonLabel,
 }: Props) {
   const { language } = useLanguage();
   // Нормалізуємо обидва варіанти (одне поле / кілька полів) в один масив,
@@ -178,6 +186,15 @@ export function IntegrationConnectCard({
     }
   };
 
+  const handleOAuthConnect = () => {
+    if (locked) {
+      triggerLockedToast();
+      return;
+    }
+    if (!oauthStartHref) return;
+    window.location.href = oauthStartHref;
+  };
+
   const handleDisconnect = async () => {
     if (isExpiredTrial) {
       triggerLockedToast();
@@ -293,7 +310,36 @@ export function IntegrationConnectCard({
         )}
       </div>
 
-      {status !== "connected" && (
+      {status !== "connected" && oauthStartHref && (
+        <div className="space-y-2">
+          <p className="text-xs text-gray-500">{hint}</p>
+          <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={handleOAuthConnect}>
+            {oauthButtonLabel || texts.connectBtn}
+          </Button>
+
+          {showLockedToast && lockReason && (
+            <div className="mt-2 bg-gray-950 border border-red-500/30 rounded-lg p-3 flex flex-col gap-2 animate-in fade-in slide-in-from-top-1">
+              <div className="flex items-start gap-2">
+                <Lock className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-white">{lockedTexts[lockReason].title}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{lockedTexts[lockReason].body}</p>
+                </div>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button size="sm" variant="ghost" className="text-gray-400 hover:text-white" onClick={() => setShowLockedToast(false)}>
+                  {lockedOkText}
+                </Button>
+                <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={() => onLockedClick?.()}>
+                  {lockedTexts[lockReason].cta}
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {status !== "connected" && !oauthStartHref && (
         <div className="space-y-2">
           {fields.map((f) => (
             <div key={f.key}>
