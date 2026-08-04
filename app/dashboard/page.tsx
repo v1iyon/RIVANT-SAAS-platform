@@ -7,6 +7,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useLanguage, Language } from "@/lib/translations";
+import { getSeverityLabel } from "@/lib/severity";
 import { TrialPromptModal } from "@/components/dashboard/trial-prompt-modal";
 import {
   LayoutDashboard,
@@ -290,8 +291,8 @@ function TickerSparkline({ history, color, currentValue, previousValue }: { hist
           return (
             <div
               key={i}
-              className={`flex-1 rounded-sm transition-all duration-200 min-w-[4px] ${
-                isNew ? (isPositive ? 'bg-green-500 shadow-lg shadow-green-500/30 scale-110' : 'bg-red-500 shadow-lg shadow-red-500/30 scale-110') : color
+              className={`flex-1 rounded-sm origin-bottom transition-all duration-200 min-w-[4px] ${
+                isNew ? (isPositive ? 'bg-green-500 shadow-lg shadow-green-500/30 scale-x-110 scale-y-105' : 'bg-red-500 shadow-lg shadow-red-500/30 scale-x-110 scale-y-105') : color
               } ${isFirst && isAnimating ? 'opacity-0' : 'opacity-100'}`}
               style={{ height: `${height}px`, transition: 'opacity 0.2s ease-out, height 0.3s ease-out' }}
             />
@@ -425,24 +426,24 @@ function RevenueExpensesChart({ history }: {
       </div>
 
       <div className="grid grid-cols-3 gap-2 sm:gap-3 mt-5 pt-4 border-t border-gray-800">
-        <div className="bg-blue-500/5 rounded-xl p-2 sm:p-3 border border-blue-500/15">
-          <div className="flex items-center gap-1 mb-1">
+        <div className="bg-blue-500/5 rounded-xl p-2 sm:p-3 border border-blue-500/15 flex flex-col items-center text-center sm:items-start sm:text-left">
+          <div className="flex flex-col items-center sm:flex-row sm:items-center gap-1 mb-1">
             <DollarSign className="w-3 h-3 text-blue-400" />
             <div className="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-wider">{T.totalRevenue || "Total Revenue"}</div>
           </div>
           <div className="text-base sm:text-xl font-bold text-white">${(totalRevenue / 1000).toFixed(0)}k</div>
           <div className="text-[10px] text-gray-500 mt-1">↑ {chartData[0].revenue > 0 ? Math.abs(((chartData[chartData.length-1].revenue - chartData[0].revenue) / chartData[0].revenue * 100)).toFixed(0) : "0"}% {T.demoVsStart || "vs start"}</div>
         </div>
-        <div className="bg-rose-500/5 rounded-xl p-2 sm:p-3 border border-rose-500/15">
-          <div className="flex items-center gap-1 mb-1">
+        <div className="bg-rose-500/5 rounded-xl p-2 sm:p-3 border border-rose-500/15 flex flex-col items-center text-center sm:items-start sm:text-left">
+          <div className="flex flex-col items-center sm:flex-row sm:items-center gap-1 mb-1">
             <TrendingDown className="w-3 h-3 text-rose-400" />
             <div className="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-wider">{T.totalExpenses || "Total Expenses"}</div>
           </div>
           <div className="text-base sm:text-xl font-bold text-white">${(totalExpenses / 1000).toFixed(0)}k</div>
           <div className="text-[10px] text-gray-500 mt-1">{((totalExpenses / totalRevenue) * 100).toFixed(0)}% {T.demoOfRevenue || "of revenue"}</div>
         </div>
-        <div className="bg-green-500/10 rounded-xl p-2 sm:p-3 border border-green-500/20">
-          <div className="flex items-center gap-1 mb-1">
+        <div className="bg-green-500/10 rounded-xl p-2 sm:p-3 border border-green-500/20 flex flex-col items-center text-center sm:items-start sm:text-left">
+          <div className="flex flex-col items-center sm:flex-row sm:items-center gap-1 mb-1">
             <TrendingUp className="w-3 h-3 text-green-400" />
             <div className="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-wider">{T.netProfit || "Net Profit"}</div>
           </div>
@@ -451,7 +452,7 @@ function RevenueExpensesChart({ history }: {
         </div>
       </div>
 
-      <div className="flex justify-between items-center mt-3 pt-2 text-[10px] text-gray-600 border-t border-gray-800/50">
+      <div className="flex flex-col items-center gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-0 mt-3 pt-2 text-[10px] text-gray-600 border-t border-gray-800/50">
         <span>{T.demoExpenseRatio || "Expense ratio"}: {expenseEfficiency}%</span>
         <span>{T.demoPeakMargin || "Peak margin"}: {chartData[bestDay].margin}%</span>
         <span>{T.demoLowMargin || "Low margin"}: {chartData[worstDay].margin}%</span>
@@ -1722,7 +1723,7 @@ if (!subInfo) {
                               <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
                                 risk.severity === "high" || risk.severity === "critical" ? "bg-red-500/20 text-red-400" :
                                 risk.severity === "medium" ? "bg-yellow-500/20 text-yellow-400" : "bg-blue-500/20 text-blue-400"
-                              }`}>{risk.severity.toUpperCase()}</span>
+                              }`}>{getSeverityLabel(risk.severity, language)}</span>
                               <span className="text-xs text-gray-500">{risk.time}</span>
                             </div>
                             <h4 className="font-semibold text-white text-base">{risk.title}</h4>

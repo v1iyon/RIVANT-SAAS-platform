@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { decrypt } from "../lib/crypto.js";
 import { logError } from "../lib/log-error.js";
+import { getSeverityLabel } from "../lib/severity.js";
 
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
@@ -329,12 +330,7 @@ if (existingAlerts?.length) continue;
             });
             console.log("DEBUG alerts_log insert error:", alertErr);
 
-            const severityLabels = {
-              critical: { UA: "🔴 Критично", EN: "🔴 Critical", DE: "🔴 Kritisch" },
-              high: { UA: "🟠 Важливо", EN: "🟠 High priority", DE: "🟠 Wichtig" },
-              medium: { UA: "🟡 Середньо", EN: "🟡 Medium", DE: "🟡 Mittel" },
-            };
-            const severityLabel = severityLabels[severity][userLang] || severityLabels[severity].EN;
+            const severityLabel = getSeverityLabel(severity, userLang);
 
             const fullMessage = aiExplanation
               ? `${severityLabel}\n${message}\n\n${aiExplanation}`
