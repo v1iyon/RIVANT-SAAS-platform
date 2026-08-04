@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { useLanguage } from "@/lib/translations";
+import { getSeverityLabel, getSeverityColorClasses } from "@/lib/severity";
 import { 
   LayoutDashboard, AlertTriangle, TrendingUp, Link2, 
   Bell, X, AlertCircle, ArrowUpRight, ArrowDownRight, Trash2,
@@ -161,7 +162,9 @@ let metricsState: MetricsState = {
 };
 
 const metricsListeners = new Set<() => void>();
-const METRICS_TICK_MS = 10000; // раз в 10 секунд, всегда, даже когда демо закрыто
+const METRICS_TICK_MS = 45000; // в реальности данные обновляются раз в час — в демо держим
+// заметно более редкий тик (45с), чтобы не создавать иллюзию обновления "каждую секунду",
+// но метрики всё ещё ощущались живыми внутри короткой демо-сессии
 
 function tickMetrics() {
   const revenueChange = 1 + (Math.random() - 0.48) * 0.006;
@@ -269,7 +272,7 @@ function TickerSparkline({ history, color, currentValue, previousValue }: { hist
           return (
             <div
               key={i}
-              className={`flex-1 rounded-sm transition-all duration-200 min-w-[6px] ${
+              className={`flex-1 rounded-sm origin-bottom transition-all duration-200 min-w-[6px] ${
                 isNew ? (isPositive ? 'bg-green-500 shadow-lg shadow-green-500/30 scale-110' : 'bg-red-500 shadow-lg shadow-red-500/30 scale-110') : color
               } ${isFirst && isAnimating ? 'opacity-0' : 'opacity-100'}`}
               style={{ height: `${height}px`, transition: 'opacity 0.2s ease-out, height 0.3s ease-out' }}
@@ -508,24 +511,24 @@ function RevenueExpensesChart() {
       </div>
       
       <div className="grid grid-cols-3 gap-2 sm:gap-3 mt-6 pt-4 border-t border-gray-800">
-        <div className="bg-blue-500/5 rounded-xl p-2 sm:p-3 border border-blue-500/15 overflow-hidden">
-          <div className="flex items-center gap-1 sm:gap-1.5 mb-1">
+        <div className="bg-blue-500/5 rounded-xl p-2 sm:p-3 border border-blue-500/15 overflow-hidden flex flex-col items-center text-center sm:items-start sm:text-left">
+          <div className="flex items-center justify-center sm:justify-start gap-1 sm:gap-1.5 mb-1">
             <DollarSign className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-blue-400 flex-shrink-0" />
             <div className="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-wider truncate">{T.demoRevenue || "Total Revenue"}</div>
           </div>
           <div className="text-base sm:text-xl font-bold text-white truncate">${(totalRevenue / 1000).toFixed(0)}k</div>
           <div className="text-[9px] sm:text-[10px] text-gray-500 mt-1 truncate">↑ {Math.abs(((history[history.length-1].revenue - history[0].revenue) / history[0].revenue * 100)).toFixed(0)}% {T.demoVsStart || "vs start"}</div>
         </div>
-        <div className="bg-rose-500/5 rounded-xl p-2 sm:p-3 border border-rose-500/15 overflow-hidden">
-          <div className="flex items-center gap-1 sm:gap-1.5 mb-1">
+        <div className="bg-rose-500/5 rounded-xl p-2 sm:p-3 border border-rose-500/15 overflow-hidden flex flex-col items-center text-center sm:items-start sm:text-left">
+          <div className="flex items-center justify-center sm:justify-start gap-1 sm:gap-1.5 mb-1">
             <TrendingDown className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-rose-400 flex-shrink-0" />
             <div className="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-wider truncate">{T.demoExpenses || "Total Expenses"}</div>
           </div>
           <div className="text-base sm:text-xl font-bold text-white truncate">${(totalExpenses / 1000).toFixed(0)}k</div>
           <div className="text-[9px] sm:text-[10px] text-gray-500 mt-1 truncate">{((totalExpenses / totalRevenue) * 100).toFixed(0)}% {T.demoOfRevenue || "of revenue"}</div>
         </div>
-        <div className="bg-green-500/10 rounded-xl p-2 sm:p-3 border border-green-500/20 overflow-hidden">
-          <div className="flex items-center gap-1 sm:gap-1.5 mb-1">
+        <div className="bg-green-500/10 rounded-xl p-2 sm:p-3 border border-green-500/20 overflow-hidden flex flex-col items-center text-center sm:items-start sm:text-left">
+          <div className="flex items-center justify-center sm:justify-start gap-1 sm:gap-1.5 mb-1">
             <TrendingUp className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-green-400 flex-shrink-0" />
             <div className="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-wider truncate">{T.demoProfit || "Net Profit"}</div>
           </div>
@@ -534,7 +537,7 @@ function RevenueExpensesChart() {
         </div>
       </div>
       
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 mt-3 pt-2 text-[10px] text-gray-600 border-t border-gray-800/50">
+      <div className="flex flex-col items-center text-center sm:flex-row sm:justify-between sm:items-center sm:text-left gap-1 mt-3 pt-2 text-[10px] text-gray-600 border-t border-gray-800/50">
         <span className="truncate">{T.demoExpenseRatio || "Expense ratio"}: {expenseEfficiency}%</span>
         <span className="truncate">{T.demoPeakMargin || "Peak margin"}: {history[bestDay].margin}% ({T.demoDay || "day"} {bestDay + 1})</span>
         <span className="truncate">{T.demoLowMargin || "Low margin"}: {history[worstDay].margin}% ({T.demoDay || "day"} {worstDay + 1})</span>
@@ -1023,13 +1026,13 @@ const [googleAdsExtraValues, setGoogleAdsExtraValues] = useState<Record<string, 
                   {risks.map((risk) => (
                     <div key={risk.id} className={`bg-gray-900/50 rounded-xl p-4 border transition-all ${lastNotification?.id === risk.id ? "border-blue-500/50 bg-blue-500/10" : "border-gray-800"}`}>
                       <div className="flex items-start gap-3">
-                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${risk.severity === "high" ? "bg-red-500/20" : risk.severity === "medium" ? "bg-yellow-500/20" : "bg-blue-500/20"}`}>
+                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${getSeverityColorClasses(risk.severity).bg}`}>
                           {getCategoryIcon(risk.category)}
                         </div>
                         <div className="flex-1">
                           <div className="flex items-center justify-between flex-wrap gap-2">
                             <div className="flex items-center gap-2">
-                              <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${risk.severity === "high" ? "bg-red-500/20 text-red-400" : risk.severity === "medium" ? "bg-yellow-500/20 text-yellow-400" : "bg-blue-500/20 text-blue-400"}`}>{risk.severity.toUpperCase()}</span>
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${getSeverityColorClasses(risk.severity).bg} ${getSeverityColorClasses(risk.severity).text}`}>{getSeverityLabel(risk.severity, language)}</span>
                               <span className="text-xs text-gray-500">{risk.time}</span>
                             </div>
                             {/* FIX: увеличенная тап-зона крестика удаления риска (p-2 -m-2) */}
@@ -1268,48 +1271,11 @@ const [googleAdsExtraValues, setGoogleAdsExtraValues] = useState<Record<string, 
               </div>
             )}
             
-          {/* Notification Toast */}
-            {lastNotification && activeView !== "risks" && (
-             <div
-                key={lastNotification.id}
-                className={`absolute bottom-20 md:bottom-6 left-3 right-3 sm:left-auto sm:right-6 sm:w-[380px] bg-gray-900/95 backdrop-blur-md rounded-2xl shadow-2xl border p-4 sm:p-5 animate-in slide-in-from-bottom-3 fade-in duration-300 z-50 ${
-                  lastNotification.severity === "high"
-                    ? "border-red-500/30"
-                    : lastNotification.severity === "medium"
-                    ? "border-yellow-500/30"
-                    : "border-blue-500/30"
-                }`}
-              >
-                <div className="flex items-start gap-3.5">
-                  <div
-                    className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                      lastNotification.severity === "high"
-                        ? "bg-red-500/20 text-red-400"
-                        : lastNotification.severity === "medium"
-                        ? "bg-yellow-500/20 text-yellow-400"
-                        : "bg-blue-500/20 text-blue-400"
-                    }`}
-                  >
-                    {getCategoryIcon(lastNotification.category)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-white leading-snug">
-                      {lastNotification.title}
-                    </p>
-                    <p className="text-xs text-gray-400 mt-1 leading-relaxed line-clamp-2">
-                      {lastNotification.description}
-                    </p>
-                    <button
-                      onClick={() => setActiveView("risks")}
-                      className="mt-2.5 text-xs text-blue-400 hover:text-blue-300 font-medium transition-colors"
-                    >
-                      {T.demoViewInRisks || "View in Risks →"}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-            
+          {/* Notification Toast: намеренно не рендерим floating-уведомление в демо —
+              в личном кабинете плавающие тосты не предусмотрены, поэтому в live-demo
+              они тоже убраны. lastNotification по-прежнему используется только для
+              подсветки соответствующей строки в списке рисков. */}
+
             {/* Telegram Popup */}
             {showTelegramPopup && (
               <div className="absolute inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
