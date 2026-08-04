@@ -8,7 +8,7 @@ import {
   LayoutDashboard, AlertTriangle, TrendingUp, Link2, 
   Bell, X, AlertCircle, ArrowUpRight, ArrowDownRight, Trash2,
   TrendingDown, DollarSign, BarChart3, Zap, Package, CreditCard, Truck, Users, Activity,
-  CheckCircle, Wifi, WifiOff, Settings, Link
+  CheckCircle, Wifi, WifiOff, Settings, Link, ChevronLeft, ChevronRight
 } from "lucide-react";
 
 interface LiveDemoModalProps {
@@ -132,7 +132,10 @@ interface MetricsState {
   currentProfit: number; prevProfit: number;
   currentMargin: number; prevMargin: number;
   currentCac: number; prevCac: number;
+  currentCacMeta: number; prevCacMeta: number;
+  currentCacGoogle: number; prevCacGoogle: number;
   revenueQueue: number[]; profitQueue: number[]; marginQueue: number[]; cacQueue: number[];
+  cacMetaQueue: number[]; cacGoogleQueue: number[];
 }
 
 // Гарантирует, что последние два значения в очереди графика совпадают
@@ -149,16 +152,27 @@ const SEED_PREV_REVENUE = BASE_REVENUE * 0.997;
 const SEED_PREV_PROFIT = BASE_PROFIT * 1.004;
 const SEED_PREV_MARGIN = BASE_MARGIN * 1.006;
 const SEED_PREV_CAC = BASE_CAC * 0.992;
+// Meta/Google CAC — отдельные демо-серии вокруг общего CAC (Meta обычно
+// немного дешевле привлечения, Google — немного дороже), нужны только для
+// свайп-карточки CAC в живом демо, как в реальном личном кабинете.
+const BASE_CAC_META = BASE_CAC * 0.87;
+const BASE_CAC_GOOGLE = BASE_CAC * 1.18;
+const SEED_PREV_CAC_META = BASE_CAC_META * 0.99;
+const SEED_PREV_CAC_GOOGLE = BASE_CAC_GOOGLE * 1.01;
 
 let metricsState: MetricsState = {
   currentRevenue: BASE_REVENUE, prevRevenue: SEED_PREV_REVENUE,
   currentProfit: BASE_PROFIT, prevProfit: SEED_PREV_PROFIT,
   currentMargin: BASE_MARGIN, prevMargin: SEED_PREV_MARGIN,
   currentCac: BASE_CAC, prevCac: SEED_PREV_CAC,
+  currentCacMeta: BASE_CAC_META, prevCacMeta: SEED_PREV_CAC_META,
+  currentCacGoogle: BASE_CAC_GOOGLE, prevCacGoogle: SEED_PREV_CAC_GOOGLE,
   revenueQueue: seedQueue(BASE_REVENUE, SEED_PREV_REVENUE, 400, 0.0003),
   profitQueue: seedQueue(BASE_PROFIT, SEED_PREV_PROFIT, 300, 0.0002),
   marginQueue: seedQueue(BASE_MARGIN, SEED_PREV_MARGIN, 0.4, 0.0001),
   cacQueue: seedQueue(BASE_CAC, SEED_PREV_CAC, 1.2, -0.0001),
+  cacMetaQueue: seedQueue(BASE_CAC_META, SEED_PREV_CAC_META, 1.1, -0.0001),
+  cacGoogleQueue: seedQueue(BASE_CAC_GOOGLE, SEED_PREV_CAC_GOOGLE, 1.4, 0.0001),
 };
 
 const metricsListeners = new Set<() => void>();
@@ -170,21 +184,29 @@ function tickMetrics() {
   const revenueChange = 1 + (Math.random() - 0.48) * 0.006;
   const profitChange = 1 + (Math.random() - 0.45) * 0.008;
   const cacChange = 1 + (Math.random() - 0.52) * 0.007;
+  const cacMetaChange = 1 + (Math.random() - 0.5) * 0.008;
+  const cacGoogleChange = 1 + (Math.random() - 0.5) * 0.009;
 
   const newRevenue = Math.max(115000, Math.min(145000, metricsState.currentRevenue * revenueChange));
   const newProfit = Math.max(31000, Math.min(42000, metricsState.currentProfit * profitChange));
   const newMargin = (newProfit / newRevenue) * 100;
   const newCac = Math.max(43, Math.min(52, metricsState.currentCac * cacChange));
+  const newCacMeta = Math.max(35, Math.min(46, metricsState.currentCacMeta * cacMetaChange));
+  const newCacGoogle = Math.max(50, Math.min(64, metricsState.currentCacGoogle * cacGoogleChange));
 
   metricsState = {
     currentRevenue: newRevenue, prevRevenue: metricsState.currentRevenue,
     currentProfit: newProfit, prevProfit: metricsState.currentProfit,
     currentMargin: newMargin, prevMargin: metricsState.currentMargin,
     currentCac: newCac, prevCac: metricsState.currentCac,
+    currentCacMeta: newCacMeta, prevCacMeta: metricsState.currentCacMeta,
+    currentCacGoogle: newCacGoogle, prevCacGoogle: metricsState.currentCacGoogle,
     revenueQueue: [...metricsState.revenueQueue.slice(1), newRevenue],
     profitQueue: [...metricsState.profitQueue.slice(1), newProfit],
     marginQueue: [...metricsState.marginQueue.slice(1), newMargin],
     cacQueue: [...metricsState.cacQueue.slice(1), newCac],
+    cacMetaQueue: [...metricsState.cacMetaQueue.slice(1), newCacMeta],
+    cacGoogleQueue: [...metricsState.cacGoogleQueue.slice(1), newCacGoogle],
   };
   metricsListeners.forEach((fn) => fn());
 }
@@ -284,68 +306,194 @@ function TickerSparkline({ history, color, currentValue, previousValue }: { hist
   );
 }
 
+// ========== СВАЙП-КАРТОЧКА CAC (Meta Ads / Загальне / Google Ads) ==========
+// Тот же компонент, что и в реальном личном кабинете: по центру — общий CAC,
+// свайп/стрелки вправо/влево переключают на Google Ads / Meta Ads.
+interface CacPanelData {
+  label: string;
+  value: number;
+  change: number;
+  prev: number;
+  sparklineData: number[];
+}
+
+function SwipeableCacCard({ panels, T, language }: { panels: CacPanelData[]; T: any; language: string }) {
+  const [index, setIndex] = useState(1);
+  const touchStartX = useRef<number | null>(null);
+
+  const goTo = (i: number) => setIndex(Math.max(0, Math.min(panels.length - 1, i)));
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+  };
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX.current == null) return;
+    const delta = e.changedTouches[0].clientX - touchStartX.current;
+    if (Math.abs(delta) > 40) {
+      if (delta < 0) goTo(index + 1);
+      else goTo(index - 1);
+    }
+    touchStartX.current = null;
+  };
+
+  const panel = panels[index];
+  const title = index === 1 ? (T.demoCac || "CAC") : panel.label;
+
+  return (
+    <div
+      className="bg-gradient-to-br from-orange-500/10 to-transparent rounded-xl p-4 pb-2.5 sm:pb-2 border border-orange-500/20 select-none flex flex-col"
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+    >
+      <div className="flex items-center justify-between gap-1">
+        <div className="text-xs text-orange-400 font-semibold uppercase truncate">{title}</div>
+        <div className="hidden sm:flex items-center gap-0.5 shrink-0">
+          <button
+            onClick={() => goTo(index - 1)}
+            disabled={index === 0}
+            className="text-gray-500 hover:text-gray-300 disabled:opacity-20 disabled:cursor-not-allowed p-0.5"
+            aria-label="previous"
+          >
+            <ChevronLeft className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={() => goTo(index + 1)}
+            disabled={index === panels.length - 1}
+            className="text-gray-500 hover:text-gray-300 disabled:opacity-20 disabled:cursor-not-allowed p-0.5"
+            aria-label="next"
+          >
+            <ChevronRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
+      <div className="mb-1 min-h-[52px]">
+        <AnimatedNumber value={panel.value} prefix="$" changePercent={panel.change} />
+      </div>
+      <div className="-mt-1">
+        <TickerSparkline history={panel.sparklineData} color="bg-orange-500/60" currentValue={panel.value} previousValue={panel.prev} />
+      </div>
+
+      <div className="flex items-center justify-center gap-1.5 pt-2">
+        {panels.map((_, i) => (
+          <button
+            key={i}
+            onClick={() => goTo(i)}
+            className={`w-1.5 h-1.5 rounded-full transition-colors ${i === index ? "bg-orange-400" : "bg-gray-700"}`}
+            aria-label={`panel ${i + 1}`}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // Функция перевода риска
 function translateRisk(risk: Risk, t: any): Risk {
   const lang = t._lang || "EN";
   const translatedRisk = { ...risk };
   switch (risk.alertType) {
+    // Описания ниже написаны в стиле реального ai_explanation из личного
+    // кабинета (что изменилось, конкретные цифры, что проверить) — раньше
+    // тут была одна короткая строка без анализа, теперь под уведомлением в
+    // демо тоже есть небольшая "расшифровка", как будто её сгенерировал ИИ.
     case "revenue_drop":
       translatedRisk.title = lang === "UA" ? "Падіння виручки" : lang === "DE" ? "Umsatzrückgang" : "Revenue dropping";
-      translatedRisk.description = lang === "UA" ? "Виручка суттєво знизилася за останню годину" : lang === "DE" ? "Der Umsatz ist in der letzten Stunde deutlich gesunken" : "Revenue decreased significantly in the last hour";
+      translatedRisk.description = lang === "UA"
+        ? "Виручка \"My Business\" впала на 34% за останню годину (з $3 180 до $2 099), маржа при цьому майже не змінилась. Перевірте: обсяг замовлень за сьогодні, роботу рекламних кампаній та наявність технічних збоїв на сайті."
+        : lang === "DE"
+        ? "Der Umsatz von \"My Business\" ist in der letzten Stunde um 34 % gesunken (von 3.180 $ auf 2.099 $), die Marge blieb dabei fast unverändert. Prüfen Sie: die Bestellungen von heute, die laufenden Werbekampagnen und mögliche technische Störungen auf der Website."
+        : "\"My Business\" revenue dropped 34% in the last hour (from $3,180 to $2,099), while margin stayed roughly flat. Check: today's order volume, active ad campaigns, and any technical issues on the site.";
       translatedRisk.action = lang === "UA" ? "Детальніше" : lang === "DE" ? "Details ansehen" : "View Details";
       break;
     case "revenue_rise":
       translatedRisk.title = lang === "UA" ? "Сплеск виручки" : lang === "DE" ? "Umsatzanstieg" : "Revenue spike";
-      translatedRisk.description = lang === "UA" ? "Виявлено незвичне зростання виручки" : lang === "DE" ? "Ungewöhnlicher Umsatzanstieg festgestellt" : "Unusual revenue increase detected";
+      translatedRisk.description = lang === "UA"
+        ? "Виручка \"My Business\" зросла на 28% за останню годину (з $2 610 до $3 340) — це вище звичайного діапазону коливань. Перевірте: чи не пов'язано зі сплеском реклами або разовим великим замовленням, щоб зрозуміти, чи тренд стійкий."
+        : lang === "DE"
+        ? "Der Umsatz von \"My Business\" stieg in der letzten Stunde um 28 % (von 2.610 $ auf 3.340 $) — über der üblichen Schwankungsbreite. Prüfen Sie, ob dies mit einer Werbekampagne oder einer einzelnen Großbestellung zusammenhängt, um zu sehen, ob der Trend stabil ist."
+        : "\"My Business\" revenue rose 28% in the last hour (from $2,610 to $3,340) — above the usual range of fluctuation. Check whether this ties to an ad push or a single large order, to see if the trend is likely to hold.";
       translatedRisk.action = lang === "UA" ? "Детальніше" : lang === "DE" ? "Details ansehen" : "View Details";
       break;
     case "profit_drop":
       translatedRisk.title = lang === "UA" ? "Маржа прибутку падає" : lang === "DE" ? "Gewinnmarge sinkt" : "Profit margin shrinking";
-      translatedRisk.description = lang === "UA" ? "Маржа прибутку опустилася нижче цільового рівня" : lang === "DE" ? "Die Gewinnmarge ist unter das Zielniveau gefallen" : "Profit margin dropped below target";
+      translatedRisk.description = lang === "UA"
+        ? "Маржа прибутку \"My Business\" опустилася до 19.4%, що нижче цільового рівня ~27%. Виручка при цьому стабільна — падіння викликане ростом витрат. Перевірте: собівартість, витрати на доставку та рекламний бюджет за останню добу."
+        : lang === "DE"
+        ? "Die Gewinnmarge von \"My Business\" ist auf 19,4 % gefallen, unter dem Zielwert von ~27 %. Der Umsatz ist dabei stabil — der Rückgang liegt an gestiegenen Kosten. Prüfen Sie: Warenkosten, Versandkosten und Werbebudget der letzten 24 Stunden."
+        : "\"My Business\" profit margin dropped to 19.4%, below the ~27% target. Revenue held steady — the drop comes from rising costs. Check: cost of goods, shipping costs, and ad spend over the last 24 hours.";
       translatedRisk.action = lang === "UA" ? "Аналізувати" : lang === "DE" ? "Analysieren" : "Analyze";
       break;
     case "profit_rise":
       translatedRisk.title = lang === "UA" ? "Стрибок прибутку" : lang === "DE" ? "Gewinnsprung" : "Profit surge";
-      translatedRisk.description = lang === "UA" ? "Виявлено виняткову маржу прибутку" : lang === "DE" ? "Außergewöhnliche Gewinnmarge festgestellt" : "Exceptional profit margin detected";
+      translatedRisk.description = lang === "UA"
+        ? "Маржа прибутку \"My Business\" виросла до 35.2% — помітно вище звичайних ~27%. Найімовірніша причина: зниження рекламних витрат при стабільній виручці. Варто зафіксувати, що саме змінилося, щоб повторити результат."
+        : lang === "DE"
+        ? "Die Gewinnmarge von \"My Business\" stieg auf 35,2 % — deutlich über den üblichen ~27 %. Wahrscheinlichste Ursache: geringere Werbeausgaben bei stabilem Umsatz. Es lohnt sich festzuhalten, was sich geändert hat, um das Ergebnis zu wiederholen."
+        : "\"My Business\" profit margin rose to 35.2% — notably above the usual ~27%. Most likely cause: lower ad spend with steady revenue. Worth noting exactly what changed so it can be repeated.";
       translatedRisk.action = lang === "UA" ? "Аналізувати" : lang === "DE" ? "Analysieren" : "Analyze";
       break;
     case "cac_increase":
       translatedRisk.title = lang === "UA" ? "Вартість залучення клієнта зростає" : lang === "DE" ? "Kundenakquisekosten steigen" : "Customer acquisition cost rising";
-      translatedRisk.description = lang === "UA" ? "CAC зросла — перевірте ефективність реклами" : lang === "DE" ? "CAC gestiegen – Werbeleistung überprüfen" : "CAC increased - review ad performance";
+      translatedRisk.description = lang === "UA"
+        ? "CAC зріс з $47 до $58 (+23%) за останню добу, головним чином за рахунок Google Ads. Кількість замовлень при цьому не зросла пропорційно. Перевірте: налаштування таргетингу та ставки в активних кампаніях."
+        : lang === "DE"
+        ? "Die CAC ist in den letzten 24 Stunden von 47 $ auf 58 $ (+23 %) gestiegen, vor allem durch Google Ads. Die Bestellzahl ist dabei nicht proportional gewachsen. Prüfen Sie: Targeting-Einstellungen und Gebote in den aktiven Kampagnen."
+        : "CAC rose from $47 to $58 (+23%) over the last day, mostly driven by Google Ads. Order volume didn't grow proportionally. Check: targeting settings and bids in the active campaigns.";
       translatedRisk.action = lang === "UA" ? "Переглянути маркетинг" : lang === "DE" ? "Marketing überprüfen" : "Review Marketing";
       break;
     case "cac_decrease":
       translatedRisk.title = lang === "UA" ? "CAC знижується" : lang === "DE" ? "CAC sinkt" : "CAC decreasing";
-      translatedRisk.description = lang === "UA" ? "Ефективність маркетингу покращується" : lang === "DE" ? "Die Marketingeffizienz verbessert sich" : "Marketing efficiency improving";
+      translatedRisk.description = lang === "UA"
+        ? "CAC знизився з $52 до $41 (-21%) за останню добу при стабільній кількості замовлень — ефективність реклами покращується. Варто перевірити, які кампанії дали цей ефект, щоб перерозподілити бюджет на їхню користь."
+        : lang === "DE"
+        ? "Die CAC sank in den letzten 24 Stunden von 52 $ auf 41 $ (-21 %) bei stabiler Bestellzahl — die Werbeeffizienz verbessert sich. Prüfen Sie, welche Kampagnen dafür verantwortlich sind, um das Budget entsprechend umzuschichten."
+        : "CAC fell from $52 to $41 (-21%) over the last day with steady order volume — ad efficiency is improving. Worth checking which campaigns drove this, to shift budget toward them.";
       translatedRisk.action = lang === "UA" ? "Переглянути маркетинг" : lang === "DE" ? "Marketing überprüfen" : "Review Marketing";
       break;
     case "integration_down":
       translatedRisk.title = lang === "UA" ? "Інтеграцію відключено" : lang === "DE" ? "Integration getrennt" : "Integration disconnected";
       translatedRisk.description = lang === "UA"
-        ? `З'єднання з ${risk.integrationId || "інтеграцією"} втрачено`
+        ? `Синхронізацію з ${risk.integrationId || "інтеграцією"} зупинено — токен доступу, ймовірно, прострочився або втратив потрібний дозвіл. Перевірте: статус та термін дії токена, а за потреби переавторизуйте підключення.`
         : lang === "DE"
-        ? `Verbindung zu ${risk.integrationId || "Integration"} wurde unterbrochen`
-        : `Connection to ${risk.integrationId || "integration"} has been lost`;
+        ? `Die Synchronisierung mit ${risk.integrationId || "der Integration"} wurde gestoppt — der Zugriffstoken ist wahrscheinlich abgelaufen oder hat die nötige Berechtigung verloren. Prüfen Sie Status und Gültigkeit des Tokens und autorisieren Sie die Verbindung bei Bedarf erneut.`
+        : `Sync with ${risk.integrationId || "the integration"} has stopped — the access token likely expired or lost the required permission. Check the token's status and expiry, and re-authorize the connection if needed.`;
       translatedRisk.action = lang === "UA" ? "Перепідключити" : lang === "DE" ? "Erneut verbinden" : "Reconnect";
       break;
     case "low_stock":
       translatedRisk.title = lang === "UA" ? "Низький запас товару" : lang === "DE" ? "Niedriger Lagerbestand" : "Low stock alert";
-      translatedRisk.description = lang === "UA" ? "У топового SKU #4521 залишилось лише 3 дні запасу" : lang === "DE" ? "Top-SKU #4521 hat nur noch 3 Tage Bestand" : "Top SKU #4521 has only 3 days of stock remaining";
+      translatedRisk.description = lang === "UA"
+        ? "У топового SKU #4521 залишилось лише 3 дні запасу при поточному темпі продажів — це один із найбільш продаваних товарів за останні 30 днів. Перевірте: наявний залишок на складі та терміни поставки від постачальника."
+        : lang === "DE"
+        ? "Der Top-SKU #4521 hat beim aktuellen Verkaufstempo nur noch 3 Tage Bestand — eines der meistverkauften Produkte der letzten 30 Tage. Prüfen Sie: den aktuellen Lagerbestand und die Lieferzeiten des Lieferanten."
+        : "Top SKU #4521 has only 3 days of stock left at the current sales pace — one of the best-selling items over the last 30 days. Check: current warehouse stock and supplier lead times.";
       translatedRisk.action = lang === "UA" ? "Замовити зараз" : lang === "DE" ? "Jetzt nachbestellen" : "Reorder Now";
       break;
     case "shipping_delay":
       translatedRisk.title = lang === "UA" ? "Виявлено затримку доставки" : lang === "DE" ? "Lieferverzögerung festgestellt" : "Shipping delay detected";
-      translatedRisk.description = lang === "UA" ? "Середній час доставки збільшився на 1.4 дні" : lang === "DE" ? "Die durchschnittliche Lieferzeit hat sich um 1,4 Tage erhöht" : "Average delivery time increased by 1.4 days";
+      translatedRisk.description = lang === "UA"
+        ? "Середній час доставки збільшився на 1.4 дні за останній тиждень порівняно з попереднім. Це може вплинути на задоволеність клієнтів і кількість повторних замовлень. Перевірте: статуси активних відправлень і роботу служби доставки."
+        : lang === "DE"
+        ? "Die durchschnittliche Lieferzeit hat sich in der letzten Woche im Vergleich zur Vorwoche um 1,4 Tage erhöht. Das kann die Kundenzufriedenheit und Wiederholungskäufe beeinträchtigen. Prüfen Sie: Status der aktiven Sendungen und die Leistung des Versanddienstleisters."
+        : "Average delivery time increased by 1.4 days over the past week compared to the week before. This can affect customer satisfaction and repeat orders. Check: status of active shipments and carrier performance.";
       translatedRisk.action = lang === "UA" ? "Переглянути замовлення" : lang === "DE" ? "Bestellungen ansehen" : "View Orders";
       break;
     case "conversion_drop":
       translatedRisk.title = lang === "UA" ? "Падіння конверсії" : lang === "DE" ? "Conversion-Rückgang" : "Conversion rate dropping";
-      translatedRisk.description = lang === "UA" ? "Завершення оформлення замовлення впало на 12% за останні 2 години" : lang === "DE" ? "Der Checkout-Abschluss ist in den letzten 2 Stunden um 12 % gesunken" : "Checkout completion dropped 12% in last 2 hours";
+      translatedRisk.description = lang === "UA"
+        ? "Завершення оформлення замовлення впало на 12% за останні 2 години при стабільному трафіку на сайт. Це вказує на проблему саме у воронці оформлення, а не в притоці відвідувачів. Перевірте: роботу форми оплати та кроки checkout на мобільних пристроях."
+        : lang === "DE"
+        ? "Der Checkout-Abschluss ist in den letzten 2 Stunden um 12 % gesunken, bei stabilem Website-Traffic. Das deutet auf ein Problem im Checkout-Funnel hin, nicht auf weniger Besucher. Prüfen Sie: die Zahlungsform und den Checkout-Ablauf auf mobilen Geräten."
+        : "Checkout completion dropped 12% in the last 2 hours while site traffic stayed steady — pointing to a problem in the checkout funnel itself, not in visitor volume. Check: the payment form and checkout steps on mobile devices.";
       translatedRisk.action = lang === "UA" ? "Перевірити воронку" : lang === "DE" ? "Funnel prüfen" : "Check Funnel";
       break;
     case "ad_spend":
       translatedRisk.title = lang === "UA" ? "Сплеск витрат на рекламу" : lang === "DE" ? "Anstieg der Werbeausgaben" : "Ad spend spike";
-      translatedRisk.description = lang === "UA" ? "Витрати Meta Ads на 23% вищі за денний бюджет" : lang === "DE" ? "Meta-Ads-Ausgaben liegen 23 % über dem Tagesbudget" : "Meta Ads spending 23% above daily budget";
+      translatedRisk.description = lang === "UA"
+        ? "Витрати Meta Ads сьогодні на 23% вищі за денний бюджет, а кількість конверсій зросла непропорційно менше. Перевірте: активні кампанії на предмет дубльованих аудиторій або збоїв у ставках."
+        : lang === "DE"
+        ? "Die Meta-Ads-Ausgaben liegen heute 23 % über dem Tagesbudget, während die Conversions unverhältnismäßig langsamer gewachsen sind. Prüfen Sie: aktive Kampagnen auf doppelte Zielgruppen oder fehlerhafte Gebote."
+        : "Meta Ads spend is 23% above today's daily budget, while conversions grew disproportionately less. Check: active campaigns for overlapping audiences or bidding issues.";
       translatedRisk.action = lang === "UA" ? "Перевірити кампанії" : lang === "DE" ? "Kampagnen prüfen" : "Check Campaigns";
       break;
   }
@@ -471,7 +619,7 @@ function RevenueExpensesChart() {
           ))}
         </div>
 
-        <div className="ml-12 h-64 flex gap-1">
+        <div className="ml-12 h-64 flex gap-1 overflow-x-auto overflow-y-visible">
           {history.map((item, idx) => {
             const value = getMetricValue(item);
             let percent;
@@ -481,28 +629,36 @@ function RevenueExpensesChart() {
             } else {
               percent = (value / maxValue) * 100;
             }
+            // См. комментарий в app/dashboard/page.tsx: у крайних колонок тултип
+            // прижимается к своему краю, а не центрируется, чтобы не обрезаться
+            // видимой областью графика. Прикреплён к верху колонки фиксированной
+            // высоты (h-64), а не к верху самого столбика — не зависит от того,
+            // насколько высокий столбик.
+            const idxFraction = history.length > 1 ? idx / (history.length - 1) : 0.5;
+            const tooltipAnchorClass =
+              idxFraction < 0.15 ? "left-0" : idxFraction > 0.85 ? "right-0" : "left-1/2 -translate-x-1/2";
             return (
               <div
                 key={idx}
-                className="flex-1 h-full flex flex-col justify-end items-center gap-0.5 group cursor-pointer"
+                className="relative flex-1 h-full flex flex-col justify-end items-center gap-0.5 group cursor-pointer"
                 onMouseEnter={() => setHoveredBar(idx)}
                 onMouseLeave={() => setHoveredBar(null)}
                 onClick={() => setHoveredBar((prev) => (prev === idx ? null : idx))}
               >
-                <div className="relative w-full mt-auto">
-                  <div className={`w-full ${getBarColor()} rounded-t-sm transition-all duration-150`} style={{ height: `${Math.max(percent, 3)}px`, minHeight: '3px' }} />
-                  {hoveredBar === idx && (
-                    <div className="absolute -top-28 left-1/2 -translate-x-1/2 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 z-20 shadow-xl whitespace-nowrap">
-                      <div className="text-xs font-bold text-white">{T.demoDay || "Day"} {item.day}</div>
-                      <div className={`text-sm font-bold mt-1 ${getMetricValue(item) >= 0 ? "text-green-400" : "text-red-400"}`}>
-                        {selectedMetric === "revenue" && "$"}{value.toLocaleString()}
-                        {selectedMetric === "profit" && (value >= 0 ? `+${value.toLocaleString()}` : value.toLocaleString())}
-                      </div>
-                      <div className="text-[10px] text-gray-400 mt-1">{T.demoRevenue || "Revenue"}: ${item.revenue.toLocaleString()}</div>
-                      <div className="text-[10px] text-gray-400">{T.demoExpenses || "Expenses"}: ${item.expenses.toLocaleString()}</div>
-                      <div className="text-[10px] text-gray-500 mt-1">{T.demoMargin || "Margin"}: {item.margin}% · {T.demoProfit || "Profit"}: ${item.profit.toLocaleString()}</div>
+                {hoveredBar === idx && (
+                  <div className={`absolute bottom-full mb-2 ${tooltipAnchorClass} bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 z-20 shadow-xl whitespace-nowrap max-w-[220px]`}>
+                    <div className="text-xs font-bold text-white">{T.demoDay || "Day"} {item.day}</div>
+                    <div className={`text-sm font-bold mt-1 ${getMetricValue(item) >= 0 ? "text-green-400" : "text-red-400"}`}>
+                      {selectedMetric === "revenue" && "$"}{value.toLocaleString()}
+                      {selectedMetric === "profit" && (value >= 0 ? `+${value.toLocaleString()}` : value.toLocaleString())}
                     </div>
-                  )}
+                    <div className="text-[10px] text-gray-400 mt-1">{T.demoRevenue || "Revenue"}: ${item.revenue.toLocaleString()}</div>
+                    <div className="text-[10px] text-gray-400">{T.demoExpenses || "Expenses"}: ${item.expenses.toLocaleString()}</div>
+                    <div className="text-[10px] text-gray-500 mt-1">{T.demoMargin || "Margin"}: {item.margin}% · {T.demoProfit || "Profit"}: ${item.profit.toLocaleString()}</div>
+                  </div>
+                )}
+                <div className="w-full mt-auto">
+                  <div className={`w-full ${getBarColor()} rounded-t-sm transition-all duration-150`} style={{ height: `${Math.max(percent, 3)}px`, minHeight: '3px' }} />
                 </div>
               </div>
             );
@@ -537,10 +693,19 @@ function RevenueExpensesChart() {
         </div>
       </div>
       
-      <div className="flex flex-col items-center text-center sm:flex-row sm:justify-between sm:items-center sm:text-left gap-1 mt-3 pt-2 text-[10px] text-gray-600 border-t border-gray-800/50">
-        <span className="truncate">{T.demoExpenseRatio || "Expense ratio"}: {expenseEfficiency}%</span>
-        <span className="truncate">{T.demoPeakMargin || "Peak margin"}: {history[bestDay].margin}% ({T.demoDay || "day"} {bestDay + 1})</span>
-        <span className="truncate">{T.demoLowMargin || "Low margin"}: {history[worstDay].margin}% ({T.demoDay || "day"} {worstDay + 1})</span>
+      <div className="grid grid-cols-3 gap-1 mt-3 pt-2 text-[10px] text-gray-600 border-t border-gray-800/50">
+        <div className="flex flex-col items-center text-center">
+          <span className="truncate w-full">{T.demoExpenseRatio || "Expense ratio"}</span>
+          <span className="text-gray-400 font-medium">{expenseEfficiency}%</span>
+        </div>
+        <div className="flex flex-col items-center text-center">
+          <span className="truncate w-full">{T.demoPeakMargin || "Peak margin"}</span>
+          <span className="text-gray-400 font-medium">{history[bestDay].margin}%</span>
+        </div>
+        <div className="flex flex-col items-center text-center">
+          <span className="truncate w-full">{T.demoLowMargin || "Low margin"}</span>
+          <span className="text-gray-400 font-medium">{history[worstDay].margin}%</span>
+        </div>
       </div>
     </div>
   );
@@ -877,11 +1042,17 @@ const [googleAdsExtraValues, setGoogleAdsExtraValues] = useState<Record<string, 
   
   if (!isOpen) return null;
   
-  const { currentRevenue, prevRevenue, currentProfit, prevProfit, currentMargin, prevMargin, currentCac, prevCac, revenueQueue, profitQueue, marginQueue, cacQueue } = metrics;
+  const {
+    currentRevenue, prevRevenue, currentProfit, prevProfit, currentMargin, prevMargin,
+    currentCac, prevCac, currentCacMeta, prevCacMeta, currentCacGoogle, prevCacGoogle,
+    revenueQueue, profitQueue, marginQueue, cacQueue, cacMetaQueue, cacGoogleQueue,
+  } = metrics;
   const revenueChange = ((currentRevenue - prevRevenue) / prevRevenue * 100).toFixed(1);
   const profitChange = ((currentProfit - prevProfit) / prevProfit * 100).toFixed(1);
   const marginChange = (currentMargin - prevMargin).toFixed(1);
   const cacChange = ((currentCac - prevCac) / prevCac * 100).toFixed(1);
+  const cacMetaChange = ((currentCacMeta - prevCacMeta) / prevCacMeta * 100).toFixed(1);
+  const cacGoogleChange = ((currentCacGoogle - prevCacGoogle) / prevCacGoogle * 100).toFixed(1);
   
   const sidebarItems = [
     { icon: LayoutDashboard, label: T.demoOverview || "Dashboard Overview", shortLabel: T.overview || "Overview", view: "overview" as ViewType },
@@ -998,11 +1169,21 @@ const [googleAdsExtraValues, setGoogleAdsExtraValues] = useState<Record<string, 
                     <AnimatedNumber value={currentMargin} suffix="%" changePercent={parseFloat(marginChange)} />
                     <TickerSparkline history={marginQueue} color="bg-purple-500/60" currentValue={currentMargin} previousValue={prevMargin} />
                   </div>
-                  <div className="bg-gradient-to-br from-orange-500/10 to-transparent rounded-xl p-4 border border-orange-500/20">
-                    <div className="text-xs text-orange-400 font-semibold mb-1 uppercase">{T.demoCac || "CAC"}</div>
-                    <AnimatedNumber value={currentCac} prefix="$" changePercent={parseFloat(cacChange)} />
-                    <TickerSparkline history={cacQueue} color="bg-orange-500/60" currentValue={currentCac} previousValue={prevCac} />
-                  </div>
+                  <SwipeableCacCard
+                    T={T}
+                    language={language}
+                    panels={[
+                      { label: "Meta Ads", value: currentCacMeta, change: parseFloat(cacMetaChange), prev: prevCacMeta, sparklineData: cacMetaQueue },
+                      {
+                        label: language === "UA" ? "Загальне" : language === "DE" ? "Gesamt" : "Combined",
+                        value: currentCac,
+                        change: parseFloat(cacChange),
+                        prev: prevCac,
+                        sparklineData: cacQueue,
+                      },
+                      { label: "Google Ads", value: currentCacGoogle, change: parseFloat(cacGoogleChange), prev: prevCacGoogle, sparklineData: cacGoogleQueue },
+                    ]}
+                  />
                 </div>
                 
                 <RevenueExpensesChart />
@@ -1221,39 +1402,56 @@ const [googleAdsExtraValues, setGoogleAdsExtraValues] = useState<Record<string, 
   keyPreview={metaKeyPreview} setKeyPreview={setMetaKeyPreview}
   language={language}
 />
-<DemoIntegrationCard
-  name="Google Ads"
-  placeholder="refresh token..."
-  hint={language === "UA" ? "Google Ads → Tools → API Center: створіть Developer Token. Google Cloud Console → OAuth Client ID (тип Desktop). Google OAuth Playground → свій Client ID/Secret у Settings → авторизуйтесь зі scope 'https://www.googleapis.com/auth/adwords' → отримайте refresh token." : language === "DE" ? "Google Ads → Tools → API Center: Developer Token erstellen. Google Cloud Console → OAuth Client ID (Typ Desktop). Google OAuth Playground → eigene Client ID/Secret in Settings → mit Scope 'https://www.googleapis.com/auth/adwords' autorisieren → Refresh Token abrufen." : "Google Ads → Tools → API Center: create a Developer Token. Google Cloud Console → create an OAuth Client ID (Desktop type). Google OAuth Playground → enter your own Client ID/Secret in Settings → authorize with scope 'https://www.googleapis.com/auth/adwords' → get the refresh token."}
-  keyInput={googleAdsKeyInput} setKeyInput={setGoogleAdsKeyInput}
-  connected={googleAdsConnected} setConnected={setGoogleAdsConnected}
-  keyPreview={googleAdsKeyPreview} setKeyPreview={setGoogleAdsKeyPreview}
-  extraFields={[
-    {
-      key: "customer_id",
-      label: language === "UA" ? "Customer ID (без дефісів)" : language === "DE" ? "Customer ID (ohne Bindestriche)" : "Customer ID (without dashes)",
-      placeholder: "1234567890",
-    },
-    {
-      key: "client_id",
-      label: language === "UA" ? "OAuth Client ID (Google Cloud Console)" : language === "DE" ? "OAuth-Client-ID (Google Cloud Console)" : "OAuth Client ID (Google Cloud Console)",
-      placeholder: "xxxxxxxxxxxx.apps.googleusercontent.com",
-    },
-    {
-      key: "client_secret",
-      label: language === "UA" ? "OAuth Client Secret" : language === "DE" ? "OAuth Client Secret" : "OAuth Client Secret",
-      placeholder: "GOCSPX-...",
-    },
-    {
-      key: "developer_token",
-      label: language === "UA" ? "Developer Token (Google Ads API Center)" : language === "DE" ? "Developer Token (Google Ads API Center)" : "Developer Token (Google Ads API Center)",
-      placeholder: "ABcdeFGH93KL-NOPQ_STUv",
-    },
-  ]}
-  extraValues={googleAdsExtraValues}
-  setExtraValues={setGoogleAdsExtraValues}
-  language={language}
-/>
+{/* Google Ads в живому демо оформлено один в один як у особистому
+    кабінеті (кнопка "Підключити через Google" замість ручних полів) —
+    але кнопка нікуди не веде і нічого реально не підключає, а лише
+    імітує миттєве підключення локально, як і решта демо-карток. */}
+<div className="bg-gray-900/40 rounded-xl p-5 border border-gray-800">
+  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+    <div className="min-w-0">
+      <h4 className="font-semibold text-white text-base">Google Ads</h4>
+      <p className="text-sm text-gray-500 mt-1">
+        {googleAdsConnected
+          ? (language === "UA" ? "Підключено, очікуємо першу синхронізацію" : language === "DE" ? "Verbunden, wartet auf erste Synchronisierung" : "Connected, waiting for first sync")
+          : (language === "UA" ? "Підключіть Google Ads, щоб отримувати реальні дані" : language === "DE" ? "Verbinden Sie Google Ads, um echte Daten abzurufen" : "Connect Google Ads to pull real data")}
+      </p>
+    </div>
+    {googleAdsConnected && (
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs px-2 py-1 rounded-full font-semibold bg-green-500/20 text-green-400 flex items-center gap-1 font-mono whitespace-nowrap">
+          <Wifi className="w-3 h-3 shrink-0" />
+          {language === "UA" ? "Підключено" : language === "DE" ? "Verbunden" : "Connected"}
+        </span>
+        <Button
+          size="sm"
+          variant="outline"
+          className="text-red-400 border-red-400/30 hover:bg-red-500/10 shrink-0"
+          onClick={() => setGoogleAdsConnected(false)}
+        >
+          {language === "UA" ? "Відключити" : language === "DE" ? "Trennen" : "Disconnect"}
+        </Button>
+      </div>
+    )}
+  </div>
+
+  {!googleAdsConnected && (
+    <>
+      <p className="text-xs text-gray-500 mt-4">
+        {language === "UA"
+          ? "Ви перейдете на сторінку Google, підтвердите доступ до Google Ads і повернетесь сюди — без ручного вводу токенів."
+          : language === "DE"
+          ? "Sie werden zu Google weitergeleitet, bestätigen den Zugriff auf Google Ads und kehren hierher zurück — ganz ohne manuelle Token-Eingabe."
+          : "You'll be redirected to Google, approve access to Google Ads, and land back here — no manual token entry."}
+      </p>
+      <Button
+        onClick={() => setGoogleAdsConnected(true)}
+        className="mt-4 font-semibold px-5 bg-blue-500 hover:bg-blue-600 text-white"
+      >
+        {language === "UA" ? "Підключити через Google" : language === "DE" ? "Über Google verbinden" : "Connect with Google"}
+      </Button>
+    </>
+  )}
+</div>
 
                   {/* Прочие интеграции — скоро */}
                   <div className="bg-gray-900/20 rounded-xl p-4 border border-gray-800 flex items-center gap-3 opacity-50">

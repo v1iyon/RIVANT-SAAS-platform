@@ -7,7 +7,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useLanguage, Language } from "@/lib/translations";
-import { getSeverityLabel } from "@/lib/severity";
+import { getSeverityLabel, getSeverityColorClasses } from "@/lib/severity";
 import { TrialPromptModal } from "@/components/dashboard/trial-prompt-modal";
 import {
   LayoutDashboard,
@@ -387,7 +387,7 @@ function RevenueExpensesChart({ history }: {
           ))}
         </div>
 
-        <div className="ml-12 h-48 sm:h-64 flex gap-0.5 sm:gap-1 overflow-x-auto pb-2">
+        <div className="ml-12 h-48 sm:h-64 flex gap-0.5 sm:gap-1 overflow-x-auto overflow-y-visible pb-2">
           {chartData.map((item, idx) => {
             const value = getMetricValue(item);
             let percent;
@@ -397,27 +397,39 @@ function RevenueExpensesChart({ history }: {
             } else {
               percent = (value / maxValue) * 100;
             }
+            // Позиция тултипа по горизонтали зависит от того, где стоит колонка:
+            // у первых/последних колонок центрирование сдвигало бы тултип за
+            // пределы видимой (скроллящейся) области графика и его обрезало —
+            // поэтому у краёв тултип прижимается к своему краю колонки, а не
+            // центрируется. Тултип специально может перекрывать соседний
+            // столбик — это ок, лишь бы был виден целиком.
+            const idxFraction = chartData.length > 1 ? idx / (chartData.length - 1) : 0.5;
+            const tooltipAnchorClass =
+              idxFraction < 0.15 ? "left-0" : idxFraction > 0.85 ? "right-0" : "left-1/2 -translate-x-1/2";
             return (
               <div
                 key={idx}
-                className="flex-1 h-full flex flex-col justify-end items-center gap-0.5 group cursor-pointer min-w-[20px] sm:min-w-[24px]"
+                className="relative flex-1 h-full flex flex-col justify-end items-center gap-0.5 group cursor-pointer min-w-[20px] sm:min-w-[24px]"
                 onMouseEnter={() => setHoveredBar(idx)}
                 onMouseLeave={() => setHoveredBar(null)}
                 onClick={() => setHoveredBar((prev) => (prev === idx ? null : idx))}
               >
-                <div className="relative w-full mt-auto">
-                  <div className={`w-full ${getBarColor()} rounded-t-sm transition-all duration-150`} style={{ height: `${Math.max(percent, 3)}px`, minHeight: '3px' }} />
-                  {hoveredBar === idx && (
-                    <div className="absolute -top-28 left-1/2 -translate-x-1/2 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 z-20 shadow-xl whitespace-nowrap">
-                      <div className="text-xs font-bold text-white">{T.day || "Day"} {item.day}</div>
-                      <div className={`text-sm font-bold mt-1 ${getMetricValue(item) >= 0 ? "text-green-400" : "text-red-400"}`}>
-                        {selectedMetric === "revenue" && "$"}{value.toLocaleString()}
-                      </div>
-                      <div className="text-[10px] text-gray-400 mt-1">{T.revenue || "Revenue"}: ${item.revenue.toLocaleString()}</div>
-                      <div className="text-[10px] text-gray-400">{T.expenses || "Expenses"}: ${item.expenses.toLocaleString()}</div>
-                      <div className="text-[10px] text-gray-500 mt-1">{T.margin || "Margin"}: {item.margin}%</div>
+                {hoveredBar === idx && (
+                  // Прикреплено к верху колонки фиксированной высоты (h-48/h-64),
+                  // а не к верху самого столбика — так позиция тултипа не зависит
+                  // от того, насколько высокий столбик, и не улетает выше графика.
+                  <div className={`absolute bottom-full mb-2 ${tooltipAnchorClass} bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 z-20 shadow-xl whitespace-nowrap max-w-[220px]`}>
+                    <div className="text-xs font-bold text-white">{T.day || "Day"} {item.day}</div>
+                    <div className={`text-sm font-bold mt-1 ${getMetricValue(item) >= 0 ? "text-green-400" : "text-red-400"}`}>
+                      {selectedMetric === "revenue" && "$"}{value.toLocaleString()}
                     </div>
-                  )}
+                    <div className="text-[10px] text-gray-400 mt-1">{T.revenue || "Revenue"}: ${item.revenue.toLocaleString()}</div>
+                    <div className="text-[10px] text-gray-400">{T.expenses || "Expenses"}: ${item.expenses.toLocaleString()}</div>
+                    <div className="text-[10px] text-gray-500 mt-1">{T.margin || "Margin"}: {item.margin}%</div>
+                  </div>
+                )}
+                <div className="w-full mt-auto">
+                  <div className={`w-full ${getBarColor()} rounded-t-sm transition-all duration-150`} style={{ height: `${Math.max(percent, 3)}px`, minHeight: '3px' }} />
                 </div>
               </div>
             );
@@ -452,10 +464,19 @@ function RevenueExpensesChart({ history }: {
         </div>
       </div>
 
-      <div className="flex flex-col items-center gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-0 mt-3 pt-2 text-[10px] text-gray-600 border-t border-gray-800/50">
-        <span>{T.demoExpenseRatio || "Expense ratio"}: {expenseEfficiency}%</span>
-        <span>{T.demoPeakMargin || "Peak margin"}: {chartData[bestDay].margin}%</span>
-        <span>{T.demoLowMargin || "Low margin"}: {chartData[worstDay].margin}%</span>
+      <div className="grid grid-cols-3 gap-1 mt-3 pt-2 text-[10px] text-gray-600 border-t border-gray-800/50">
+        <div className="flex flex-col items-center text-center">
+          <span className="truncate w-full">{T.demoExpenseRatio || "Expense ratio"}</span>
+          <span className="text-gray-400 font-medium">{expenseEfficiency}%</span>
+        </div>
+        <div className="flex flex-col items-center text-center">
+          <span className="truncate w-full">{T.demoPeakMargin || "Peak margin"}</span>
+          <span className="text-gray-400 font-medium">{chartData[bestDay].margin}%</span>
+        </div>
+        <div className="flex flex-col items-center text-center">
+          <span className="truncate w-full">{T.demoLowMargin || "Low margin"}</span>
+          <span className="text-gray-400 font-medium">{chartData[worstDay].margin}%</span>
+        </div>
       </div>
     </div>
   );
@@ -667,6 +688,7 @@ const [forecastLoaded, setForecastLoaded] = useState(false);
   const [alertCount, setAlertCount] = useState(0);
   const [alertsLoaded, setAlertsLoaded] = useState(false);
 
+  const [notifOpen, setNotifOpen] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [emailAlerts, setEmailAlerts] = useState(true);
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
@@ -924,7 +946,12 @@ if (bizData.business) {
           description: a.ai_explanation || "",
           time: formatAlertTime(a.sent_at),
           severity: a.severity,
-          action: language === "UA" ? "Переглянути огляд" : language === "DE" ? "Übersicht ansehen" : "View overview",
+          // Кнопка больше не хранит переведённый текст на момент загрузки —
+          // раньше это "замораживало" язык кнопки на момент фетча алертов,
+          // и после смены языка сайта надпись оставалась старой (например,
+          // "View overview" при выбранной UA). Текст кнопки теперь считается
+          // на рендере из текущего `language`, см. риск-лист ниже.
+          action: "",
           category: alertTypeToCategory(a.type),
           alertType: a.type,
         }));
@@ -1522,7 +1549,7 @@ if (!subInfo) {
                 <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
                 <span className="text-sm text-green-400 font-medium">{T.settingsLive || "Live"}</span>
               </div>
-             <DropdownMenu>
+             <DropdownMenu open={notifOpen} onOpenChange={setNotifOpen}>
                 <DropdownMenuTrigger asChild>
                   <Button variant="secondary" size="icon" className="relative bg-gray-800/30 hover:bg-gray-800/50">
                     <Bell className="w-5 h-5 text-gray-400" />
@@ -1538,23 +1565,35 @@ if (!subInfo) {
                     <h3 className="font-medium text-foreground">{getTranslation("notifications", "Notifications")}</h3>
                   </div>
                   <div className="max-h-80 overflow-auto">
-                    {risks.slice(0, 3).map((alert) => (
-                      <div key={alert.id} className="p-3 hover:bg-gray-800/50 border-b border-gray-800/30 last:border-0">
-                        <div className="flex items-start gap-3">
-                          <div className={`w-2 h-2 rounded-full mt-1.5 ${
-                            alert.severity === "high" || alert.severity === "critical" ? "bg-red-500" :
-                            alert.severity === "medium" ? "bg-yellow-500" : "bg-blue-500"
-                          }`} />
-                          <div>
-                            <p className="text-sm text-foreground">{alert.title}</p>
-                            <p className="text-xs text-muted-foreground mt-0.5">{alert.time}</p>
+                    {risks.slice(0, 3).map((alert) => {
+                      const sev = getSeverityColorClasses(alert.severity);
+                      return (
+                        <div key={alert.id} className="p-3 hover:bg-gray-800/50 border-b border-gray-800/30 last:border-0">
+                          <div className="flex items-start gap-3">
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${sev.bg} ${sev.text}`}>
+                              {getCategoryIcon(alert.category)}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-sm text-foreground truncate">{alert.title}</p>
+                              <p className="text-xs text-muted-foreground mt-0.5">{alert.time}</p>
+                            </div>
                           </div>
                         </div>
+                      );
+                    })}
+                    {risks.length === 0 && (
+                      <div className="p-4 text-center text-sm text-muted-foreground">
+                        {T.demoNoActiveRisks || "No active risks. All systems normal."}
                       </div>
-                    ))}
+                    )}
                   </div>
                   <div className="p-2 border-t border-gray-800">
-                    <Button variant="ghost" size="sm" className="w-full text-blue-400 hover:bg-blue-500/10" onClick={() => setActiveView("risks")}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-full text-blue-400 hover:bg-blue-500/10"
+                      onClick={() => { setActiveView("risks"); setNotifOpen(false); }}
+                    >
                       {getTranslation("viewAllAlerts", "View all alerts")}
                     </Button>
                   </div>
@@ -1734,7 +1773,7 @@ if (!subInfo) {
                               className="mt-3 h-8 text-sm border-gray-700 text-gray-400 hover:bg-gray-800"
                               onClick={() => setActiveView("overview")}
                             >
-                              {risk.action}
+                              {language === "UA" ? "Переглянути огляд" : language === "DE" ? "Übersicht ansehen" : "View overview"}
                             </Button>
                           </div>
                           <button
