@@ -179,6 +179,20 @@ async function main(businessId) {
         byDate[date].stripeFee += feeCents / 100;
       }
 
+      // ВАЖНО: раньше, если за день не было ни одного успешного списания,
+      // дата вообще не попадала в byDate — а значит для неё никогда не
+      // создавалась строка в metrics_computed. Столбик в графике на фронте
+      // просто исчезал, из-за чего дни с оплатами "склеивались" друг с
+      // другом и создавали ложное впечатление непрерывного роста. Теперь
+      // явно добавляем сегодня и вчера (весь диапазон sinceUnix = 48ч) в
+      // byDate с нулевой выручкой, если их там ещё нет — реальный $0-день
+      // теперь тоже пишется в базу и попадает в график/прогноз/бота.
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const yesterdayStr = new Date(Date.now() - 24 * 3600 * 1000).toISOString().slice(0, 10);
+      for (const d of [todayStr, yesterdayStr]) {
+        if (!byDate[d]) byDate[d] = { revenue: 0, orders: 0, stripeFee: 0 };
+      }
+
       const { data: business, error: bizErr } = await admin
         .from("businesses")
         .select("id, user_id, name, cost_pct")

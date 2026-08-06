@@ -381,29 +381,52 @@ function RevenueExpensesChart({ history }: {
   }, [hoveredBar]);
 
   const isEmpty = !history || history.length === 0;
-  // Пока нет реальных данных вообще — рисуем скелет графика с нулями
-  // (было "No revenue history yet", решили не блокировать текстом).
-  // Если данные ЕСТЬ, но их меньше 30 дней (бизнес недавно подключился) —
-  // раньше немногочисленные реальные бары растягивались на всю ширину
-  // 30-дневного графика, что выглядело как рандомная растяжка, а не как
-  // "30 дней". Теперь спереди добавляются пустые дни-заглушки (isPlaceholder),
-  // чтобы график всегда показывал полные 30 колонок, а реальные данные
-  // оставались привязаны к своей фактической (более узкой) ширине столбика.
-  const PLACEHOLDER_DAY = { date: "", revenue: 0, expenses: 0, profit: 0, margin: 0, isPlaceholder: true as const };
-  const chartData = isEmpty
-    ? Array.from({ length: 30 }, (_, i) => ({ day: i + 1, ...PLACEHOLDER_DAY }))
-    : history.length < 30
-    ? [
-        ...Array.from({ length: 30 - history.length }, (_, i) => ({ day: -1, ...PLACEHOLDER_DAY })),
-        ...history.map((h) => ({ ...h, isPlaceholder: false as const })),
-      ]
-    : history.map((h) => ({ ...h, isPlaceholder: false as const }));
-  const realData = chartData.filter((d) => !d.isPlaceholder);
-  const statsBase = realData.length ? realData : chartData;
-  const maxRevenue = Math.max(...statsBase.map(d => d.revenue));
-  const maxExpenses = Math.max(...statsBase.map(d => d.expenses));
-  const maxProfit = Math.max(...statsBase.map(d => d.profit));
-  const minProfit = Math.min(...statsBase.map(d => d.profit));
+
+  // Непрерывная лента дней от первой оплаты бизнеса до сегодня (максимум
+  // последние 14 дней), где каждый день — реальная точка данных, а не
+  // "заглушка". Если за день не было оплат — это НАСТОЯЩИЙ ноль (человек
+  // не платил в тот день), а не "нет данных": рисуем такой столбик пунктиром,
+  // но считаем его наравне с остальными в сумме/среднем/лучшем-худшем дне —
+  // раньше такие дни просто выпадали из выборки, и график "склеивал"
+  // соседние дни с оплатами, создавая ложное впечатление непрерывного роста.
+  // Новый день появляется в ленте каждый день в 00:00 (просто потому что
+  // "сегодня" всегда входит в диапазон), и наполняется по мере синка.
+  const addDaysStr = (dateStr: string, delta: number) => {
+    const d = new Date(dateStr + "T00:00:00Z");
+    d.setUTCDate(d.getUTCDate() + delta);
+    return d.toISOString().slice(0, 10);
+  };
+  const diffDaysStr = (a: string, b: string) =>
+    Math.round((new Date(b + "T00:00:00Z").getTime() - new Date(a + "T00:00:00Z").getTime()) / 86400000);
+
+  const MAX_WINDOW_DAYS = 14;
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  let chartData: { day: number; date: string; revenue: number; expenses: number; profit: number; margin: number }[];
+
+  if (isEmpty) {
+    // Совсем нет данных — рисуем скелет графика с нулями вместо
+    // блокирующего текстового сообщения.
+    chartData = Array.from({ length: MAX_WINDOW_DAYS }, (_, i) => ({ day: i + 1, date: "", revenue: 0, expenses: 0, profit: 0, margin: 0 }));
+  } else {
+    const byDate = new Map(history.map((h) => [h.date, h]));
+    const firstDate = history[0].date;
+    const spanDays = diffDaysStr(firstDate, todayStr) + 1;
+    const windowDays = Math.min(Math.max(spanDays, 1), MAX_WINDOW_DAYS);
+    const windowStart = spanDays > MAX_WINDOW_DAYS ? addDaysStr(todayStr, -(windowDays - 1)) : firstDate;
+    chartData = Array.from({ length: windowDays }, (_, i) => {
+      const date = addDaysStr(windowStart, i);
+      const real = byDate.get(date);
+      return real
+        ? { day: i + 1, date, revenue: real.revenue, expenses: real.expenses, profit: real.profit, margin: real.margin }
+        : { day: i + 1, date, revenue: 0, expenses: 0, profit: 0, margin: 0 };
+    });
+  }
+
+  const maxRevenue = Math.max(...chartData.map(d => d.revenue));
+  const maxExpenses = Math.max(...chartData.map(d => d.expenses));
+  const maxProfit = Math.max(...chartData.map(d => d.profit));
+  const minProfit = Math.min(...chartData.map(d => d.profit));
   let maxValue = selectedMetric === "revenue" ? maxRevenue : selectedMetric === "expenses" ? maxExpenses : maxProfit;
   let minValue = selectedMetric === "profit" ? minProfit : 0;
 
@@ -424,12 +447,12 @@ function RevenueExpensesChart({ history }: {
     return item.profit;
   };
 
-  const totalRevenue = statsBase.reduce((sum, d) => sum + d.revenue, 0);
-  const totalExpenses = statsBase.reduce((sum, d) => sum + d.expenses, 0);
+  const totalRevenue = chartData.reduce((sum, d) => sum + d.revenue, 0);
+  const totalExpenses = chartData.reduce((sum, d) => sum + d.expenses, 0);
   const totalProfit = totalRevenue - totalExpenses;
-  const avgMargin = statsBase.reduce((sum, d) => sum + d.margin, 0) / statsBase.length;
+  const avgMargin = chartData.reduce((sum, d) => sum + d.margin, 0) / chartData.length;
   const expenseEfficiency = totalRevenue > 0 ? (totalExpenses / totalRevenue * 100).toFixed(1) : "0.0";
-  const bestDay = statsBase.reduce((best, d, i) => d.margin > statsBase[best].margin ? i : best, 0);
+  const bestDay = chartData.reduce((best, d, i) => d.margin > chartData[best].margin ? i : best, 0);
   const worstDay = statsBase.reduce((worst, d, i) => d.margin < statsBase[worst].margin ? i : worst, 0);
 
   return (
