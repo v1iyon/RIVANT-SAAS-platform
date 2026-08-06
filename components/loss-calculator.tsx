@@ -5,9 +5,11 @@ import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 import { DollarSign, Users, Cpu, Megaphone, TrendingDown } from "lucide-react";
 import { useLanguage } from "@/lib/translations";
+import { useCurrency } from "@/lib/currency";
 
 export function LossCalculator() {
   const { t, language } = useLanguage();
+  const { currency, convert } = useCurrency();
   const T = t as any;
   const [isMobile, setIsMobile] = useState(true); // По умолчанию скрыт
 
@@ -46,9 +48,9 @@ export function LossCalculator() {
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
-      currency: "USD",
+      currency,
       maximumFractionDigits: 0,
-    }).format(value);
+    }).format(convert(value));
   };
 
   // НА ТЕЛЕФОНЕ НЕ ПОКАЗЫВАЕМ ВООБЩЕ НИЧЕГО

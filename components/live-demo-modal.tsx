@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { useLanguage } from "@/lib/translations";
+import { useCurrency, formatLocaleCurrency, type Currency } from "@/lib/currency";
 import { getSeverityLabel, getSeverityColorClasses } from "@/lib/severity";
 import { 
   LayoutDashboard, AlertTriangle, TrendingUp, Link2, 
@@ -318,7 +319,7 @@ interface CacPanelData {
   sparklineData: number[];
 }
 
-function SwipeableCacCard({ panels, T, language }: { panels: CacPanelData[]; T: any; language: string }) {
+function SwipeableCacCard({ panels, T, language, symbol = "$" }: { panels: CacPanelData[]; T: any; language: string; symbol?: string }) {
   const [index, setIndex] = useState(1);
   const touchStartX = useRef<number | null>(null);
 
@@ -369,7 +370,7 @@ function SwipeableCacCard({ panels, T, language }: { panels: CacPanelData[]; T: 
       </div>
 
       <div className="mb-1 min-h-[52px]">
-        <AnimatedNumber value={panel.value} prefix="$" changePercent={panel.change} />
+        <AnimatedNumber value={panel.value} prefix={symbol} changePercent={panel.change} />
       </div>
       <div className="-mt-1">
         <TickerSparkline history={panel.sparklineData} color="bg-orange-500/60" currentValue={panel.value} previousValue={panel.prev} />
@@ -390,9 +391,12 @@ function SwipeableCacCard({ panels, T, language }: { panels: CacPanelData[]; T: 
 }
 
 // Функция перевода риска
-function translateRisk(risk: Risk, t: any): Risk {
+function translateRisk(risk: Risk, t: any, currency: Currency = "USD"): Risk {
   const lang = t._lang || "EN";
   const translatedRisk = { ...risk };
+  // Хелпер: конвертирует и форматирует сумму под текущую валюту и язык
+  // (правильный разделитель разрядов и положение знака валюты).
+  const m = (usd: number) => formatLocaleCurrency(usd, currency, lang);
   switch (risk.alertType) {
     // Описания ниже написаны в стиле реального ai_explanation из личного
     // кабинета (что изменилось, конкретные цифры, что проверить) — раньше
@@ -401,19 +405,19 @@ function translateRisk(risk: Risk, t: any): Risk {
     case "revenue_drop":
       translatedRisk.title = lang === "UA" ? "Падіння виручки" : lang === "DE" ? "Umsatzrückgang" : "Revenue dropping";
       translatedRisk.description = lang === "UA"
-        ? "Виручка \"My Business\" впала на 34% за останню годину (з $3 180 до $2 099), маржа при цьому майже не змінилась. Перевірте: обсяг замовлень за сьогодні, роботу рекламних кампаній та наявність технічних збоїв на сайті."
+        ? `Виручка "My Business" впала на 34% за останню годину (з ${m(3180)} до ${m(2099)}), маржа при цьому майже не змінилась. Перевірте: обсяг замовлень за сьогодні, роботу рекламних кампаній та наявність технічних збоїв на сайті.`
         : lang === "DE"
-        ? "Der Umsatz von \"My Business\" ist in der letzten Stunde um 34 % gesunken (von 3.180 $ auf 2.099 $), die Marge blieb dabei fast unverändert. Prüfen Sie: die Bestellungen von heute, die laufenden Werbekampagnen und mögliche technische Störungen auf der Website."
-        : "\"My Business\" revenue dropped 34% in the last hour (from $3,180 to $2,099), while margin stayed roughly flat. Check: today's order volume, active ad campaigns, and any technical issues on the site.";
+        ? `Der Umsatz von "My Business" ist in der letzten Stunde um 34 % gesunken (von ${m(3180)} auf ${m(2099)}), die Marge blieb dabei fast unverändert. Prüfen Sie: die Bestellungen von heute, die laufenden Werbekampagnen und mögliche technische Störungen auf der Website.`
+        : `"My Business" revenue dropped 34% in the last hour (from ${m(3180)} to ${m(2099)}), while margin stayed roughly flat. Check: today's order volume, active ad campaigns, and any technical issues on the site.`;
       translatedRisk.action = lang === "UA" ? "Детальніше" : lang === "DE" ? "Details ansehen" : "View Details";
       break;
     case "revenue_rise":
       translatedRisk.title = lang === "UA" ? "Сплеск виручки" : lang === "DE" ? "Umsatzanstieg" : "Revenue spike";
       translatedRisk.description = lang === "UA"
-        ? "Виручка \"My Business\" зросла на 28% за останню годину (з $2 610 до $3 340) — це вище звичайного діапазону коливань. Перевірте: чи не пов'язано зі сплеском реклами або разовим великим замовленням, щоб зрозуміти, чи тренд стійкий."
+        ? `Виручка "My Business" зросла на 28% за останню годину (з ${m(2610)} до ${m(3340)}) — це вище звичайного діапазону коливань. Перевірте: чи не пов'язано зі сплеском реклами або разовим великим замовленням, щоб зрозуміти, чи тренд стійкий.`
         : lang === "DE"
-        ? "Der Umsatz von \"My Business\" stieg in der letzten Stunde um 28 % (von 2.610 $ auf 3.340 $) — über der üblichen Schwankungsbreite. Prüfen Sie, ob dies mit einer Werbekampagne oder einer einzelnen Großbestellung zusammenhängt, um zu sehen, ob der Trend stabil ist."
-        : "\"My Business\" revenue rose 28% in the last hour (from $2,610 to $3,340) — above the usual range of fluctuation. Check whether this ties to an ad push or a single large order, to see if the trend is likely to hold.";
+        ? `Der Umsatz von "My Business" stieg in der letzten Stunde um 28 % (von ${m(2610)} auf ${m(3340)}) — über der üblichen Schwankungsbreite. Prüfen Sie, ob dies mit einer Werbekampagne oder einer einzelnen Großbestellung zusammenhängt, um zu sehen, ob der Trend stabil ist.`
+        : `"My Business" revenue rose 28% in the last hour (from ${m(2610)} to ${m(3340)}) — above the usual range of fluctuation. Check whether this ties to an ad push or a single large order, to see if the trend is likely to hold.`;
       translatedRisk.action = lang === "UA" ? "Детальніше" : lang === "DE" ? "Details ansehen" : "View Details";
       break;
     case "profit_drop":
@@ -437,19 +441,19 @@ function translateRisk(risk: Risk, t: any): Risk {
     case "cac_increase":
       translatedRisk.title = lang === "UA" ? "Вартість залучення клієнта зростає" : lang === "DE" ? "Kundenakquisekosten steigen" : "Customer acquisition cost rising";
       translatedRisk.description = lang === "UA"
-        ? "CAC зріс з $47 до $58 (+23%) за останню добу, головним чином за рахунок Google Ads. Кількість замовлень при цьому не зросла пропорційно. Перевірте: налаштування таргетингу та ставки в активних кампаніях."
+        ? `CAC зріс з ${m(47)} до ${m(58)} (+23%) за останню добу, головним чином за рахунок Google Ads. Кількість замовлень при цьому не зросла пропорційно. Перевірте: налаштування таргетингу та ставки в активних кампаніях.`
         : lang === "DE"
-        ? "Die CAC ist in den letzten 24 Stunden von 47 $ auf 58 $ (+23 %) gestiegen, vor allem durch Google Ads. Die Bestellzahl ist dabei nicht proportional gewachsen. Prüfen Sie: Targeting-Einstellungen und Gebote in den aktiven Kampagnen."
-        : "CAC rose from $47 to $58 (+23%) over the last day, mostly driven by Google Ads. Order volume didn't grow proportionally. Check: targeting settings and bids in the active campaigns.";
+        ? `Die CAC ist in den letzten 24 Stunden von ${m(47)} auf ${m(58)} (+23 %) gestiegen, vor allem durch Google Ads. Die Bestellzahl ist dabei nicht proportional gewachsen. Prüfen Sie: Targeting-Einstellungen und Gebote in den aktiven Kampagnen.`
+        : `CAC rose from ${m(47)} to ${m(58)} (+23%) over the last day, mostly driven by Google Ads. Order volume didn't grow proportionally. Check: targeting settings and bids in the active campaigns.`;
       translatedRisk.action = lang === "UA" ? "Переглянути маркетинг" : lang === "DE" ? "Marketing überprüfen" : "Review Marketing";
       break;
     case "cac_decrease":
       translatedRisk.title = lang === "UA" ? "CAC знижується" : lang === "DE" ? "CAC sinkt" : "CAC decreasing";
       translatedRisk.description = lang === "UA"
-        ? "CAC знизився з $52 до $41 (-21%) за останню добу при стабільній кількості замовлень — ефективність реклами покращується. Варто перевірити, які кампанії дали цей ефект, щоб перерозподілити бюджет на їхню користь."
+        ? `CAC знизився з ${m(52)} до ${m(41)} (-21%) за останню добу при стабільній кількості замовлень — ефективність реклами покращується. Варто перевірити, які кампанії дали цей ефект, щоб перерозподілити бюджет на їхню користь.`
         : lang === "DE"
-        ? "Die CAC sank in den letzten 24 Stunden von 52 $ auf 41 $ (-21 %) bei stabiler Bestellzahl — die Werbeeffizienz verbessert sich. Prüfen Sie, welche Kampagnen dafür verantwortlich sind, um das Budget entsprechend umzuschichten."
-        : "CAC fell from $52 to $41 (-21%) over the last day with steady order volume — ad efficiency is improving. Worth checking which campaigns drove this, to shift budget toward them.";
+        ? `Die CAC sank in den letzten 24 Stunden von ${m(52)} auf ${m(41)} (-21 %) bei stabiler Bestellzahl — die Werbeeffizienz verbessert sich. Prüfen Sie, welche Kampagnen dafür verantwortlich sind, um das Budget entsprechend umzuschichten.`
+        : `CAC fell from ${m(52)} to ${m(41)} (-21%) over the last day with steady order volume — ad efficiency is improving. Worth checking which campaigns drove this, to shift budget toward them.`;
       translatedRisk.action = lang === "UA" ? "Переглянути маркетинг" : lang === "DE" ? "Marketing überprüfen" : "Review Marketing";
       break;
     case "integration_down":
@@ -572,6 +576,7 @@ function ChartTooltipPortal({ anchor, children }: { anchor: { left: number; top:
 // ГЛАВНЫЙ ГРАФИК
 function RevenueExpensesChart() {
   const { t } = useLanguage();
+  const { symbol, convert } = useCurrency();
   const T = t as any;
   const [hoveredBar, setHoveredBar] = useState<number | null>(null);
   const [tooltipAnchor, setTooltipAnchor] = useState<{ left: number; top: number } | null>(null);
@@ -673,7 +678,7 @@ function RevenueExpensesChart() {
         <div className="absolute left-0 top-0 bottom-0 w-12 flex flex-col justify-between text-xs font-mono">
           {ySteps.slice().reverse().map((step, idx) => (
             <div key={idx} className="text-gray-500 -translate-y-1/2">
-              {selectedMetric === "profit" ? (step >= 0 ? "+" : "") : "$"}{(step / 1000).toFixed(0)}k
+              {selectedMetric === "profit" ? (step >= 0 ? "+" : "") : symbol}{(convert(step) / 1000).toFixed(0)}k
             </div>
           ))}
         </div>
@@ -700,12 +705,12 @@ function RevenueExpensesChart() {
                   <ChartTooltipPortal anchor={tooltipAnchor}>
                     <div className="text-xs font-bold text-white">{T.demoDay || "Day"} {item.day}</div>
                     <div className={`text-sm font-bold mt-1 ${getMetricValue(item) >= 0 ? "text-green-400" : "text-red-400"}`}>
-                      {selectedMetric === "revenue" && "$"}{value.toLocaleString()}
-                      {selectedMetric === "profit" && (value >= 0 ? `+${value.toLocaleString()}` : value.toLocaleString())}
+                      {selectedMetric === "revenue" && symbol}{Math.round(convert(value)).toLocaleString()}
+                      {selectedMetric === "profit" && (value >= 0 ? `+${Math.round(convert(value)).toLocaleString()}` : Math.round(convert(value)).toLocaleString())}
                     </div>
-                    <div className="text-[10px] text-gray-400 mt-1">{T.demoRevenue || "Revenue"}: ${item.revenue.toLocaleString()}</div>
-                    <div className="text-[10px] text-gray-400">{T.demoExpenses || "Expenses"}: ${item.expenses.toLocaleString()}</div>
-                    <div className="text-[10px] text-gray-500 mt-1">{T.demoMargin || "Margin"}: {item.margin}% · {T.demoProfit || "Profit"}: ${item.profit.toLocaleString()}</div>
+                    <div className="text-[10px] text-gray-400 mt-1">{T.demoRevenue || "Revenue"}: {symbol}{Math.round(convert(item.revenue)).toLocaleString()}</div>
+                    <div className="text-[10px] text-gray-400">{T.demoExpenses || "Expenses"}: {symbol}{Math.round(convert(item.expenses)).toLocaleString()}</div>
+                    <div className="text-[10px] text-gray-500 mt-1">{T.demoMargin || "Margin"}: {item.margin}% · {T.demoProfit || "Profit"}: {symbol}{Math.round(convert(item.profit)).toLocaleString()}</div>
                   </ChartTooltipPortal>
                 )}
                 <div className="w-full mt-auto">
@@ -729,7 +734,7 @@ function RevenueExpensesChart() {
             <DollarSign className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-blue-400 flex-shrink-0" />
             <div className="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-wider truncate">{T.demoRevenue || "Total Revenue"}</div>
           </div>
-          <div className="text-base sm:text-xl font-bold text-white truncate">${(totalRevenue / 1000).toFixed(0)}k</div>
+          <div className="text-base sm:text-xl font-bold text-white truncate">{symbol}{(convert(totalRevenue) / 1000).toFixed(0)}k</div>
           <div className="text-[9px] sm:text-[10px] text-gray-500 mt-1 truncate">↑ {Math.abs(((history[history.length-1].revenue - history[0].revenue) / history[0].revenue * 100)).toFixed(0)}% {T.demoVsStart || "vs start"}</div>
         </div>
         <div className="bg-rose-500/5 rounded-xl p-2 sm:p-3 border border-rose-500/15 overflow-hidden flex flex-col items-center text-center">
@@ -737,7 +742,7 @@ function RevenueExpensesChart() {
             <TrendingDown className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-rose-400 flex-shrink-0" />
             <div className="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-wider truncate">{T.demoExpenses || "Total Expenses"}</div>
           </div>
-          <div className="text-base sm:text-xl font-bold text-white truncate">${(totalExpenses / 1000).toFixed(0)}k</div>
+          <div className="text-base sm:text-xl font-bold text-white truncate">{symbol}{(convert(totalExpenses) / 1000).toFixed(0)}k</div>
           <div className="text-[9px] sm:text-[10px] text-gray-500 mt-1 truncate">{((totalExpenses / totalRevenue) * 100).toFixed(0)}% {T.demoOfRevenue || "of revenue"}</div>
         </div>
         <div className="bg-green-500/10 rounded-xl p-2 sm:p-3 border border-green-500/20 overflow-hidden flex flex-col items-center text-center">
@@ -745,7 +750,7 @@ function RevenueExpensesChart() {
             <TrendingUp className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-green-400 flex-shrink-0" />
             <div className="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-wider truncate">{T.demoProfit || "Net Profit"}</div>
           </div>
-          <div className="text-base sm:text-xl font-bold text-green-400 truncate">+${(totalProfit / 1000).toFixed(0)}k</div>
+          <div className="text-base sm:text-xl font-bold text-green-400 truncate">+{symbol}{(convert(totalProfit) / 1000).toFixed(0)}k</div>
           <div className="text-[9px] sm:text-[10px] text-gray-500 mt-1 truncate">{avgMargin.toFixed(1)}% {T.demoAvgMargin || "avg margin"}</div>
         </div>
       </div>
@@ -860,6 +865,7 @@ function DemoIntegrationCard({
 
 export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
   const { t, language } = useLanguage();
+  const { currency, symbol, convert } = useCurrency();
   const T = t as any;
   // Добавляем язык в T для использования в переводах месяцев
   T._lang = language;
@@ -917,14 +923,14 @@ const [googleAdsExtraValues, setGoogleAdsExtraValues] = useState<Record<string, 
   const metrics = useMetricsStore();
   
   const translateAllRisks = useCallback(() => {
-    setRisks(prevRisks => prevRisks.map(risk => translateRisk(risk, T)));
-    if (lastNotification) setLastNotification(translateRisk(lastNotification, T));
-  }, [T, lastNotification]);
+    setRisks(prevRisks => prevRisks.map(risk => translateRisk(risk, T, currency)));
+    if (lastNotification) setLastNotification(translateRisk(lastNotification, T, currency));
+  }, [T, currency, lastNotification]);
   
   useEffect(() => {
     if (isOpen) translateAllRisks();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [language, isOpen]);
+  }, [language, currency, isOpen]);
 
   // Достаём следующий тип уведомления из перемешанной очереди, гарантируя,
   // что все 10 типов будут показаны прежде, чем какой-либо повторится.
@@ -946,13 +952,13 @@ const [googleAdsExtraValues, setGoogleAdsExtraValues] = useState<Record<string, 
   }, []);
 
   const showAlert = useCallback((risk: Risk) => {
-    const translated = translateRisk(risk, T);
+    const translated = translateRisk(risk, T, currency);
     setRisks(prev => [translated, ...prev].slice(0, MAX_RISKS_STORED));
     setAlertCount(prev => prev + 1);
     setLastNotification(translated);
     if (notificationTimeoutRef.current) clearTimeout(notificationTimeoutRef.current);
     notificationTimeoutRef.current = setTimeout(() => setLastNotification(null), NOTIFICATION_VISIBLE_MS);
-  }, [T]);
+  }, [T, currency]);
 
   // Генерирует и показывает одно новое уведомление: интеграционные сбои в
   // приоритете (это реальное состояние интеграций), иначе — следующий тип
@@ -1006,7 +1012,7 @@ const [googleAdsExtraValues, setGoogleAdsExtraValues] = useState<Record<string, 
               severity: "high", action: "", category: "inventory", alertType: "low_stock",
             },
           ];
-          const preloaded = rawPreloaded.map(r => translateRisk(r, T));
+          const preloaded = rawPreloaded.map(r => translateRisk(r, T, currency));
           setRisks(preloaded);
           setAlertCount(preloaded.length);
           lastTemplateTypeRef.current = "low_stock"; // чтобы эти же типы не выпали первыми в живой ротации
@@ -1213,12 +1219,12 @@ const [googleAdsExtraValues, setGoogleAdsExtraValues] = useState<Record<string, 
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                   <div className="bg-gradient-to-br from-blue-500/10 to-transparent rounded-xl p-4 border border-blue-500/20">
                     <div className="text-xs text-blue-400 font-semibold mb-1 uppercase">{T.demoRevenue || "Revenue"}</div>
-                    <AnimatedNumber value={currentRevenue} prefix="$" changePercent={parseFloat(revenueChange)} />
+                    <AnimatedNumber value={convert(currentRevenue)} prefix={symbol} changePercent={parseFloat(revenueChange)} />
                     <TickerSparkline history={revenueQueue} color="bg-blue-500/60" currentValue={currentRevenue} previousValue={prevRevenue} />
                   </div>
                   <div className="bg-gradient-to-br from-green-500/10 to-transparent rounded-xl p-4 border border-green-500/20">
                     <div className="text-xs text-green-400 font-semibold mb-1 uppercase">{T.demoProfit || "Profit"}</div>
-                    <AnimatedNumber value={currentProfit} prefix="$" changePercent={parseFloat(profitChange)} />
+                    <AnimatedNumber value={convert(currentProfit)} prefix={symbol} changePercent={parseFloat(profitChange)} />
                     <TickerSparkline history={profitQueue} color="bg-green-500/60" currentValue={currentProfit} previousValue={prevProfit} />
                   </div>
                   <div className="bg-gradient-to-br from-purple-500/10 to-transparent rounded-xl p-4 border border-purple-500/20">
@@ -1229,16 +1235,17 @@ const [googleAdsExtraValues, setGoogleAdsExtraValues] = useState<Record<string, 
                   <SwipeableCacCard
                     T={T}
                     language={language}
+                    symbol={symbol}
                     panels={[
-                      { label: "Meta Ads", value: currentCacMeta, change: parseFloat(cacMetaChange), prev: prevCacMeta, sparklineData: cacMetaQueue },
+                      { label: "Meta Ads", value: convert(currentCacMeta), change: parseFloat(cacMetaChange), prev: convert(prevCacMeta), sparklineData: cacMetaQueue },
                       {
                         label: language === "UA" ? "Загальне" : language === "DE" ? "Gesamt" : "Combined",
-                        value: currentCac,
+                        value: convert(currentCac),
                         change: parseFloat(cacChange),
-                        prev: prevCac,
+                        prev: convert(prevCac),
                         sparklineData: cacQueue,
                       },
-                      { label: "Google Ads", value: currentCacGoogle, change: parseFloat(cacGoogleChange), prev: prevCacGoogle, sparklineData: cacGoogleQueue },
+                      { label: "Google Ads", value: convert(currentCacGoogle), change: parseFloat(cacGoogleChange), prev: convert(prevCacGoogle), sparklineData: cacGoogleQueue },
                     ]}
                   />
                 </div>
@@ -1305,13 +1312,13 @@ const [googleAdsExtraValues, setGoogleAdsExtraValues] = useState<Record<string, 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="bg-gradient-to-br from-blue-500/10 to-transparent rounded-xl p-5 border border-blue-500/20">
                     <div className="text-sm text-blue-400 font-semibold mb-1">{T.demoProjectedRevenue || "Projected Revenue"}</div>
-                    <div className="text-3xl font-bold text-white">$892,400</div>
+                    <div className="text-3xl font-bold text-white">{symbol}{Math.round(convert(892400)).toLocaleString()}</div>
                     <div className="text-sm text-green-400 mt-2">+18% {T.demoVsLastQuarter || "vs last quarter"}</div>
                     <div className="text-xs text-gray-500 mt-3">{T.demoConfidence || "Confidence"}: 94%</div>
                   </div>
                   <div className="bg-gradient-to-br from-orange-500/10 to-transparent rounded-xl p-5 border border-orange-500/20">
                     <div className="text-sm text-orange-400 font-semibold mb-1">{T.demoProjectedExpenses || "Projected Expenses"}</div>
-                    <div className="text-3xl font-bold text-white">$654,200</div>
+                    <div className="text-3xl font-bold text-white">{symbol}{Math.round(convert(654200)).toLocaleString()}</div>
                     <div className="text-sm text-yellow-400 mt-2">+8% {T.demoVsLastQuarter || "vs last quarter"}</div>
                     <div className="text-xs text-gray-500 mt-3">{T.demoConfidence || "Confidence"}: 91%</div>
                   </div>
@@ -1331,22 +1338,22 @@ const [googleAdsExtraValues, setGoogleAdsExtraValues] = useState<Record<string, 
                           {m.revenueActual && (
                             <div className="relative group">
                               <div className="w-4 sm:w-8 bg-blue-500/30 rounded-t" style={{ height: `${m.revenueActual / 3.2}px` }} />
-                              <div className="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition bg-gray-800 text-white text-[10px] px-1 rounded whitespace-nowrap hidden sm:block">{T.demoActual || "Actual"}: ${m.revenueActual}k</div>
+                              <div className="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition bg-gray-800 text-white text-[10px] px-1 rounded whitespace-nowrap hidden sm:block">{T.demoActual || "Actual"}: {symbol}{Math.round(convert(m.revenueActual))}k</div>
                             </div>
                           )}
                           <div className="relative group">
                             <div className="w-4 sm:w-8 bg-blue-500 rounded-t" style={{ height: `${m.revenue / 3.2}px` }} />
-                            <div className="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition bg-gray-800 text-white text-[10px] px-1 rounded whitespace-nowrap hidden sm:block">{T.demoForecast || "Forecast"}: ${m.revenue}k</div>
+                            <div className="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition bg-gray-800 text-white text-[10px] px-1 rounded whitespace-nowrap hidden sm:block">{T.demoForecast || "Forecast"}: {symbol}{Math.round(convert(m.revenue))}k</div>
                           </div>
                           <div className="relative group">
                             <div className="w-4 sm:w-8 bg-rose-500/60 rounded-t" style={{ height: `${m.expenses / 3.2}px` }} />
-                            <div className="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition bg-gray-800 text-white text-[10px] px-1 rounded whitespace-nowrap hidden sm:block">{T.demoExpenses || "Expenses"}: ${m.expenses}k</div>
+                            <div className="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition bg-gray-800 text-white text-[10px] px-1 rounded whitespace-nowrap hidden sm:block">{T.demoExpenses || "Expenses"}: {symbol}{Math.round(convert(m.expenses))}k</div>
                           </div>
                         </div>
                         <span className="text-xs sm:text-sm text-gray-400 font-medium truncate max-w-full">{months[m.monthIdx]}</span>
                         <div className="flex gap-1.5 sm:gap-3 text-[9px] sm:text-[10px] text-gray-600">
-                          <span className="text-blue-400">↑${m.revenue}k</span>
-                          <span className="text-rose-400">↓${m.expenses}k</span>
+                          <span className="text-blue-400">↑{symbol}{Math.round(convert(m.revenue))}k</span>
+                          <span className="text-rose-400">↓{symbol}{Math.round(convert(m.expenses))}k</span>
                         </div>
                       </div>
                     ))}

@@ -79,7 +79,7 @@ export function PricingSection() {
     },
     {
       name: T.scale ?? "Scale",
-      price: 399,
+      price: 499,
       description: T.pricingSubtitle ?? "Best for scaling businesses",
       features: T.scaleFeatures ?? [],
       popular: false,
@@ -180,7 +180,7 @@ export function PricingSection() {
                 <addon.icon className="w-8 h-8 text-primary mb-4" />
                 <h4 className="font-bold text-lg mb-1">{addon.name}</h4>
                 <div className="text-2xl font-bold mb-3">
-                  {formatPrice(addon.price)}
+                  {formatPrice(addon.price, "addon")}
                   <span className="text-sm font-normal text-muted-foreground"> {addon.priceType}</span>
                 </div>
                 <p className="text-sm text-muted-foreground mb-6 flex-1">{addon.description}</p>
