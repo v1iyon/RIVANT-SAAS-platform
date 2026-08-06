@@ -37,12 +37,16 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
   // клик по ней не считался "кликом снаружи" меню и не вызывал повторное
   // открытие сразу после закрытия (race condition touchstart -> click).
   const menuToggleRef = useRef<HTMLButtonElement>(null);
-  // Компактное выпадающее меню язык+валюта рядом с гамбургером на мобилке —
-  // отдельное от полноэкранного мобильного меню ниже, чтобы сменить язык или
-  // валюту можно было в один тап, не открывая весь список ссылок.
-  const [isLangCurrencyOpen, setIsLangCurrencyOpen] = useState(false);
-  const langCurrencyRef = useRef<HTMLDivElement>(null);
-  const langCurrencyToggleRef = useRef<HTMLButtonElement>(null);
+  // Компактные выпадающие меню язык / валюта рядом с гамбургером на мобилке —
+  // два отдельных дропдауна (каждый со своим триггером), чтобы сменить язык
+  // или валюту можно было в один тап, не открывая весь список ссылок и не
+  // путая пользователя одним общим меню "два в одном".
+  const [isLangOpen, setIsLangOpen] = useState(false);
+  const [isCurrencyOpen, setIsCurrencyOpen] = useState(false);
+  const langRef = useRef<HTMLDivElement>(null);
+  const langToggleRef = useRef<HTMLButtonElement>(null);
+  const currencyRef = useRef<HTMLDivElement>(null);
+  const currencyToggleRef = useRef<HTMLButtonElement>(null);
 
   const T = t as any;
 
@@ -93,19 +97,30 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
         setIsMobileMenuOpen(false);
       }
 
-      const clickedLangCurrencyToggle =
-        langCurrencyToggleRef.current && langCurrencyToggleRef.current.contains(e.target as Node);
+      const clickedLangToggle =
+        langToggleRef.current && langToggleRef.current.contains(e.target as Node);
       if (
-        langCurrencyRef.current &&
-        !langCurrencyRef.current.contains(e.target as Node) &&
-        !clickedLangCurrencyToggle &&
-        isLangCurrencyOpen
+        langRef.current &&
+        !langRef.current.contains(e.target as Node) &&
+        !clickedLangToggle &&
+        isLangOpen
       ) {
-        setIsLangCurrencyOpen(false);
+        setIsLangOpen(false);
+      }
+
+      const clickedCurrencyToggle =
+        currencyToggleRef.current && currencyToggleRef.current.contains(e.target as Node);
+      if (
+        currencyRef.current &&
+        !currencyRef.current.contains(e.target as Node) &&
+        !clickedCurrencyToggle &&
+        isCurrencyOpen
+      ) {
+        setIsCurrencyOpen(false);
       }
     };
 
-    if (isLoginModalOpen || isMobileMenuOpen || isLangCurrencyOpen) {
+    if (isLoginModalOpen || isMobileMenuOpen || isLangOpen || isCurrencyOpen) {
       document.addEventListener("mousedown", handleClickOutside);
       document.addEventListener("touchstart", handleClickOutside);
       if (isLoginModalOpen || isMobileMenuOpen) document.body.style.overflow = "hidden";
@@ -116,7 +131,7 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
       document.removeEventListener("touchstart", handleClickOutside);
       document.body.style.overflow = "";
     };
-  }, [isLoginModalOpen, isMobileMenuOpen, isLangCurrencyOpen]);
+  }, [isLoginModalOpen, isMobileMenuOpen, isLangOpen, isCurrencyOpen]);
 
   const scrollTo = (id: string) => {
     const element = document.querySelector(id);
@@ -383,60 +398,89 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
             </div>
 
             {!isDashboard && (
-              <div className="flex items-center md:hidden">
-                {/* Компактный переключатель язык+валюта — отдельно от гамбургера,
-                    чтобы сменить их можно было в один тап, не открывая всё меню. */}
+              <div className="flex items-center gap-1 md:hidden">
+                {/* Два независимых компактных переключателя — язык и валюта —
+                    отдельно от гамбургера и друг от друга, чтобы каждый
+                    открывался и закрывался сам по себе, без единого меню
+                    "два в одном". */}
                 <div className="relative">
                   <button
-                    ref={langCurrencyToggleRef}
+                    ref={langToggleRef}
                     onClick={() => {
-                      setIsLangCurrencyOpen((prev) => !prev);
+                      setIsLangOpen((prev) => !prev);
+                      setIsCurrencyOpen(false);
                       setIsMobileMenuOpen(false);
                     }}
-                    className="flex items-center gap-1 px-2.5 py-2 -m-1 text-gray-300 hover:text-white"
-                    aria-label="Language and currency"
+                    className="flex items-center gap-1 px-2 py-2 -m-1 text-gray-300 hover:text-white"
+                    aria-label="Language"
                   >
                     <Globe className="w-5 h-5" />
                     <span className="text-xs font-medium">{language}</span>
-                    <ChevronDown className={`w-3 h-3 transition-transform ${isLangCurrencyOpen ? "rotate-180" : ""}`} />
+                    <ChevronDown className={`w-3 h-3 transition-transform ${isLangOpen ? "rotate-180" : ""}`} />
                   </button>
 
-                  {isLangCurrencyOpen && (
+                  {isLangOpen && (
                     <div
-                      ref={langCurrencyRef}
-                      className="absolute top-full right-0 mt-2 w-48 bg-gray-900 rounded-xl border border-white/10 p-3 space-y-3 z-50 shadow-xl"
+                      ref={langRef}
+                      className="absolute top-full right-0 mt-2 w-40 bg-gray-900 rounded-xl border border-white/10 p-3 z-50 shadow-xl"
                     >
-                      <div>
-                        <p className="text-xs text-gray-500 mb-1.5">{T.language || "Language"}</p>
-                        <div className="flex gap-1.5">
-                          {(["EN", "UA", "DE"] as Language[]).map((lang) => (
-                            <button
-                              key={lang}
-                              onClick={() => changeLanguage(lang)}
-                              className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-                                language === lang ? "bg-blue-600 text-white" : "bg-white/10 text-gray-400 hover:text-white"
-                              }`}
-                            >
-                              {lang}
-                            </button>
-                          ))}
-                        </div>
+                      <p className="text-xs text-gray-500 mb-1.5">{T.language || "Language"}</p>
+                      <div className="flex gap-1.5">
+                        {(["EN", "UA", "DE"] as Language[]).map((lang) => (
+                          <button
+                            key={lang}
+                            onClick={() => {
+                              changeLanguage(lang);
+                              setIsLangOpen(false);
+                            }}
+                            className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                              language === lang ? "bg-blue-600 text-white" : "bg-white/10 text-gray-400 hover:text-white"
+                            }`}
+                          >
+                            {lang}
+                          </button>
+                        ))}
                       </div>
-                      <div>
-                        <p className="text-xs text-gray-500 mb-1.5">{T.currency || "Currency"}</p>
-                        <div className="flex gap-1.5">
-                          {(["USD", "EUR"] as Currency[]).map((cur) => (
-                            <button
-                              key={cur}
-                              onClick={() => changeCurrency(cur)}
-                              className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-                                currency === cur ? "bg-blue-600 text-white" : "bg-white/10 text-gray-400 hover:text-white"
-                              }`}
-                            >
-                              {cur === "USD" ? "$ USD" : "€ EUR"}
-                            </button>
-                          ))}
-                        </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="relative">
+                  <button
+                    ref={currencyToggleRef}
+                    onClick={() => {
+                      setIsCurrencyOpen((prev) => !prev);
+                      setIsLangOpen(false);
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="flex items-center gap-1 px-2 py-2 -m-1 text-gray-300 hover:text-white"
+                    aria-label="Currency"
+                  >
+                    <span className="text-xs font-medium">{currency === "USD" ? "$" : "€"}</span>
+                    <ChevronDown className={`w-3 h-3 transition-transform ${isCurrencyOpen ? "rotate-180" : ""}`} />
+                  </button>
+
+                  {isCurrencyOpen && (
+                    <div
+                      ref={currencyRef}
+                      className="absolute top-full right-0 mt-2 w-36 bg-gray-900 rounded-xl border border-white/10 p-3 z-50 shadow-xl"
+                    >
+                      <p className="text-xs text-gray-500 mb-1.5">{T.currency || "Currency"}</p>
+                      <div className="flex gap-1.5">
+                        {(["USD", "EUR"] as Currency[]).map((cur) => (
+                          <button
+                            key={cur}
+                            onClick={() => {
+                              changeCurrency(cur);
+                              setIsCurrencyOpen(false);
+                            }}
+                            className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                              currency === cur ? "bg-blue-600 text-white" : "bg-white/10 text-gray-400 hover:text-white"
+                            }`}
+                          >
+                            {cur === "USD" ? "$" : "€"}
+                          </button>
+                        ))}
                       </div>
                     </div>
                   )}
@@ -449,7 +493,8 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
                   ref={menuToggleRef}
                   onClick={() => {
                     setIsMobileMenuOpen((prev) => !prev);
-                    setIsLangCurrencyOpen(false);
+                    setIsLangOpen(false);
+                    setIsCurrencyOpen(false);
                   }}
                   className="flex flex-col gap-1.5 p-3 -m-1"
                   aria-label={isMobileMenuOpen ? "Close menu" : "Open menu"}

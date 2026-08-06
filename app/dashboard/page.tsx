@@ -942,7 +942,7 @@ const [companySaved, setCompanySaved] = useState(false);
 useEffect(() => {
   if (!profileEmail) return;
   setForecastLoaded(false);
-  fetch(`/api/forecast?email=${encodeURIComponent(profileEmail)}&language=${language}`, { cache: "no-store" })
+  fetch(`/api/forecast?email=${encodeURIComponent(profileEmail)}&language=${language}&currency=${currency}`, { cache: "no-store" })
     .then((res) => res.json())
     .then((data) => setForecastData(data))
     .catch((e) => {
@@ -950,7 +950,7 @@ useEffect(() => {
       setForecastData({ sufficient: false, days: 0 });
     })
     .finally(() => setForecastLoaded(true));
-}, [profileEmail, language]);
+}, [profileEmail, language, currency]);
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data }: any) => {
@@ -2015,8 +2015,17 @@ if (!subInfo) {
                           <div className="flex justify-around items-end h-28 gap-1 sm:gap-4">
                             {bars.map((m, i) => (
                               <div key={i} className="flex justify-center gap-1 sm:gap-2 items-end flex-1 min-w-0 h-full">
-                                {m.revenueActual != null && (
+                                {m.revenueActual != null ? (
                                   <div className="w-4 sm:w-8 bg-blue-500/30 rounded-t" style={{ height: `${Math.min(Math.max(m.revenueActual / scale, 2), 100)}px` }} />
+                                ) : (
+                                  // Пустая колонка-заглушка вместо пропущенного бара — держит
+                                  // одинаковую структуру (3 столбика) во всех месяцах, даже
+                                  // если фактических данных за этот месяц ещё нет.
+                                  <div
+                                    className="w-4 sm:w-8 rounded-t border border-dashed border-gray-700"
+                                    style={{ height: "2px" }}
+                                    title={language === "UA" ? "Немає фактичних даних" : language === "DE" ? "Keine tatsächlichen Daten" : "No actual data yet"}
+                                  />
                                 )}
                                 <div className="w-4 sm:w-8 bg-blue-500 rounded-t" style={{ height: `${Math.min(Math.max(m.revenue / scale, 2), 100)}px` }} />
                                 <div className="w-4 sm:w-8 bg-rose-500/60 rounded-t" style={{ height: `${Math.min(Math.max(m.expenses / scale, 2), 100)}px` }} />

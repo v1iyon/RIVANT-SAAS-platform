@@ -9,6 +9,7 @@
 // - Результат кэшируется в forecast_cache на 6 часов, чтобы не дёргать
 //   Anthropic API при каждом открытии дашборда (синк всё равно раз в час).
 import { createClient } from "@supabase/supabase-js";
+import { convertAmount, type Currency } from "@/lib/currency";
 
 export const dynamic = "force-dynamic";
 
@@ -99,6 +100,7 @@ function getTier(days: number): "insufficient" | "low" | "high" {
 
 async function generateExplanation(
   language: string,
+  currency: Currency,
   stats: {
     days: number;
     tier: string;
@@ -111,11 +113,20 @@ async function generateExplanation(
   }
 ) {
   const langName = language === "UA" ? "Ukrainian" : language === "DE" ? "German" : "English";
+  const currencyLabel = currency === "EUR" ? "euros (€)" : "US dollars ($)";
+  // Числа считаются на бэке в USD (единый источник правды для всех валют),
+  // но в текст для Claude подставляем уже сконвертированную сумму в валюте,
+  // которую выбрал пользователь — иначе объяснение расходится с цифрами
+  // на дашборде, если человек переключился на EUR.
+  const revenueHorizonConverted = convertAmount(stats.revenueHorizon, currency);
+  const expensesHorizonConverted = convertAmount(stats.expensesHorizon, currency);
+  const currencySymbol = currency === "EUR" ? "€" : "$";
 
   const system = `You are a financial analyst writing a short forecast explanation for RIVANT, an e-commerce analytics dashboard. Respond ONLY in ${langName}, 3-5 sentences, plain factual tone (no hype, no exclamation marks).
 
 Hard rules:
 - Use ONLY the numbers given to you below. Never invent revenue figures, seasonality, holidays, or market events not present in the data.
+- All monetary figures given to you are already in ${currencyLabel} — use that currency and its symbol (${currencySymbol}) consistently, never mention or convert to any other currency.
 - The forecast horizon is exactly ${stats.horizonDays} days — refer to that horizon only, never mention any other number of days for the projection.
 - If days < 30, explicitly say seasonality cannot be assessed yet from the available history.
 - If tier is "low", clearly state the forecast is preliminary and confidence will improve as more days of data accumulate — do not present the numbers as certain.
@@ -128,8 +139,8 @@ Hard rules:
 - Forecast horizon: ${stats.horizonDays} days
 - Daily revenue trend: ${stats.dailyGrowthPct.toFixed(2)}% per day
 - Daily margin trend: ${stats.marginSlope.toFixed(2)} percentage points per day
-- Projected revenue over the next ${stats.horizonDays} days: $${Math.round(stats.revenueHorizon).toLocaleString()}
-- Projected expenses over the next ${stats.horizonDays} days: $${Math.round(stats.expensesHorizon).toLocaleString()}
+- Projected revenue over the next ${stats.horizonDays} days: ${currencySymbol}${Math.round(revenueHorizonConverted).toLocaleString()}
+- Projected expenses over the next ${stats.horizonDays} days: ${currencySymbol}${Math.round(expensesHorizonConverted).toLocaleString()}
 - Regression fit (R²) for revenue: ${Math.round(stats.r2 * 100)}%
 
 Write the explanation now.`;
@@ -169,6 +180,8 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const email = url.searchParams.get("email");
   const language = url.searchParams.get("language") || "EN";
+  const currencyParam = url.searchParams.get("currency");
+  const currency: Currency = currencyParam === "EUR" ? "EUR" : "USD";
 
 
   if (!email) return Response.json({ error: "email required" }, { status: 400 });
@@ -272,7 +285,9 @@ if (!stripeConnected) return Response.json({ sufficient: false, days: 0, tier: "
   // Кэш forecast_cache — одна строка на бизнес, поэтому кладём горизонт прямо
   // в поле language ("UA::30"), чтобы апгрейд/даунгрейд тарифа не подсовывал
   // закэшированное объяснение с упоминанием чужого горизонта прогноза.
-  const cacheLanguageKey = `${language}::${horizonDays}`;
+  // валюту добавляем в ключ, чтобы переключение USD/EUR не подсовывало
+  // закэшированное объяснение с суммами не в той валюте.
+  const cacheLanguageKey = `${language}::${horizonDays}::${currency}`;
   const { data: cached } = await admin
     .from("forecast_cache")
     .select("days, language, explanation, generated_at")
@@ -291,7 +306,7 @@ if (!stripeConnected) return Response.json({ sufficient: false, days: 0, tier: "
     explanation = cached.explanation;
   } else {
     try {
-      explanation = await generateExplanation(language, {
+      explanation = await generateExplanation(language, currency, {
         days,
         tier,
         horizonDays,
