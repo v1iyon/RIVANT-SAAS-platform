@@ -8,6 +8,7 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useLanguage, Language } from "@/lib/translations";
+import { useCurrency, Currency } from "@/lib/currency";
 import { getSeverityLabel, getSeverityColorClasses } from "@/lib/severity";
 import { TrialPromptModal } from "@/components/dashboard/trial-prompt-modal";
 import {
@@ -340,6 +341,7 @@ function RevenueExpensesChart({ history }: {
   history: { day: number; date: string; revenue: number; expenses: number; profit: number; margin: number }[];
 }) {
   const { t, language } = useLanguage();
+  const { symbol, convert } = useCurrency();
   const T = t as any;
   const [hoveredBar, setHoveredBar] = useState<number | null>(null);
   const [tooltipAnchor, setTooltipAnchor] = useState<{ left: number; top: number } | null>(null);
@@ -448,7 +450,7 @@ function RevenueExpensesChart({ history }: {
         <div className="absolute left-0 top-0 bottom-0 w-12 flex flex-col justify-between text-[10px] font-mono">
           {ySteps.slice().reverse().map((step, idx) => (
             <div key={idx} className="text-gray-500 -translate-y-1/2">
-              {selectedMetric === "profit" ? (step >= 0 ? "+" : "") : "$"}{(step / 1000).toFixed(0)}k
+              {selectedMetric === "profit" ? (step >= 0 ? "+" : "") : symbol}{(convert(step) / 1000).toFixed(0)}k
             </div>
           ))}
         </div>
@@ -475,10 +477,10 @@ function RevenueExpensesChart({ history }: {
                   <ChartTooltipPortal anchor={tooltipAnchor}>
                     <div className="text-xs font-bold text-white">{T.day || "Day"} {item.day}</div>
                     <div className={`text-sm font-bold mt-1 ${getMetricValue(item) >= 0 ? "text-green-400" : "text-red-400"}`}>
-                      {selectedMetric === "revenue" && "$"}{value.toLocaleString()}
+                      {selectedMetric === "revenue" && symbol}{Math.round(convert(value)).toLocaleString()}
                     </div>
-                    <div className="text-[10px] text-gray-400 mt-1">{T.revenue || "Revenue"}: ${item.revenue.toLocaleString()}</div>
-                    <div className="text-[10px] text-gray-400">{T.expenses || "Expenses"}: ${item.expenses.toLocaleString()}</div>
+                    <div className="text-[10px] text-gray-400 mt-1">{T.revenue || "Revenue"}: {symbol}{Math.round(convert(item.revenue)).toLocaleString()}</div>
+                    <div className="text-[10px] text-gray-400">{T.expenses || "Expenses"}: {symbol}{Math.round(convert(item.expenses)).toLocaleString()}</div>
                     <div className="text-[10px] text-gray-500 mt-1">{T.margin || "Margin"}: {item.margin}%</div>
                   </ChartTooltipPortal>
                 )}
@@ -507,7 +509,7 @@ function RevenueExpensesChart({ history }: {
             <DollarSign className="w-3 h-3 text-blue-400" />
             <div className="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-wider">{T.totalRevenue || "Total Revenue"}</div>
           </div>
-          <div className="text-base sm:text-xl font-bold text-white">${(totalRevenue / 1000).toFixed(0)}k</div>
+          <div className="text-base sm:text-xl font-bold text-white">{symbol}{(convert(totalRevenue) / 1000).toFixed(0)}k</div>
           <div className="text-[10px] text-gray-500 mt-1">↑ {chartData[0].revenue > 0 ? Math.abs(((chartData[chartData.length-1].revenue - chartData[0].revenue) / chartData[0].revenue * 100)).toFixed(0) : "0"}% {T.demoVsStart || "vs start"}</div>
         </div>
         <div className="bg-rose-500/5 rounded-xl p-2 sm:p-3 border border-rose-500/15 flex flex-col items-center text-center">
@@ -515,7 +517,7 @@ function RevenueExpensesChart({ history }: {
             <TrendingDown className="w-3 h-3 text-rose-400" />
             <div className="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-wider">{T.totalExpenses || "Total Expenses"}</div>
           </div>
-          <div className="text-base sm:text-xl font-bold text-white">${(totalExpenses / 1000).toFixed(0)}k</div>
+          <div className="text-base sm:text-xl font-bold text-white">{symbol}{(convert(totalExpenses) / 1000).toFixed(0)}k</div>
           <div className="text-[10px] text-gray-500 mt-1">{((totalExpenses / totalRevenue) * 100).toFixed(0)}% {T.demoOfRevenue || "of revenue"}</div>
         </div>
         <div className="bg-green-500/10 rounded-xl p-2 sm:p-3 border border-green-500/20 flex flex-col items-center text-center">
@@ -523,7 +525,7 @@ function RevenueExpensesChart({ history }: {
             <TrendingUp className="w-3 h-3 text-green-400" />
             <div className="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-wider">{T.netProfit || "Net Profit"}</div>
           </div>
-          <div className="text-base sm:text-xl font-bold text-green-400">+${(totalProfit / 1000).toFixed(0)}k</div>
+          <div className="text-base sm:text-xl font-bold text-green-400">+{symbol}{(convert(totalProfit) / 1000).toFixed(0)}k</div>
           <div className="text-[10px] text-gray-500 mt-1">{avgMargin.toFixed(1)}% {T.demoAvgMargin || "avg margin"}</div>
         </div>
       </div>
@@ -592,7 +594,7 @@ interface CacPanelData {
   sparklineData: number[];
 }
 
-function SwipeableCacCard({ panels, language }: { panels: CacPanelData[]; language: string }) {
+function SwipeableCacCard({ panels, language, symbol = "$" }: { panels: CacPanelData[]; language: string; symbol?: string }) {
   const [index, setIndex] = useState(1);
   const touchStartX = useRef<number | null>(null);
   const theme = METRIC_CARD_THEMES["bg-orange-500"];
@@ -648,7 +650,7 @@ function SwipeableCacCard({ panels, language }: { panels: CacPanelData[]; langua
 
     <div className="mb-1 min-h-[52px]">
       {hasValue ? (
-        <AnimatedNumber value={panel.value as number} prefix="$" changePercent={panel.change} />
+        <AnimatedNumber value={panel.value as number} prefix={symbol} changePercent={panel.change} />
       ) : (
         <p className="text-xs text-gray-500 mt-2">
           {language === "UA" ? "Немає даних для цього джерела" : language === "DE" ? "Keine Daten für diese Quelle" : "No data for this source yet"}
@@ -712,6 +714,12 @@ function getCategoryIcon(category: string) {
 export default function DashboardPage() {
   const router = useRouter();
   const { t, language, setLanguage } = useLanguage();
+  const { currency, setCurrency, symbol, convert } = useCurrency();
+  // Обёртка над convert(), которая пропускает null/undefined — CAC по
+  // отдельным источникам (Meta/Google) может быть ещё не посчитан, если
+  // источник только подключается и данных пока недостаточно.
+  const convertOrNull = (v: number | null | undefined): number | null =>
+    v == null ? (v as null) : convert(v);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [activeView, setActiveView] = useState<ViewType>("overview");
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -1712,19 +1720,19 @@ if (!subInfo) {
                   <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 items-start">
                     <MetricCard
                       title={T.revenue || "Revenue"}
-                      value={currentRevenue}
+                      value={convert(currentRevenue)}
                       change={parseFloat(revenueChange)}
                       color="bg-blue-500"
-                      prefix="$"
+                      prefix={symbol}
                       sparklineData={revenueQueue}
                       prevValue={prevRevenue}
                     />
                     <MetricCard
                       title={T.profit || "Profit"}
-                      value={currentProfit}
+                      value={convert(currentProfit)}
                       change={parseFloat(profitChange)}
                       color="bg-green-500"
-                      prefix="$"
+                      prefix={symbol}
                       sparklineData={profitQueue}
                       prevValue={prevProfit}
                     />
@@ -1739,16 +1747,17 @@ if (!subInfo) {
                     />
                     <SwipeableCacCard
                       language={language}
+                      symbol={symbol}
                       panels={[
-                        { label: "Meta Ads", value: currentCacMeta, change: parseFloat(cacMetaChange), prev: prevCacMeta, sparklineData: cacMetaQueue },
+                        { label: "Meta Ads", value: convertOrNull(currentCacMeta), change: parseFloat(cacMetaChange), prev: convertOrNull(prevCacMeta), sparklineData: cacMetaQueue },
                         {
                           label: language === "UA" ? "Загальне" : language === "DE" ? "Gesamt" : "Combined",
-                          value: currentCac,
+                          value: convertOrNull(currentCac),
                           change: parseFloat(cacChange),
-                          prev: prevCac,
+                          prev: convertOrNull(prevCac),
                           sparklineData: cacQueue,
                         },
-                        { label: "Google Ads", value: currentCacGoogle, change: parseFloat(cacGoogleChange), prev: prevCacGoogle, sparklineData: cacGoogleQueue },
+                        { label: "Google Ads", value: convertOrNull(currentCacGoogle), change: parseFloat(cacGoogleChange), prev: convertOrNull(prevCacGoogle), sparklineData: cacGoogleQueue },
                       ]}
                     />
                   </div>
@@ -1941,7 +1950,7 @@ if (!subInfo) {
                       <div className="text-sm text-blue-400 font-semibold mb-1">
                         {(T.projectedRevenue || "Projected Revenue")} ({forecastData.horizonDays}{T.forecastDaysUnit || "d"})
                       </div>
-                      <div className="text-3xl font-bold text-white">${Math.round(forecastData.horizonDays === 30 ? forecastData.revenue30 : forecastData.revenue90).toLocaleString()}</div>
+                      <div className="text-3xl font-bold text-white">{symbol}{Math.round(convert(forecastData.horizonDays === 30 ? forecastData.revenue30 : forecastData.revenue90)).toLocaleString()}</div>
                       <div className={`text-sm mt-2 ${forecastData.dailyGrowthPct >= 0 ? "text-green-400" : "text-red-400"}`}>
                         {forecastData.dailyGrowthPct >= 0 ? "+" : ""}{forecastData.dailyGrowthPct.toFixed(2)}%/{language === "UA" ? "день (тренд)" : language === "DE" ? "Tag (Trend)" : "day (trend)"}
                       </div>
@@ -1953,7 +1962,7 @@ if (!subInfo) {
                       <div className="text-sm text-orange-400 font-semibold mb-1">
                         {(T.projectedExpenses || "Projected Expenses")} ({forecastData.horizonDays}{T.forecastDaysUnit || "d"})
                       </div>
-                      <div className="text-3xl font-bold text-white">${Math.round(forecastData.horizonDays === 30 ? forecastData.expenses30 : forecastData.expenses90).toLocaleString()}</div>
+                      <div className="text-3xl font-bold text-white">{symbol}{Math.round(convert(forecastData.horizonDays === 30 ? forecastData.expenses30 : forecastData.expenses90)).toLocaleString()}</div>
                       <div className="text-sm text-gray-500 mt-2">
                         {language === "UA" ? "лінійна екстраполяція витрат" : language === "DE" ? "lineare Extrapolation der Kosten" : "linear extrapolation of costs"}
                       </div>
@@ -2019,8 +2028,8 @@ if (!subInfo) {
                               <div key={i} className="flex flex-col items-center gap-1 flex-1 min-w-0">
                                 <span className="text-xs sm:text-sm text-gray-400 font-medium truncate max-w-full">{m.label}</span>
                                 <div className="flex gap-1.5 sm:gap-2 text-[9px] sm:text-[10px]">
-                                  <span className="text-blue-400">↑${Math.round(m.revenue / 1000)}k</span>
-                                  <span className="text-rose-400">↓${Math.round(m.expenses / 1000)}k</span>
+                                  <span className="text-blue-400">↑{symbol}{Math.round(convert(m.revenue) / 1000)}k</span>
+                                  <span className="text-rose-400">↓{symbol}{Math.round(convert(m.expenses) / 1000)}k</span>
                                 </div>
                               </div>
                             ))}
@@ -2355,6 +2364,14 @@ if (!subInfo) {
                     <div className="flex gap-1">
                       {(["EN", "UA", "DE"] as Language[]).map((lang) => (
                         <button key={lang} onClick={() => changeLanguage(lang)} className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${language === lang ? "bg-primary text-white" : "bg-secondary text-foreground hover:bg-secondary/80"}`}>{lang}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between py-2">
+                    <div><p className="font-medium text-foreground">{T.currency || "Currency"}</p><p className="text-xs text-muted-foreground">{T.settingsSelectCurrency || "Select your preferred currency"}</p></div>
+                    <div className="flex gap-1">
+                      {(["USD", "EUR"] as Currency[]).map((cur) => (
+                        <button key={cur} onClick={() => setCurrency(cur)} className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${currency === cur ? "bg-primary text-white" : "bg-secondary text-foreground hover:bg-secondary/80"}`}>{cur === "USD" ? "$ USD" : "€ EUR"}</button>
                       ))}
                     </div>
                   </div>
