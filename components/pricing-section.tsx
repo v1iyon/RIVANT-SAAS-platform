@@ -6,6 +6,7 @@ import { loadPaddle, openPaddleCheckout } from "@/lib/paddle-client";
 import { Button } from "@/components/ui/button";
 import { Check, Zap, Settings, FileText, Users, ArrowRight } from "lucide-react";
 import { useLanguage } from "@/lib/translations";
+import { useCurrency } from "@/lib/currency";
 
 type Plan = {
   name: string;
@@ -24,6 +25,7 @@ const PRICE_IDS: Record<string, string> = {
 export function PricingSection() {
   const { t } = useLanguage();
   const T = t as any;
+  const { formatPrice } = useCurrency();
   const supabase = createClient();
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
 
@@ -77,7 +79,7 @@ export function PricingSection() {
     },
     {
       name: T.scale ?? "Scale",
-      price: 499,
+      price: 399,
       description: T.pricingSubtitle ?? "Best for scaling businesses",
       features: T.scaleFeatures ?? [],
       popular: false,
@@ -133,7 +135,7 @@ export function PricingSection() {
                 </p>
               </div>
               <div className="mb-6 text-4xl font-bold text-white">
-                ${plan.price}<span className="text-sm text-muted-foreground font-normal">{t.perMonth}</span>
+                {formatPrice(plan.price)}<span className="text-sm text-muted-foreground font-normal">{t.perMonth}</span>
               </div>
               {/* flex-1 висить лише на списку фіч — саме тут "з'їдається" вся зайва
                   висота картки, а не під приміткою Growth. Завдяки цьому кнопка
@@ -178,7 +180,7 @@ export function PricingSection() {
                 <addon.icon className="w-8 h-8 text-primary mb-4" />
                 <h4 className="font-bold text-lg mb-1">{addon.name}</h4>
                 <div className="text-2xl font-bold mb-3">
-                  ${addon.price}
+                  {formatPrice(addon.price)}
                   <span className="text-sm font-normal text-muted-foreground"> {addon.priceType}</span>
                 </div>
                 <p className="text-sm text-muted-foreground mb-6 flex-1">{addon.description}</p>

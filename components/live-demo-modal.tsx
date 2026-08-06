@@ -691,7 +691,6 @@ function RevenueExpensesChart() {
             return (
               <div
                 key={idx}
-                ref={(el) => { barRefs.current[idx] = el; }}
                 className="relative flex-1 h-full flex flex-col justify-end items-center gap-0.5 group cursor-pointer"
                 onMouseEnter={() => showBarTooltip(idx)}
                 onMouseLeave={hideBarTooltip}
@@ -710,7 +709,13 @@ function RevenueExpensesChart() {
                   </ChartTooltipPortal>
                 )}
                 <div className="w-full mt-auto">
-                  <div className={`w-full ${getBarColor()} rounded-t-sm transition-all duration-150`} style={{ height: `${Math.max(percent, 3)}px`, minHeight: '3px' }} />
+                  {/* Реф — на закрашенном столбике, не на всю h-64 колонку-обёртку.
+                      См. подробный комментарий в app/dashboard/page.tsx. */}
+                  <div
+                    ref={(el) => { barRefs.current[idx] = el; }}
+                    className={`w-full ${getBarColor()} rounded-t-sm transition-all duration-150`}
+                    style={{ height: `${Math.max(percent, 3)}px`, minHeight: '3px' }}
+                  />
                 </div>
               </div>
             );
@@ -719,24 +724,24 @@ function RevenueExpensesChart() {
       </div>
       
       <div className="grid grid-cols-3 gap-2 sm:gap-3 mt-6 pt-4 border-t border-gray-800">
-        <div className="bg-blue-500/5 rounded-xl p-2 sm:p-3 border border-blue-500/15 overflow-hidden flex flex-col items-center text-center sm:items-start sm:text-left">
-          <div className="flex items-center justify-center sm:justify-start gap-1 sm:gap-1.5 mb-1">
+        <div className="bg-blue-500/5 rounded-xl p-2 sm:p-3 border border-blue-500/15 overflow-hidden flex flex-col items-center text-center">
+          <div className="flex items-center justify-center gap-1 sm:gap-1.5 mb-1">
             <DollarSign className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-blue-400 flex-shrink-0" />
             <div className="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-wider truncate">{T.demoRevenue || "Total Revenue"}</div>
           </div>
           <div className="text-base sm:text-xl font-bold text-white truncate">${(totalRevenue / 1000).toFixed(0)}k</div>
           <div className="text-[9px] sm:text-[10px] text-gray-500 mt-1 truncate">↑ {Math.abs(((history[history.length-1].revenue - history[0].revenue) / history[0].revenue * 100)).toFixed(0)}% {T.demoVsStart || "vs start"}</div>
         </div>
-        <div className="bg-rose-500/5 rounded-xl p-2 sm:p-3 border border-rose-500/15 overflow-hidden flex flex-col items-center text-center sm:items-start sm:text-left">
-          <div className="flex items-center justify-center sm:justify-start gap-1 sm:gap-1.5 mb-1">
+        <div className="bg-rose-500/5 rounded-xl p-2 sm:p-3 border border-rose-500/15 overflow-hidden flex flex-col items-center text-center">
+          <div className="flex items-center justify-center gap-1 sm:gap-1.5 mb-1">
             <TrendingDown className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-rose-400 flex-shrink-0" />
             <div className="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-wider truncate">{T.demoExpenses || "Total Expenses"}</div>
           </div>
           <div className="text-base sm:text-xl font-bold text-white truncate">${(totalExpenses / 1000).toFixed(0)}k</div>
           <div className="text-[9px] sm:text-[10px] text-gray-500 mt-1 truncate">{((totalExpenses / totalRevenue) * 100).toFixed(0)}% {T.demoOfRevenue || "of revenue"}</div>
         </div>
-        <div className="bg-green-500/10 rounded-xl p-2 sm:p-3 border border-green-500/20 overflow-hidden flex flex-col items-center text-center sm:items-start sm:text-left">
-          <div className="flex items-center justify-center sm:justify-start gap-1 sm:gap-1.5 mb-1">
+        <div className="bg-green-500/10 rounded-xl p-2 sm:p-3 border border-green-500/20 overflow-hidden flex flex-col items-center text-center">
+          <div className="flex items-center justify-center gap-1 sm:gap-1.5 mb-1">
             <TrendingUp className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-green-400 flex-shrink-0" />
             <div className="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-wider truncate">{T.demoProfit || "Net Profit"}</div>
           </div>

@@ -6,6 +6,8 @@ export type Language = "EN" | "UA" | "DE";
 
 export const translations = {
   EN: {
+    language: "Language",
+    currency: "Currency",
     overview: "Overview",
     risks: "Risks",
     forecast: "Forecast",
@@ -291,6 +293,8 @@ registerTitle: "Create Account",
 registerSubtitle: "Start your 14-day free trial"
   },
   UA: {
+    language: "Мова",
+    currency: "Валюта",
     overview: "Огляд",
     risks: "Ризики",
     forecast: "Прогноз",
@@ -576,6 +580,8 @@ registerTitle: "Створити акаунт",
 registerSubtitle: "Почніть безкоштовний пробний період на 14 днів"
   },
   DE: {
+    language: "Sprache",
+    currency: "Währung",
     overview: "Übersicht",
     risks: "Risiken",
     forecast: "Prognose",

@@ -466,7 +466,6 @@ function RevenueExpensesChart({ history }: {
             return (
               <div
                 key={idx}
-                ref={(el) => { barRefs.current[idx] = el; }}
                 className="relative flex-1 h-full flex flex-col justify-end items-center gap-0.5 group cursor-pointer min-w-[20px] sm:min-w-[24px]"
                 onMouseEnter={() => showBarTooltip(idx)}
                 onMouseLeave={hideBarTooltip}
@@ -484,7 +483,17 @@ function RevenueExpensesChart({ history }: {
                   </ChartTooltipPortal>
                 )}
                 <div className="w-full mt-auto">
-                  <div className={`w-full ${getBarColor()} rounded-t-sm transition-all duration-150`} style={{ height: `${Math.max(percent, 3)}px`, minHeight: '3px' }} />
+                  {/* Реф — на самом закрашенном столбике, а не на всю (фиксированной
+                      высоты) колонку-обёртку. Раньше тултип якорился к верху всей
+                      h-48/h-64 области графика независимо от значения дня, из-за
+                      чего для невысоких столбиков тултип "улетал" далеко вверх и
+                      перекрывал карточки метрик над графиком. Теперь якорь — верх
+                      именно того кусочка, который человек навёл/нажал. */}
+                  <div
+                    ref={(el) => { barRefs.current[idx] = el; }}
+                    className={`w-full ${getBarColor()} rounded-t-sm transition-all duration-150`}
+                    style={{ height: `${Math.max(percent, 3)}px`, minHeight: '3px' }}
+                  />
                 </div>
               </div>
             );
@@ -493,24 +502,24 @@ function RevenueExpensesChart({ history }: {
       </div>
 
       <div className="grid grid-cols-3 gap-2 sm:gap-3 mt-5 pt-4 border-t border-gray-800">
-        <div className="bg-blue-500/5 rounded-xl p-2 sm:p-3 border border-blue-500/15 flex flex-col items-center text-center sm:items-start sm:text-left">
-          <div className="flex flex-col items-center sm:flex-row sm:items-center gap-1 mb-1">
+        <div className="bg-blue-500/5 rounded-xl p-2 sm:p-3 border border-blue-500/15 flex flex-col items-center text-center">
+          <div className="flex flex-col items-center gap-1 mb-1">
             <DollarSign className="w-3 h-3 text-blue-400" />
             <div className="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-wider">{T.totalRevenue || "Total Revenue"}</div>
           </div>
           <div className="text-base sm:text-xl font-bold text-white">${(totalRevenue / 1000).toFixed(0)}k</div>
           <div className="text-[10px] text-gray-500 mt-1">↑ {chartData[0].revenue > 0 ? Math.abs(((chartData[chartData.length-1].revenue - chartData[0].revenue) / chartData[0].revenue * 100)).toFixed(0) : "0"}% {T.demoVsStart || "vs start"}</div>
         </div>
-        <div className="bg-rose-500/5 rounded-xl p-2 sm:p-3 border border-rose-500/15 flex flex-col items-center text-center sm:items-start sm:text-left">
-          <div className="flex flex-col items-center sm:flex-row sm:items-center gap-1 mb-1">
+        <div className="bg-rose-500/5 rounded-xl p-2 sm:p-3 border border-rose-500/15 flex flex-col items-center text-center">
+          <div className="flex flex-col items-center gap-1 mb-1">
             <TrendingDown className="w-3 h-3 text-rose-400" />
             <div className="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-wider">{T.totalExpenses || "Total Expenses"}</div>
           </div>
           <div className="text-base sm:text-xl font-bold text-white">${(totalExpenses / 1000).toFixed(0)}k</div>
           <div className="text-[10px] text-gray-500 mt-1">{((totalExpenses / totalRevenue) * 100).toFixed(0)}% {T.demoOfRevenue || "of revenue"}</div>
         </div>
-        <div className="bg-green-500/10 rounded-xl p-2 sm:p-3 border border-green-500/20 flex flex-col items-center text-center sm:items-start sm:text-left">
-          <div className="flex flex-col items-center sm:flex-row sm:items-center gap-1 mb-1">
+        <div className="bg-green-500/10 rounded-xl p-2 sm:p-3 border border-green-500/20 flex flex-col items-center text-center">
+          <div className="flex flex-col items-center gap-1 mb-1">
             <TrendingUp className="w-3 h-3 text-green-400" />
             <div className="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-wider">{T.netProfit || "Net Profit"}</div>
           </div>
