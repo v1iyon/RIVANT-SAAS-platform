@@ -9,7 +9,18 @@
 // - Результат кэшируется в forecast_cache на 6 часов, чтобы не дёргать
 //   Anthropic API при каждом открытии дашборда (синк всё равно раз в час).
 import { createClient } from "@supabase/supabase-js";
-import { convertAmount, type Currency } from "@/lib/currency";
+
+// Курс для конвертации сумм в промпте для ИИ-объяснения — сознательно НЕ
+// импортируем из lib/currency.tsx: тот файл помечен "use client" и тянет за
+// собой React Context/хуки, что при импорте в серверный Route Handler на
+// Vercel ломало вызов Anthropic API (падал в catch -> текст ИИ пропадал,
+// вместо него рендерился захардкоженный fallback-список трендов). Здесь —
+// самодостаточная копия того же курса, без клиентских зависимостей.
+const USD_TO_EUR_RATE = 0.867;
+type Currency = "USD" | "EUR";
+function convertAmount(usdAmount: number, currency: Currency): number {
+  return currency === "EUR" ? usdAmount * USD_TO_EUR_RATE : usdAmount;
+}
 
 export const dynamic = "force-dynamic";
 

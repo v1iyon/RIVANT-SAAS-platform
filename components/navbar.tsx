@@ -456,7 +456,7 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
                     className="flex items-center gap-1 px-2 py-2 -m-1 text-gray-300 hover:text-white"
                     aria-label="Currency"
                   >
-                    <span className="text-xs font-medium">{currency === "USD" ? "$" : "€"}</span>
+                    <span className="w-5 h-5 flex items-center justify-center text-base font-semibold leading-none">{currency === "USD" ? "$" : "€"}</span>
                     <ChevronDown className={`w-3 h-3 transition-transform ${isCurrencyOpen ? "rotate-180" : ""}`} />
                   </button>
 

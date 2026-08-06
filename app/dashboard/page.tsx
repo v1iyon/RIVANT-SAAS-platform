@@ -381,15 +381,29 @@ function RevenueExpensesChart({ history }: {
   }, [hoveredBar]);
 
   const isEmpty = !history || history.length === 0;
-  // Пока нет реальных данных — рисуем тот же скелет графика с нулями,
-  // а не блокирующее текстовое сообщение (было "No revenue history yet").
+  // Пока нет реальных данных вообще — рисуем скелет графика с нулями
+  // (было "No revenue history yet", решили не блокировать текстом).
+  // Если данные ЕСТЬ, но их меньше 30 дней (бизнес недавно подключился) —
+  // раньше немногочисленные реальные бары растягивались на всю ширину
+  // 30-дневного графика, что выглядело как рандомная растяжка, а не как
+  // "30 дней". Теперь спереди добавляются пустые дни-заглушки (isPlaceholder),
+  // чтобы график всегда показывал полные 30 колонок, а реальные данные
+  // оставались привязаны к своей фактической (более узкой) ширине столбика.
+  const PLACEHOLDER_DAY = { date: "", revenue: 0, expenses: 0, profit: 0, margin: 0, isPlaceholder: true as const };
   const chartData = isEmpty
-    ? Array.from({ length: 30 }, (_, i) => ({ day: i + 1, date: "", revenue: 0, expenses: 0, profit: 0, margin: 0 }))
-    : history;
-  const maxRevenue = Math.max(...chartData.map(d => d.revenue));
-  const maxExpenses = Math.max(...chartData.map(d => d.expenses));
-  const maxProfit = Math.max(...chartData.map(d => d.profit));
-  const minProfit = Math.min(...chartData.map(d => d.profit));
+    ? Array.from({ length: 30 }, (_, i) => ({ day: i + 1, ...PLACEHOLDER_DAY }))
+    : history.length < 30
+    ? [
+        ...Array.from({ length: 30 - history.length }, (_, i) => ({ day: -1, ...PLACEHOLDER_DAY })),
+        ...history.map((h) => ({ ...h, isPlaceholder: false as const })),
+      ]
+    : history.map((h) => ({ ...h, isPlaceholder: false as const }));
+  const realData = chartData.filter((d) => !d.isPlaceholder);
+  const statsBase = realData.length ? realData : chartData;
+  const maxRevenue = Math.max(...statsBase.map(d => d.revenue));
+  const maxExpenses = Math.max(...statsBase.map(d => d.expenses));
+  const maxProfit = Math.max(...statsBase.map(d => d.profit));
+  const minProfit = Math.min(...statsBase.map(d => d.profit));
   let maxValue = selectedMetric === "revenue" ? maxRevenue : selectedMetric === "expenses" ? maxExpenses : maxProfit;
   let minValue = selectedMetric === "profit" ? minProfit : 0;
 
@@ -410,13 +424,13 @@ function RevenueExpensesChart({ history }: {
     return item.profit;
   };
 
-  const totalRevenue = chartData.reduce((sum, d) => sum + d.revenue, 0);
-  const totalExpenses = chartData.reduce((sum, d) => sum + d.expenses, 0);
+  const totalRevenue = statsBase.reduce((sum, d) => sum + d.revenue, 0);
+  const totalExpenses = statsBase.reduce((sum, d) => sum + d.expenses, 0);
   const totalProfit = totalRevenue - totalExpenses;
-  const avgMargin = chartData.reduce((sum, d) => sum + d.margin, 0) / chartData.length;
+  const avgMargin = statsBase.reduce((sum, d) => sum + d.margin, 0) / statsBase.length;
   const expenseEfficiency = totalRevenue > 0 ? (totalExpenses / totalRevenue * 100).toFixed(1) : "0.0";
-  const bestDay = chartData.reduce((best, d, i) => d.margin > chartData[best].margin ? i : best, 0);
-  const worstDay = chartData.reduce((worst, d, i) => d.margin < chartData[worst].margin ? i : worst, 0);
+  const bestDay = statsBase.reduce((best, d, i) => d.margin > statsBase[best].margin ? i : best, 0);
+  const worstDay = statsBase.reduce((worst, d, i) => d.margin < statsBase[worst].margin ? i : worst, 0);
 
   return (
     <div className="bg-gradient-to-br from-gray-900/80 to-black rounded-2xl p-4 sm:p-5 border border-gray-800">
@@ -456,7 +470,24 @@ function RevenueExpensesChart({ history }: {
         </div>
 
         <div className="ml-12 h-48 sm:h-64 flex gap-0.5 sm:gap-1 overflow-x-auto overflow-y-visible pb-2">
-          {chartData.map((item, idx) => {
+          {chartData.map((item: any, idx) => {
+            if (item.isPlaceholder) {
+              // Пустая колонка-заглушка для дней, по которым ещё нет данных
+              // (бизнес недавно подключился) — держит полную 30-дневную
+              // сетку, вместо того чтобы растягивать немногочисленные
+              // реальные бары на всю ширину графика.
+              return (
+                <div
+                  key={idx}
+                  className="relative flex-1 h-full flex flex-col justify-end items-center gap-0.5 min-w-[20px] sm:min-w-[24px]"
+                  title={language === "UA" ? "Немає даних за цей день" : language === "DE" ? "Keine Daten für diesen Tag" : "No data for this day yet"}
+                >
+                  <div className="w-full mt-auto">
+                    <div className="w-full rounded-t-sm border border-dashed border-gray-700" style={{ height: "3px" }} />
+                  </div>
+                </div>
+              );
+            }
             const value = getMetricValue(item);
             let percent;
             if (selectedMetric === "profit") {
@@ -510,7 +541,7 @@ function RevenueExpensesChart({ history }: {
             <div className="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-wider">{T.totalRevenue || "Total Revenue"}</div>
           </div>
           <div className="text-base sm:text-xl font-bold text-white">{symbol}{(convert(totalRevenue) / 1000).toFixed(0)}k</div>
-          <div className="text-[10px] text-gray-500 mt-1">↑ {chartData[0].revenue > 0 ? Math.abs(((chartData[chartData.length-1].revenue - chartData[0].revenue) / chartData[0].revenue * 100)).toFixed(0) : "0"}% {T.demoVsStart || "vs start"}</div>
+          <div className="text-[10px] text-gray-500 mt-1">↑ {statsBase[0].revenue > 0 ? Math.abs(((statsBase[statsBase.length-1].revenue - statsBase[0].revenue) / statsBase[0].revenue * 100)).toFixed(0) : "0"}% {T.demoVsStart || "vs start"}</div>
         </div>
         <div className="bg-rose-500/5 rounded-xl p-2 sm:p-3 border border-rose-500/15 flex flex-col items-center text-center">
           <div className="flex flex-col items-center gap-1 mb-1">
@@ -537,11 +568,11 @@ function RevenueExpensesChart({ history }: {
         </div>
         <div className="flex flex-col items-center text-center">
           <span className="truncate w-full">{T.demoPeakMargin || "Peak margin"}</span>
-          <span className="text-gray-400 font-medium">{chartData[bestDay].margin}%</span>
+          <span className="text-gray-400 font-medium">{statsBase[bestDay].margin}%</span>
         </div>
         <div className="flex flex-col items-center text-center">
           <span className="truncate w-full">{T.demoLowMargin || "Low margin"}</span>
-          <span className="text-gray-400 font-medium">{chartData[worstDay].margin}%</span>
+          <span className="text-gray-400 font-medium">{statsBase[worstDay].margin}%</span>
         </div>
       </div>
     </div>
