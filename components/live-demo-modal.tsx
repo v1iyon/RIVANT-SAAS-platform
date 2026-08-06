@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { useLanguage } from "@/lib/translations";
 import { getSeverityLabel, getSeverityColorClasses } from "@/lib/severity";
@@ -542,13 +543,71 @@ const NOTIFICATION_VISIBLE_MS = 3000;
 // Максимум уведомлений, которые храним во вкладке "Риски"
 const MAX_RISKS_STORED = 10;
 
+// ТУЛТИП ЧЕРЕЗ ПОРТАЛ (см. подробный комментарий в app/dashboard/page.tsx у
+// ChartTooltipPortal — та же причина: overflow-x-auto на контейнере баров
+// заставляет браузер обрезать overflow-y, даже если он выставлен в visible,
+// поэтому тултип рендерим в document.body с position: fixed, вне контейнера.
+function ChartTooltipPortal({ anchor, children }: { anchor: { left: number; top: number } | null; children: React.ReactNode }) {
+  const [ready, setReady] = useState(false);
+  useEffect(() => setReady(true), []);
+  if (!ready || !anchor || typeof document === "undefined") return null;
+  const halfWidth = 115;
+  const padding = 8;
+  const clampedLeft = Math.min(
+    Math.max(anchor.left, halfWidth + padding),
+    window.innerWidth - halfWidth - padding
+  );
+  const clampedTop = Math.max(anchor.top - 8, padding);
+  return createPortal(
+    <div
+      style={{ position: "fixed", left: clampedLeft, top: clampedTop, transform: "translate(-50%, -100%)" }}
+      className="z-[200] bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 shadow-xl whitespace-nowrap max-w-[220px] pointer-events-none"
+    >
+      {children}
+    </div>,
+    document.body
+  );
+}
+
 // ГЛАВНЫЙ ГРАФИК
 function RevenueExpensesChart() {
   const { t } = useLanguage();
   const T = t as any;
   const [hoveredBar, setHoveredBar] = useState<number | null>(null);
+  const [tooltipAnchor, setTooltipAnchor] = useState<{ left: number; top: number } | null>(null);
+  const barRefs = useRef<(HTMLDivElement | null)[]>([]);
   const [selectedMetric, setSelectedMetric] = useState<"revenue" | "expenses" | "profit">("revenue");
   const history = CHART_DATA;
+
+  const showBarTooltip = (idx: number) => {
+    setHoveredBar(idx);
+    const el = barRefs.current[idx];
+    if (el) {
+      const rect = el.getBoundingClientRect();
+      setTooltipAnchor({ left: rect.left + rect.width / 2, top: rect.top });
+    }
+  };
+  const hideBarTooltip = () => {
+    setHoveredBar(null);
+    setTooltipAnchor(null);
+  };
+  const toggleBarTooltip = (idx: number) => {
+    if (hoveredBar === idx) {
+      hideBarTooltip();
+    } else {
+      showBarTooltip(idx);
+    }
+  };
+  useEffect(() => {
+    if (hoveredBar === null) return;
+    const close = () => hideBarTooltip();
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [hoveredBar]);
   
   const maxRevenue = Math.max(...history.map(d => d.revenue));
   const maxExpenses = Math.max(...history.map(d => d.expenses));
@@ -629,24 +688,17 @@ function RevenueExpensesChart() {
             } else {
               percent = (value / maxValue) * 100;
             }
-            // См. комментарий в app/dashboard/page.tsx: у крайних колонок тултип
-            // прижимается к своему краю, а не центрируется, чтобы не обрезаться
-            // видимой областью графика. Прикреплён к верху колонки фиксированной
-            // высоты (h-64), а не к верху самого столбика — не зависит от того,
-            // насколько высокий столбик.
-            const idxFraction = history.length > 1 ? idx / (history.length - 1) : 0.5;
-            const tooltipAnchorClass =
-              idxFraction < 0.15 ? "left-0" : idxFraction > 0.85 ? "right-0" : "left-1/2 -translate-x-1/2";
             return (
               <div
                 key={idx}
+                ref={(el) => { barRefs.current[idx] = el; }}
                 className="relative flex-1 h-full flex flex-col justify-end items-center gap-0.5 group cursor-pointer"
-                onMouseEnter={() => setHoveredBar(idx)}
-                onMouseLeave={() => setHoveredBar(null)}
-                onClick={() => setHoveredBar((prev) => (prev === idx ? null : idx))}
+                onMouseEnter={() => showBarTooltip(idx)}
+                onMouseLeave={hideBarTooltip}
+                onClick={() => toggleBarTooltip(idx)}
               >
                 {hoveredBar === idx && (
-                  <div className={`absolute bottom-full mb-2 ${tooltipAnchorClass} bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 z-20 shadow-xl whitespace-nowrap max-w-[220px]`}>
+                  <ChartTooltipPortal anchor={tooltipAnchor}>
                     <div className="text-xs font-bold text-white">{T.demoDay || "Day"} {item.day}</div>
                     <div className={`text-sm font-bold mt-1 ${getMetricValue(item) >= 0 ? "text-green-400" : "text-red-400"}`}>
                       {selectedMetric === "revenue" && "$"}{value.toLocaleString()}
@@ -655,7 +707,7 @@ function RevenueExpensesChart() {
                     <div className="text-[10px] text-gray-400 mt-1">{T.demoRevenue || "Revenue"}: ${item.revenue.toLocaleString()}</div>
                     <div className="text-[10px] text-gray-400">{T.demoExpenses || "Expenses"}: ${item.expenses.toLocaleString()}</div>
                     <div className="text-[10px] text-gray-500 mt-1">{T.demoMargin || "Margin"}: {item.margin}% · {T.demoProfit || "Profit"}: ${item.profit.toLocaleString()}</div>
-                  </div>
+                  </ChartTooltipPortal>
                 )}
                 <div className="w-full mt-auto">
                   <div className={`w-full ${getBarColor()} rounded-t-sm transition-all duration-150`} style={{ height: `${Math.max(percent, 3)}px`, minHeight: '3px' }} />

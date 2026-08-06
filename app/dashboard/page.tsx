@@ -4,6 +4,7 @@
 import { StripeConnectCard } from "@/components/dashboard/stripe-connect-card";
 import { IntegrationConnectCard } from "@/components/dashboard/integration-connect-card";
 import { useState, useEffect, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useLanguage, Language } from "@/lib/translations";
@@ -303,6 +304,37 @@ function TickerSparkline({ history, color, currentValue, previousValue }: { hist
   );
 }
 
+// ========== ТУЛТИП ЧЕРЕЗ ПОРТАЛ (для баров графика) ==========
+// Раньше тултип рендерился абсолютно внутри самого скроллящегося контейнера
+// графика (overflow-x-auto). Проблема в том, что CSS не позволяет одной оси
+// overflow быть "auto", а другой — "visible": стоит задать overflow-x: auto,
+// как overflow-y тоже начинает обрезать содержимое, даже если написано
+// overflow-y-visible. Из-за этого тултип обрезался сверху/снизу — особенно
+// заметно на высоких столбиках и у краёв графика. Портал в document.body с
+// position: fixed полностью обходит эту проблему, т.к. рендерится вне
+// прокручиваемого контейнера и вне любых overflow-hidden предков.
+function ChartTooltipPortal({ anchor, children }: { anchor: { left: number; top: number } | null; children: React.ReactNode }) {
+  const [ready, setReady] = useState(false);
+  useEffect(() => setReady(true), []);
+  if (!ready || !anchor || typeof document === "undefined") return null;
+  const halfWidth = 115; // половина max-w-[220px] тултипа
+  const padding = 8;
+  const clampedLeft = Math.min(
+    Math.max(anchor.left, halfWidth + padding),
+    window.innerWidth - halfWidth - padding
+  );
+  const clampedTop = Math.max(anchor.top - 8, padding);
+  return createPortal(
+    <div
+      style={{ position: "fixed", left: clampedLeft, top: clampedTop, transform: "translate(-50%, -100%)" }}
+      className="z-[200] bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 shadow-xl whitespace-nowrap max-w-[220px] pointer-events-none"
+    >
+      {children}
+    </div>,
+    document.body
+  );
+}
+
 // ========== КОМПОНЕНТ ГЛАВНОГО ГРАФИКА ==========
 function RevenueExpensesChart({ history }: {
   history: { day: number; date: string; revenue: number; expenses: number; profit: number; margin: number }[];
@@ -310,7 +342,41 @@ function RevenueExpensesChart({ history }: {
   const { t, language } = useLanguage();
   const T = t as any;
   const [hoveredBar, setHoveredBar] = useState<number | null>(null);
+  const [tooltipAnchor, setTooltipAnchor] = useState<{ left: number; top: number } | null>(null);
+  const barRefs = useRef<(HTMLDivElement | null)[]>([]);
   const [selectedMetric, setSelectedMetric] = useState<"revenue" | "expenses" | "profit">("revenue");
+
+  const showBarTooltip = (idx: number) => {
+    setHoveredBar(idx);
+    const el = barRefs.current[idx];
+    if (el) {
+      const rect = el.getBoundingClientRect();
+      setTooltipAnchor({ left: rect.left + rect.width / 2, top: rect.top });
+    }
+  };
+  const hideBarTooltip = () => {
+    setHoveredBar(null);
+    setTooltipAnchor(null);
+  };
+  const toggleBarTooltip = (idx: number) => {
+    if (hoveredBar === idx) {
+      hideBarTooltip();
+    } else {
+      showBarTooltip(idx);
+    }
+  };
+  // Закрываем тултип при скролле/ресайзе — иначе position:fixed уедет
+  // от столбика, к которому он был привязан в момент открытия.
+  useEffect(() => {
+    if (hoveredBar === null) return;
+    const close = () => hideBarTooltip();
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [hoveredBar]);
 
   const isEmpty = !history || history.length === 0;
   // Пока нет реальных данных — рисуем тот же скелет графика с нулями,
@@ -397,28 +463,17 @@ function RevenueExpensesChart({ history }: {
             } else {
               percent = (value / maxValue) * 100;
             }
-            // Позиция тултипа по горизонтали зависит от того, где стоит колонка:
-            // у первых/последних колонок центрирование сдвигало бы тултип за
-            // пределы видимой (скроллящейся) области графика и его обрезало —
-            // поэтому у краёв тултип прижимается к своему краю колонки, а не
-            // центрируется. Тултип специально может перекрывать соседний
-            // столбик — это ок, лишь бы был виден целиком.
-            const idxFraction = chartData.length > 1 ? idx / (chartData.length - 1) : 0.5;
-            const tooltipAnchorClass =
-              idxFraction < 0.15 ? "left-0" : idxFraction > 0.85 ? "right-0" : "left-1/2 -translate-x-1/2";
             return (
               <div
                 key={idx}
+                ref={(el) => { barRefs.current[idx] = el; }}
                 className="relative flex-1 h-full flex flex-col justify-end items-center gap-0.5 group cursor-pointer min-w-[20px] sm:min-w-[24px]"
-                onMouseEnter={() => setHoveredBar(idx)}
-                onMouseLeave={() => setHoveredBar(null)}
-                onClick={() => setHoveredBar((prev) => (prev === idx ? null : idx))}
+                onMouseEnter={() => showBarTooltip(idx)}
+                onMouseLeave={hideBarTooltip}
+                onClick={() => toggleBarTooltip(idx)}
               >
                 {hoveredBar === idx && (
-                  // Прикреплено к верху колонки фиксированной высоты (h-48/h-64),
-                  // а не к верху самого столбика — так позиция тултипа не зависит
-                  // от того, насколько высокий столбик, и не улетает выше графика.
-                  <div className={`absolute bottom-full mb-2 ${tooltipAnchorClass} bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 z-20 shadow-xl whitespace-nowrap max-w-[220px]`}>
+                  <ChartTooltipPortal anchor={tooltipAnchor}>
                     <div className="text-xs font-bold text-white">{T.day || "Day"} {item.day}</div>
                     <div className={`text-sm font-bold mt-1 ${getMetricValue(item) >= 0 ? "text-green-400" : "text-red-400"}`}>
                       {selectedMetric === "revenue" && "$"}{value.toLocaleString()}
@@ -426,7 +481,7 @@ function RevenueExpensesChart({ history }: {
                     <div className="text-[10px] text-gray-400 mt-1">{T.revenue || "Revenue"}: ${item.revenue.toLocaleString()}</div>
                     <div className="text-[10px] text-gray-400">{T.expenses || "Expenses"}: ${item.expenses.toLocaleString()}</div>
                     <div className="text-[10px] text-gray-500 mt-1">{T.margin || "Margin"}: {item.margin}%</div>
-                  </div>
+                  </ChartTooltipPortal>
                 )}
                 <div className="w-full mt-auto">
                   <div className={`w-full ${getBarColor()} rounded-t-sm transition-all duration-150`} style={{ height: `${Math.max(percent, 3)}px`, minHeight: '3px' }} />

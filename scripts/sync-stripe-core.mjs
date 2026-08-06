@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { decrypt } from "../lib/crypto.js";
 import { logError } from "../lib/log-error.js";
-import { getSeverityLabel } from "../lib/severity.js";
+import { getSeverityTelegramLabel } from "../lib/severity.js";
 
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
@@ -60,9 +60,39 @@ const REVENUE_DROP_MESSAGE = {
   DE: (name, pct, date) => `Umsatz von ${name} ist am ${date} um ${pct}% gesunken`,
 };
 
+// Резервне (не-AI) пояснення — використовується, коли Anthropic API
+// недоступний/впав. Раніше в такому випадку getAIExplanation повертав null,
+// і користувач бачив ЛИШЕ факт падіння виручки, без жодного пояснення чи
+// підказки "що перевірити" — саме це і було зламано. Тепер пояснення
+// показується ЗАВЖДИ: або від AI, або цей детермінований текст з тими самими
+// цифрами і форматом, що і в промпті вище. Дедуп на 24 години (нижче за
+// текстом, existingAlerts) не чіпаємо — він і так не дає слати одне й те ж
+// повідомлення повторно, це окремий, вже робочий механізм.
+function buildFallbackExplanation(language, today, yesterday, changePct) {
+  const marginDelta = Number(today.margin_pct) - Number(yesterday.margin_pct);
+  const direction = changePct < 0 ? { UA: "впала", EN: "dropped", DE: "gesunken" } : { UA: "зросла", EN: "rose", DE: "gestiegen" };
+  const marginWord = {
+    UA: Math.abs(marginDelta) < 1 ? "не змінилась" : marginDelta < 0 ? "знизилась" : "зросла",
+    EN: Math.abs(marginDelta) < 1 ? "unchanged" : marginDelta < 0 ? "lower" : "higher",
+    DE: Math.abs(marginDelta) < 1 ? "unverändert" : marginDelta < 0 ? "niedriger" : "höher",
+  };
+  const checkList = {
+    UA: "Перевірте: чи не було збою рекламних кампаній, чи не змінились ціни/асортимент, чи всі інтеграції синхронізуються без помилок.",
+    EN: "Check: any ad campaign outage, pricing/catalog changes, and whether all integrations are syncing without errors.",
+    DE: "Prüfen Sie: Werbekampagnen-Ausfälle, Preis-/Sortimentsänderungen und ob alle Integrationen fehlerfrei synchronisieren.",
+  };
+  const templates = {
+    UA: `Виручка ${direction.UA} на ${Math.abs(changePct).toFixed(0)}% (з $${yesterday.revenue} до $${today.revenue}), маржа ${marginWord.UA} і становить ${today.margin_pct}%. ${checkList.UA}`,
+    EN: `Revenue ${direction.EN} ${Math.abs(changePct).toFixed(0)}% (from $${yesterday.revenue} to $${today.revenue}), margin ${marginWord.EN} at ${today.margin_pct}%. ${checkList.EN}`,
+    DE: `Der Umsatz ist um ${Math.abs(changePct).toFixed(0)}% ${direction.DE} (von $${yesterday.revenue} auf $${today.revenue}), die Marge ist ${marginWord.DE} bei ${today.margin_pct}%. ${checkList.DE}`,
+  };
+  return templates[language] || templates.EN;
+}
+
 async function getAIExplanation(business, today, yesterday, language = "EN", changePct) {
   const buildPrompt = PROMPTS[language] || PROMPTS.EN;
   const prompt = buildPrompt(business, today, yesterday, changePct);
+  const fallback = () => buildFallbackExplanation(language, today, yesterday, changePct);
 
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
@@ -85,7 +115,7 @@ async function getAIExplanation(business, today, yesterday, language = "EN", cha
         throw new Error(`Anthropic API error: ${res.status} — ${errBody}`);
       }
       const data = await res.json();
-      return data.content?.[0]?.text?.trim() || null;
+      return data.content?.[0]?.text?.trim() || fallback();
     } catch (err) {
       console.error(`AI explanation failed (attempt ${attempt}/2):`, err.message);
       if (attempt === 2) {
@@ -94,12 +124,12 @@ async function getAIExplanation(business, today, yesterday, language = "EN", cha
           message: err.message,
           businessId: business.id,
         });
-        return null;
+        return fallback();
       }
       await new Promise((r) => setTimeout(r, 1000));
     }
   }
-  return null;
+  return fallback();
 }
 
 async function fetchStripeCharges(apiKey, sinceUnix) {
@@ -330,7 +360,7 @@ if (existingAlerts?.length) continue;
             });
             console.log("DEBUG alerts_log insert error:", alertErr);
 
-            const severityLabel = getSeverityLabel(severity, userLang);
+            const severityLabel = getSeverityTelegramLabel(severity, userLang);
 
             const fullMessage = aiExplanation
               ? `${severityLabel}\n${message}\n\n${aiExplanation}`
