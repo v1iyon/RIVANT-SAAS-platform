@@ -453,7 +453,8 @@ function RevenueExpensesChart({ history }: {
   const avgMargin = chartData.reduce((sum, d) => sum + d.margin, 0) / chartData.length;
   const expenseEfficiency = totalRevenue > 0 ? (totalExpenses / totalRevenue * 100).toFixed(1) : "0.0";
   const bestDay = chartData.reduce((best, d, i) => d.margin > chartData[best].margin ? i : best, 0);
-  const worstDay = statsBase.reduce((worst, d, i) => d.margin < statsBase[worst].margin ? i : worst, 0);
+  const worstDay = chartData.reduce((worst, d, i) => d.margin < chartData[worst].margin ? i : worst, 0);
+  const statsBase = chartData;
 
   return (
     <div className="bg-gradient-to-br from-gray-900/80 to-black rounded-2xl p-4 sm:p-5 border border-gray-800">
