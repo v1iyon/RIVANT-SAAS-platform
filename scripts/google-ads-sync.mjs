@@ -19,12 +19,19 @@
 import { createClient } from "@supabase/supabase-js";
 import { decrypt } from "../lib/crypto.js";
 import { logError } from "../lib/log-error.js";
-import { sendAlert, getUserContact, generateAlertExplanation, detectExpenseAnomaly, detectCacAnomaly } from "../lib/alerts.mjs";
+import { sendAlert, getUserContact, generateAlertExplanation, detectExpenseAnomaly, detectCacAnomaly, formatTechnicalDetail } from "../lib/alerts.mjs";
 
+// ВАЖНО: reason (err.message) сюда больше НЕ подставляется — это сырой
+// текст ошибки от Google Ads API, всегда на английском. Раньше он клеился
+// прямо в локализованное предложение ("Не вдалося синхронізувати Google
+// Ads: Google Ads API error: ...") — получалось наполовину на украинском,
+// наполовину на английском в одной строке. Теперь заголовок алерта всегда
+// полностью на одном языке; сырая причина уходит отдельной подписанной
+// строкой через formatTechnicalDetail() ниже.
 const SYNC_FAILURE_MESSAGE = {
-  UA: (reason) => `Не вдалося синхронізувати Google Ads: ${reason}`,
-  EN: (reason) => `Failed to sync Google Ads: ${reason}`,
-  DE: (reason) => `Google Ads Synchronisierung fehlgeschlagen: ${reason}`,
+  UA: () => `Не вдалося синхронізувати Google Ads`,
+  EN: () => `Failed to sync Google Ads`,
+  DE: () => `Google Ads Synchronisierung fehlgeschlagen`,
 };
 
 const SPEND_SPIKE_MESSAGE = {
@@ -282,11 +289,14 @@ async function main(businessId) {
       await admin.from("integrations").update({ status: "error" }).eq("id", integ.id);
 
       const contact = await getUserContact(await getBusinessUserId(integ.business_id));
-      const msg = (SYNC_FAILURE_MESSAGE[contact.userLang] || SYNC_FAILURE_MESSAGE.EN)(err.message);
-      const explanation = await generateAlertExplanation(
+      const msg = (SYNC_FAILURE_MESSAGE[contact.userLang] || SYNC_FAILURE_MESSAGE.EN)();
+      let explanation = await generateAlertExplanation(
         contact.userLang,
         `The Google Ads integration was previously connected and syncing successfully. It just failed with this error: "${err.message}". This usually means the refresh token was revoked or the developer token lost access.`
       );
+      // Сирую причину (всегда на английском) добавляем отдельной подписанной
+      // строкой — а не смешиваем с локализованным текстом объяснения.
+      explanation = `${explanation}${formatTechnicalDetail(contact.userLang, err.message)}`;
       await sendAlert({
         businessId: integ.business_id,
         type: "sync_failure_google_ads",

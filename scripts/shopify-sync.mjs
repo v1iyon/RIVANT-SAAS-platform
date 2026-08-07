@@ -17,12 +17,12 @@
 import { createClient } from "@supabase/supabase-js";
 import { decrypt } from "../lib/crypto.js";
 import { logError } from "../lib/log-error.js";
-import { sendAlert, getUserContact, generateAlertExplanation, detectExpenseAnomaly } from "../lib/alerts.mjs";
+import { sendAlert, getUserContact, generateAlertExplanation, detectExpenseAnomaly, formatTechnicalDetail } from "../lib/alerts.mjs";
 
 const SYNC_FAILURE_MESSAGE = {
-  UA: (reason) => `Не вдалося синхронізувати Shopify: ${reason}`,
-  EN: (reason) => `Failed to sync Shopify: ${reason}`,
-  DE: (reason) => `Shopify Synchronisierung fehlgeschlagen: ${reason}`,
+  UA: () => `Не вдалося синхронізувати Shopify`,
+  EN: () => `Failed to sync Shopify`,
+  DE: () => `Shopify Synchronisierung fehlgeschlagen`,
 };
 
 const COGS_SPIKE_MESSAGE = {
@@ -300,11 +300,12 @@ async function main(businessId) {
       await admin.from("integrations").update({ status: "error" }).eq("id", integ.id);
 
       const contact = await getUserContact(await getBusinessUserId(integ.business_id));
-      const msg = (SYNC_FAILURE_MESSAGE[contact.userLang] || SYNC_FAILURE_MESSAGE.EN)(err.message);
-      const explanation = await generateAlertExplanation(
+      const msg = (SYNC_FAILURE_MESSAGE[contact.userLang] || SYNC_FAILURE_MESSAGE.EN)();
+      let explanation = await generateAlertExplanation(
         contact.userLang,
         `The Shopify integration was previously connected and syncing successfully. It just failed with this error: "${err.message}". This usually means the Admin API access token was revoked or the store URL changed.`
       );
+      explanation = `${explanation}${formatTechnicalDetail(contact.userLang, err.message)}`;
       await sendAlert({
         businessId: integ.business_id,
         type: "sync_failure_shopify",

@@ -7,7 +7,7 @@
 // чтобы выбор сохранялся между визитами независимо от языка интерфейса
 // (человек может читать сайт на UA, а платить хочет видеть в EUR).
 
-import { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo } from "react";
+import { createContext, useContext, useState, ReactNode, useCallback, useMemo } from "react";
 
 export type Currency = "USD" | "EUR";
 
@@ -81,15 +81,24 @@ interface CurrencyContextType {
 
 const CurrencyContext = createContext<CurrencyContextType | undefined>(undefined);
 
-export function CurrencyProvider({ children }: { children: ReactNode }) {
-  const [currency, setCurrencyState] = useState<Currency>("USD");
+// ВАЖНО: раньше currency стартовал с хардкода "USD" и правильное значение
+// из localStorage подтягивалось только в useEffect (после первого рендера).
+// Компоненты, которые читают currency сразу на маунте (например useEffect
+// в app/dashboard/page.tsx, вызывающий /api/forecast с параметром
+// &currency=...), успевали сделать запрос ДО того, как этот эффект успевал
+// отработать — уходил и кэшировался на бэке снимок прогноза с currency=USD,
+// даже если на этом устройстве раньше уже был выбран EUR. Это тот же баг,
+// что был раньше в LanguageProvider (см. lib/translations.tsx) — и тот же
+// фикс: читаем localStorage синхронно прямо в инициализаторе useState, без
+// "мигания" и без гонки с сетевыми запросами.
+function getInitialCurrency(): Currency {
+  if (typeof window === "undefined") return "USD";
+  const saved = localStorage.getItem("preferredCurrency");
+  return saved === "USD" || saved === "EUR" ? saved : "USD";
+}
 
-  useEffect(() => {
-    const saved = localStorage.getItem("preferredCurrency") as Currency;
-    if (saved === "USD" || saved === "EUR") {
-      setCurrencyState(saved);
-    }
-  }, []);
+export function CurrencyProvider({ children }: { children: ReactNode }) {
+  const [currency, setCurrencyState] = useState<Currency>(getInitialCurrency);
 
   const setCurrency = useCallback((c: Currency) => {
     setCurrencyState(c);

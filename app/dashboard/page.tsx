@@ -1056,14 +1056,33 @@ const [companySaved, setCompanySaved] = useState(false);
 useEffect(() => {
   if (!profileEmail) return;
   setForecastLoaded(false);
-  fetch(`/api/forecast?email=${encodeURIComponent(profileEmail)}&language=${language}&currency=${currency}`, { cache: "no-store" })
+  // Стороны гонки: language/currency на маунте могут смениться почти сразу
+  // (пока подгружаются из аккаунта — см. lib/currency.tsx), и этот эффект
+  // перезапускается с новыми параметрами. Но если ПЕРВЫЙ (устаревший)
+  // запрос ответит ПОЗЖЕ второго (например его ответ не был в кэше и
+  // генерировался через Anthropic API дольше, чем второй, который уже был
+  // в forecast_cache) — setForecastData из первого запроса перезаписывал
+  // уже правильные данные устаревшими. AbortController игнорирует ответ
+  // запроса, который больше не актуален для текущих language/currency.
+  const controller = new AbortController();
+  fetch(`/api/forecast?email=${encodeURIComponent(profileEmail)}&language=${language}&currency=${currency}`, {
+    cache: "no-store",
+    signal: controller.signal,
+  })
     .then((res) => res.json())
-    .then((data) => setForecastData(data))
+    .then((data) => {
+      if (controller.signal.aborted) return;
+      setForecastData(data);
+    })
     .catch((e) => {
+      if (controller.signal.aborted) return;
       console.error("Failed to load forecast", e);
       setForecastData({ sufficient: false, days: 0 });
     })
-    .finally(() => setForecastLoaded(true));
+    .finally(() => {
+      if (!controller.signal.aborted) setForecastLoaded(true);
+    });
+  return () => controller.abort();
 }, [profileEmail, language, currency]);
 
   useEffect(() => {
