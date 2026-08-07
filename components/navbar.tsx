@@ -422,10 +422,10 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
                   {isLangOpen && (
                     <div
                       ref={langRef}
-                      className="absolute top-full right-0 mt-2 w-40 bg-gray-900 rounded-xl border border-white/10 p-3 z-50 shadow-xl"
+                      className="absolute top-full right-0 mt-2 w-24 bg-gray-900 rounded-xl border border-white/10 p-2 z-50 shadow-xl"
                     >
-                      <p className="text-xs text-gray-500 mb-1.5">{T.language || "Language"}</p>
-                      <div className="flex gap-1.5">
+                      <p className="text-xs text-gray-500 mb-1.5 px-1">{T.language || "Language"}</p>
+                      <div className="flex flex-col gap-1">
                         {(["EN", "UA", "DE"] as Language[]).map((lang) => (
                           <button
                             key={lang}
@@ -433,7 +433,7 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
                               changeLanguage(lang);
                               setIsLangOpen(false);
                             }}
-                            className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                            className={`w-full py-1.5 text-xs font-medium rounded-lg transition-colors ${
                               language === lang ? "bg-blue-600 text-white" : "bg-white/10 text-gray-400 hover:text-white"
                             }`}
                           >
@@ -463,10 +463,10 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
                   {isCurrencyOpen && (
                     <div
                       ref={currencyRef}
-                      className="absolute top-full right-0 mt-2 w-36 bg-gray-900 rounded-xl border border-white/10 p-3 z-50 shadow-xl"
+                      className="absolute top-full right-0 mt-2 w-24 bg-gray-900 rounded-xl border border-white/10 p-2 z-50 shadow-xl"
                     >
-                      <p className="text-xs text-gray-500 mb-1.5">{T.currency || "Currency"}</p>
-                      <div className="flex gap-1.5">
+                      <p className="text-xs text-gray-500 mb-1.5 px-1">{T.currency || "Currency"}</p>
+                      <div className="flex flex-col gap-1">
                         {(["USD", "EUR"] as Currency[]).map((cur) => (
                           <button
                             key={cur}
@@ -474,11 +474,11 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
                               changeCurrency(cur);
                               setIsCurrencyOpen(false);
                             }}
-                            className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                            className={`w-full py-1.5 text-xs font-medium rounded-lg transition-colors ${
                               currency === cur ? "bg-blue-600 text-white" : "bg-white/10 text-gray-400 hover:text-white"
                             }`}
                           >
-                            {cur === "USD" ? "$" : "€"}
+                            {cur === "USD" ? "$ USD" : "€ EUR"}
                           </button>
                         ))}
                       </div>

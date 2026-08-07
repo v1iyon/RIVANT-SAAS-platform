@@ -307,8 +307,19 @@ async function main(businessId) {
 
         if (date !== latestDate) continue; // см. комментарий про фикс спама выше
 
-        if (prev && prev.revenue > 0) {
-          const change = ((agg.revenue - prev.revenue) / prev.revenue) * 100;
+        if (prev) {
+          // ВАЖНО: раньше здесь стояло `if (prev && prev.revenue > 0)` — если
+          // ВЧЕРА выручка уже была нулевой (два дня подряд без оплат), весь
+          // блок алерта пропускался целиком (защита от деления на ноль),
+          // включая случай, когда выручка ТОЛЬКО ЧТО упала с чего-то до нуля
+          // (это и есть самый важный сигнал для алерта!). Раньше это ещё
+          // маскировалось соседним багом: дни без оплат вообще не писались в
+          // metrics_computed (см. фикс byDate выше), поэтому prev почти
+          // всегда был null, а не 0 — сейчас, когда нулевые дни пишутся
+          // по-настоящему, division-by-zero guard остаётся нужен сам по себе.
+          const change = prev.revenue > 0
+            ? ((agg.revenue - prev.revenue) / prev.revenue) * 100
+            : (agg.revenue > 0 ? 100 : 0); // с нуля восстановились = рост, всё ещё 0 = без изменений (не новый алерт)
 
           if (change > -20) {
             const { data: resolved, error: resolveErr } = await admin

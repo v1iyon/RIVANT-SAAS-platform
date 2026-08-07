@@ -427,13 +427,38 @@ function RevenueExpensesChart({ history }: {
   const maxExpenses = Math.max(...chartData.map(d => d.expenses));
   const maxProfit = Math.max(...chartData.map(d => d.profit));
   const minProfit = Math.min(...chartData.map(d => d.profit));
-  let maxValue = selectedMetric === "revenue" ? maxRevenue : selectedMetric === "expenses" ? maxExpenses : maxProfit;
-  let minValue = selectedMetric === "profit" ? minProfit : 0;
+
+  // Единая динамическая сетка для ВСЕХ трёх вкладок (Дохід/Витрати/Прибуток) —
+  // раньше у каждой вкладки была своя фиксированная шкала (150k/120k/60k),
+  // из-за чего при 9k дохода за месяц ось всё равно доходила до €130k, а
+  // сравнивая вкладки между собой человек не мог понять реальное соотношение
+  // расходов к доходу. Теперь потолок считается от РЕАЛЬНЫХ цифр человека,
+  // округляется вверх до "круглого" числа (1/2/2.5/5/10 × 10^n) и одинаков
+  // для всех вкладок — только у "Прибуток" может отдельно расширяться вниз
+  // ниже нуля, если были убыточные дни.
+  const niceAxisMax = (rawMax: number): number => {
+    if (rawMax <= 0) return 1000;
+    const withHeadroom = rawMax * 1.2; // запас ~20%, чтобы столбик-максимум не упирался в потолок
+    const magnitude = Math.pow(10, Math.floor(Math.log10(withHeadroom)));
+    const normalized = withHeadroom / magnitude;
+    let niceNormalized;
+    if (normalized <= 1) niceNormalized = 1;
+    else if (normalized <= 2) niceNormalized = 2;
+    else if (normalized <= 2.5) niceNormalized = 2.5;
+    else if (normalized <= 5) niceNormalized = 5;
+    else niceNormalized = 10;
+    return niceNormalized * magnitude;
+  };
+
+  const sharedMax = niceAxisMax(Math.max(maxRevenue, maxExpenses, maxProfit, 1));
+  let maxValue = sharedMax;
+  let minValue = selectedMetric === "profit" && minProfit < 0 ? -niceAxisMax(Math.abs(minProfit)) : 0;
 
   const getYSteps = () => {
-    if (selectedMetric === "revenue") return [0, 50000, 100000, 150000];
-    if (selectedMetric === "expenses") return [0, 40000, 80000, 120000];
-    return [0, 20000, 40000, 60000];
+    if (selectedMetric === "profit" && minValue < 0) {
+      return [minValue, minValue / 2, 0, maxValue / 2, maxValue];
+    }
+    return [0, maxValue / 3, (maxValue * 2) / 3, maxValue];
   };
   const ySteps = getYSteps();
   const getBarColor = () => {
@@ -495,23 +520,6 @@ function RevenueExpensesChart({ history }: {
 
         <div className="ml-12 h-48 sm:h-64 flex gap-0.5 sm:gap-1 overflow-x-auto overflow-y-visible pb-2">
           {chartData.map((item: any, idx) => {
-            if (item.isPlaceholder) {
-              // Пустая колонка-заглушка для дней, по которым ещё нет данных
-              // (бизнес недавно подключился) — держит полную 30-дневную
-              // сетку, вместо того чтобы растягивать немногочисленные
-              // реальные бары на всю ширину графика.
-              return (
-                <div
-                  key={idx}
-                  className="relative flex-1 h-full flex flex-col justify-end items-center gap-0.5 min-w-[20px] sm:min-w-[24px]"
-                  title={language === "UA" ? "Немає даних за цей день" : language === "DE" ? "Keine Daten für diesen Tag" : "No data for this day yet"}
-                >
-                  <div className="w-full mt-auto">
-                    <div className="w-full rounded-t-sm border border-dashed border-gray-700" style={{ height: "3px" }} />
-                  </div>
-                </div>
-              );
-            }
             const value = getMetricValue(item);
             let percent;
             if (selectedMetric === "profit") {
@@ -520,6 +528,14 @@ function RevenueExpensesChart({ history }: {
             } else {
               percent = (value / maxValue) * 100;
             }
+            percent = Math.max(0, Math.min(100, percent));
+
+            // Реальный ноль в этот день (не було оплат) — рисуем пунктирную
+            // "пустую" колонку вместо закрашенного столбика, но день всё
+            // равно кликабельный и в тултипе честно показывает 0, а не
+            // "нет данных" — это настоящая точка данных, просто нулевая.
+            const noData = value === 0;
+
             return (
               <div
                 key={idx}
@@ -530,7 +546,7 @@ function RevenueExpensesChart({ history }: {
               >
                 {hoveredBar === idx && (
                   <ChartTooltipPortal anchor={tooltipAnchor}>
-                    <div className="text-xs font-bold text-white">{T.day || "Day"} {item.day}</div>
+                    <div className="text-xs font-bold text-white">{T.day || "Day"} {item.day}{item.date ? ` · ${item.date}` : ""}</div>
                     <div className={`text-sm font-bold mt-1 ${getMetricValue(item) >= 0 ? "text-green-400" : "text-red-400"}`}>
                       {selectedMetric === "revenue" && symbol}{Math.round(convert(value)).toLocaleString()}
                     </div>
@@ -539,18 +555,33 @@ function RevenueExpensesChart({ history }: {
                     <div className="text-[10px] text-gray-500 mt-1">{T.margin || "Margin"}: {item.margin}%</div>
                   </ChartTooltipPortal>
                 )}
-                <div className="w-full mt-auto">
+                <div className="w-full h-full flex flex-col justify-end mt-auto">
                   {/* Реф — на самом закрашенном столбике, а не на всю (фиксированной
                       высоты) колонку-обёртку. Раньше тултип якорился к верху всей
                       h-48/h-64 области графика независимо от значения дня, из-за
                       чего для невысоких столбиков тултип "улетал" далеко вверх и
                       перекрывал карточки метрик над графиком. Теперь якорь — верх
-                      именно того кусочка, который человек навёл/нажал. */}
-                  <div
-                    ref={(el) => { barRefs.current[idx] = el; }}
-                    className={`w-full ${getBarColor()} rounded-t-sm transition-all duration-150`}
-                    style={{ height: `${Math.max(percent, 3)}px`, minHeight: '3px' }}
-                  />
+                      именно того кусочка, который человек навёл/нажал.
+                      ВАЖНО: высота теперь в % от контейнера (h-48/h-64), а не в px —
+                      раньше percent (0-100) подставлялся как height:${percent}px,
+                      из-за чего столбик физически не мог дотянуться до верха
+                      192-256px контейнера даже на максимальном значении, и при
+                      сравнении вкладок расходы/прибыль казались "почти на уровне"
+                      дохода просто из-за этого масштабного бага. */}
+                  {noData ? (
+                    <div
+                      ref={(el) => { barRefs.current[idx] = el; }}
+                      className="w-full rounded-t-sm border border-dashed border-gray-700"
+                      style={{ height: "3px" }}
+                      title={language === "UA" ? "Немає оплат за цей день" : language === "DE" ? "Keine Zahlungen an diesem Tag" : "No payments this day"}
+                    />
+                  ) : (
+                    <div
+                      ref={(el) => { barRefs.current[idx] = el; }}
+                      className={`w-full ${getBarColor()} rounded-t-sm transition-all duration-150`}
+                      style={{ height: `${Math.max(percent, 1.5)}%`, minHeight: "3px" }}
+                    />
+                  )}
                 </div>
               </div>
             );
@@ -559,29 +590,29 @@ function RevenueExpensesChart({ history }: {
       </div>
 
       <div className="grid grid-cols-3 gap-2 sm:gap-3 mt-5 pt-4 border-t border-gray-800">
-        <div className="bg-blue-500/5 rounded-xl p-2 sm:p-3 border border-blue-500/15 flex flex-col items-center text-center">
-          <div className="flex flex-col items-center gap-1 mb-1">
+        <div className="bg-blue-500/5 rounded-xl p-2 sm:p-2.5 border border-blue-500/15 flex flex-col items-center text-center">
+          <div className="flex flex-col items-center gap-0.5 mb-0.5">
             <DollarSign className="w-3 h-3 text-blue-400" />
-            <div className="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-wider">{T.totalRevenue || "Total Revenue"}</div>
+            <div className="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-wider leading-tight">{T.totalRevenue || "Total Revenue"}</div>
           </div>
-          <div className="text-base sm:text-xl font-bold text-white">{symbol}{(convert(totalRevenue) / 1000).toFixed(0)}k</div>
-          <div className="text-[10px] text-gray-500 mt-1">↑ {statsBase[0].revenue > 0 ? Math.abs(((statsBase[statsBase.length-1].revenue - statsBase[0].revenue) / statsBase[0].revenue * 100)).toFixed(0) : "0"}% {T.demoVsStart || "vs start"}</div>
+          <div className="text-base sm:text-lg font-bold text-blue-400">{symbol}{(convert(totalRevenue) / 1000).toFixed(0)}k</div>
+          <div className="text-[10px] text-gray-500 mt-0.5">↑ {statsBase[0].revenue > 0 ? Math.abs(((statsBase[statsBase.length-1].revenue - statsBase[0].revenue) / statsBase[0].revenue * 100)).toFixed(0) : "0"}% {T.demoVsStart || "vs start"}</div>
         </div>
-        <div className="bg-rose-500/5 rounded-xl p-2 sm:p-3 border border-rose-500/15 flex flex-col items-center text-center">
-          <div className="flex flex-col items-center gap-1 mb-1">
+        <div className="bg-rose-500/5 rounded-xl p-2 sm:p-2.5 border border-rose-500/15 flex flex-col items-center text-center">
+          <div className="flex flex-col items-center gap-0.5 mb-0.5">
             <TrendingDown className="w-3 h-3 text-rose-400" />
-            <div className="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-wider">{T.totalExpenses || "Total Expenses"}</div>
+            <div className="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-wider leading-tight">{T.totalExpenses || "Total Expenses"}</div>
           </div>
-          <div className="text-base sm:text-xl font-bold text-white">{symbol}{(convert(totalExpenses) / 1000).toFixed(0)}k</div>
-          <div className="text-[10px] text-gray-500 mt-1">{((totalExpenses / totalRevenue) * 100).toFixed(0)}% {T.demoOfRevenue || "of revenue"}</div>
+          <div className="text-base sm:text-lg font-bold text-rose-400">{symbol}{(convert(totalExpenses) / 1000).toFixed(0)}k</div>
+          <div className="text-[10px] text-gray-500 mt-0.5">{((totalExpenses / totalRevenue) * 100).toFixed(0)}% {T.demoOfRevenue || "of revenue"}</div>
         </div>
-        <div className="bg-green-500/10 rounded-xl p-2 sm:p-3 border border-green-500/20 flex flex-col items-center text-center">
-          <div className="flex flex-col items-center gap-1 mb-1">
+        <div className="bg-green-500/10 rounded-xl p-2 sm:p-2.5 border border-green-500/20 flex flex-col items-center text-center">
+          <div className="flex flex-col items-center gap-0.5 mb-0.5">
             <TrendingUp className="w-3 h-3 text-green-400" />
-            <div className="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-wider">{T.netProfit || "Net Profit"}</div>
+            <div className="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-wider leading-tight">{T.netProfit || "Net Profit"}</div>
           </div>
-          <div className="text-base sm:text-xl font-bold text-green-400">+{symbol}{(convert(totalProfit) / 1000).toFixed(0)}k</div>
-          <div className="text-[10px] text-gray-500 mt-1">{avgMargin.toFixed(1)}% {T.demoAvgMargin || "avg margin"}</div>
+          <div className="text-base sm:text-lg font-bold text-green-400">+{symbol}{(convert(totalProfit) / 1000).toFixed(0)}k</div>
+          <div className="text-[10px] text-gray-500 mt-0.5">{avgMargin.toFixed(1)}% {T.demoAvgMargin || "avg margin"}</div>
         </div>
       </div>
 
@@ -617,14 +648,14 @@ const METRIC_CARD_THEMES: Record<string, { from: string; border: string; text: s
   "bg-orange-500": { from: "from-orange-500/10", border: "border-orange-500/20", text: "text-orange-500", ticker: "bg-orange-500/60" },
 };
 
-function MetricCard({ title, value, change, color, prefix = "$", suffix = "", sparklineData, prevValue }: {
+function MetricCard({ title, value, change, color, prefix = "$", suffix = "", sparklineData, prevValue, subtitle }: {
   title: string; value: number; change: number; color: string; prefix?: string; suffix?: string;
-  sparklineData: number[]; prevValue: number;
+  sparklineData: number[]; prevValue: number; subtitle?: string;
 }) {
   const theme = METRIC_CARD_THEMES[color] || METRIC_CARD_THEMES["bg-blue-500"];
   return (
   <div className={`bg-gradient-to-br ${theme.from} to-transparent rounded-xl p-4 pb-5 border ${theme.border}`}>
-      <div className={`text-xs font-semibold mb-1 uppercase ${theme.text}`}>{title}</div>
+      <div className={`text-xs font-semibold mb-1 uppercase ${theme.text}`}>{title}{subtitle ? <span className="text-gray-500 normal-case font-normal"> · {subtitle}</span> : null}</div>
       <AnimatedNumber value={value} prefix={prefix} suffix={suffix} changePercent={change} />
       <TickerSparkline
         history={sparklineData}
@@ -788,15 +819,39 @@ const [forecastLoaded, setForecastLoaded] = useState(false);
   const lastRow = metricsRows[metricsRows.length - 1];
   const prevRow = metricsRows[metricsRows.length - 2];
 
-  const currentRevenue = lastRow?.revenue ?? 0;
-  const currentProfit = lastRow?.profit ?? 0;
-  const currentMargin = lastRow?.margin_pct ?? 0;
+  // Дохід/Прибуток/Маржа раньше показывали данные ОДНОГО последнего дня
+  // (lastRow) — если за сегодня/вчера не было ни одной оплаты (реальный $0
+  // день, см. fix in sync-stripe-core.mjs), карточки выглядели "сломанными"
+  // (€0, 0%), хотя бизнес стабильно зарабатывает уже недели. Меняем на
+  // агрегат за текущий календарный месяц (сумма revenue/profit, маржа —
+  // средневзвешенная от суммы, а не среднее по дням), сравнение — с прошлым
+  // календарным месяцем целиком, а не день к дню.
+  const monthKey = (dateStr: string) => dateStr.slice(0, 7); // YYYY-MM
+  const nowMonthKey = new Date().toISOString().slice(0, 7);
+  const prevMonthDate = new Date();
+  prevMonthDate.setDate(1);
+  prevMonthDate.setMonth(prevMonthDate.getMonth() - 1);
+  const prevMonthKeyStr = prevMonthDate.toISOString().slice(0, 7);
+
+  const currentMonthRows = metricsRows.filter((r) => monthKey(r.date) === nowMonthKey);
+  const prevMonthRows = metricsRows.filter((r) => monthKey(r.date) === prevMonthKeyStr);
+
+  const sumBy = (rows: MetricsRow[], f: (r: MetricsRow) => number) => rows.reduce((s, r) => s + f(r), 0);
+  const marginFrom = (rows: MetricsRow[]) => {
+    const rev = sumBy(rows, (r) => r.revenue);
+    const prof = sumBy(rows, (r) => r.profit);
+    return rev > 0 ? Number(((prof / rev) * 100).toFixed(1)) : 0;
+  };
+
+  const currentRevenue = sumBy(currentMonthRows, (r) => r.revenue);
+  const currentProfit = sumBy(currentMonthRows, (r) => r.profit);
+  const currentMargin = marginFrom(currentMonthRows);
   const currentCac = lastRow?.cac ?? null;
   const currentCacMeta = lastRow?.cacMeta ?? null;
   const currentCacGoogle = lastRow?.cacGoogle ?? null;
-  const prevRevenue = prevRow?.revenue ?? currentRevenue;
-  const prevProfit = prevRow?.profit ?? currentProfit;
-  const prevMargin = prevRow?.margin_pct ?? currentMargin;
+  const prevRevenue = prevMonthRows.length ? sumBy(prevMonthRows, (r) => r.revenue) : currentRevenue;
+  const prevProfit = prevMonthRows.length ? sumBy(prevMonthRows, (r) => r.profit) : currentProfit;
+  const prevMargin = prevMonthRows.length ? marginFrom(prevMonthRows) : currentMargin;
   const prevCac = prevRow?.cac ?? currentCac;
   const prevCacMeta = prevRow?.cacMeta ?? currentCacMeta;
   const prevCacGoogle = prevRow?.cacGoogle ?? currentCacGoogle;
@@ -1779,6 +1834,7 @@ if (!subInfo) {
                       change={parseFloat(revenueChange)}
                       color="bg-blue-500"
                       prefix={symbol}
+                      subtitle={T.thisMonth}
                       sparklineData={revenueQueue}
                       prevValue={prevRevenue}
                     />
@@ -1788,6 +1844,7 @@ if (!subInfo) {
                       change={parseFloat(profitChange)}
                       color="bg-green-500"
                       prefix={symbol}
+                      subtitle={T.thisMonth}
                       sparklineData={profitQueue}
                       prevValue={prevProfit}
                     />
@@ -1796,7 +1853,9 @@ if (!subInfo) {
                       value={currentMargin}
                       change={parseFloat(marginChange)}
                       color="bg-purple-500"
+                      prefix=""
                       suffix="%"
+                      subtitle={T.thisMonth}
                       sparklineData={marginQueue}
                       prevValue={prevMargin}
                     />
