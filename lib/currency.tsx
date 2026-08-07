@@ -7,7 +7,7 @@
 // чтобы выбор сохранялся между визитами независимо от языка интерфейса
 // (человек может читать сайт на UA, а платить хочет видеть в EUR).
 
-import { createContext, useContext, useState, ReactNode, useCallback, useMemo } from "react";
+import { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo } from "react";
 
 export type Currency = "USD" | "EUR";
 
@@ -81,21 +81,15 @@ interface CurrencyContextType {
 
 const CurrencyContext = createContext<CurrencyContextType | undefined>(undefined);
 
-function getInitialCurrency(): Currency {
-  // Тот же race, что и в LanguageProvider (lib/translations.tsx): стейт
-  // стартовал с дефолта "USD" и переключался на сохранённое значение только
-  // в useEffect, ПОСЛЕ первого рендера. На телефоне это давало на самом
-  // маунте дашборда лишний ранний /api/forecast-запрос с валютой по
-  // умолчанию, который на медленной сети мог физически ответить позже
-  // "правильного" повторного запроса и перетереть его результат обратно.
-  // Читаем localStorage синхронно прямо в инициализаторе стейта.
-  if (typeof window === "undefined") return "USD";
-  const saved = localStorage.getItem("preferredCurrency") as Currency;
-  return saved === "USD" || saved === "EUR" ? saved : "USD";
-}
-
 export function CurrencyProvider({ children }: { children: ReactNode }) {
-  const [currency, setCurrencyState] = useState<Currency>(getInitialCurrency);
+  const [currency, setCurrencyState] = useState<Currency>("USD");
+
+  useEffect(() => {
+    const saved = localStorage.getItem("preferredCurrency") as Currency;
+    if (saved === "USD" || saved === "EUR") {
+      setCurrencyState(saved);
+    }
+  }, []);
 
   const setCurrency = useCallback((c: Currency) => {
     setCurrencyState(c);
