@@ -1053,38 +1053,17 @@ const [companySaved, setCompanySaved] = useState(false);
     }
   };
 
-// Гонка ответов: на телефоне (медленнее/менее стабильная сеть) может
-// случиться так, что первый запрос (например, ещё с "старым" языком/валютой
-// на самом первом рендере) физически ответит ПОЗЖЕ второго — эффект уже
-// перезапустился с правильным language, второй fetch ушёл и даже успел
-// вернуться раньше, а потом отвечает первый (устаревший) и своим .then()
-// перетирает уже правильные данные обратно на старый язык. На ноуте с
-// быстрым и стабильным соединением оба ответа почти всегда приходят в
-// том же порядке, в котором ушли, поэтому там бага не видно. Флаг ниже
-// помечает эффект как "устаревший" при повторном запуске/размонтировании,
-// и .then() просто игнорирует результат, если это уже не последний запрос.
 useEffect(() => {
   if (!profileEmail) return;
-  let stale = false;
   setForecastLoaded(false);
   fetch(`/api/forecast?email=${encodeURIComponent(profileEmail)}&language=${language}&currency=${currency}`, { cache: "no-store" })
     .then((res) => res.json())
-    .then((data) => {
-      if (stale) return;
-      setForecastData(data);
-    })
+    .then((data) => setForecastData(data))
     .catch((e) => {
-      if (stale) return;
       console.error("Failed to load forecast", e);
       setForecastData({ sufficient: false, days: 0 });
     })
-    .finally(() => {
-      if (stale) return;
-      setForecastLoaded(true);
-    });
-  return () => {
-    stale = true;
-  };
+    .finally(() => setForecastLoaded(true));
 }, [profileEmail, language, currency]);
 
   useEffect(() => {
