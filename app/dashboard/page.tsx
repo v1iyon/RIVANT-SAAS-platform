@@ -1092,10 +1092,30 @@ useEffect(() => {
         return;
       }
       const email = data.session.user.email || "";
+      // ВАЖНО: /api/profile (несёт правильный language аккаунта) раньше
+      // фетчился ПОСЛЕДНИМ, после 7-8 других последовательных await —
+      // а setProfileEmail(email) ниже вызывался практически сразу. Именно
+      // setProfileEmail отпирает useEffect с /api/forecast (он зависит от
+      // profileEmail). На медленном соединении (мобильный интернет) прогноз
+      // успевал уйти и закэшироваться с дефолтным/устаревшим language ещё
+      // ДО того, как вся цепочка запросов доходила до профиля и успевала
+      // вызвать setLanguage(...) с реальным языком аккаунта — отсюда
+      // "то на украинском мелькнуло, обновила — снова на английском".
+      // Фикс: запускаем /api/profile СРАЗУ (не дожидаясь остальных фетчей)
+      // и дожидаемся именно его ПЕРЕД setProfileEmail, чтобы language был
+      // уже верным к моменту первого запроса прогноза.
+      const profilePromise = fetch(`/api/profile?email=${encodeURIComponent(email)}`, { cache: "no-store" }).then((r) => r.json());
       const prefsRes = await fetch(`/api/notification-prefs?email=${encodeURIComponent(email)}`);
       const prefs = await prefsRes.json();
       setNotificationsEnabled(prefs.push_enabled);
       setEmailAlerts(prefs.email_enabled);
+      const profile = await profilePromise;
+      if (
+        (profile.language === "EN" || profile.language === "UA" || profile.language === "DE") &&
+        profile.language !== language
+      ) {
+        setLanguage(profile.language);
+      }
       setProfileEmail(email);
       setEditEmail(email);
       setIsAuthenticated(true);
@@ -1178,22 +1198,8 @@ if (bizData.business) {
       const verifiedFactor = factorsData?.totp?.find((f: any) => f.status === "verified");
       setTwoFactorEnabled(!!verifiedFactor);
       if (verifiedFactor) setMfaFactorId(verifiedFactor.id);
-      const profileRes = await fetch(`/api/profile?email=${encodeURIComponent(email)}`, { cache: "no-store" });
-      const profile = await profileRes.json();
-      // Язык теперь привязан к аккаунту (users.language), а не только к
-      // localStorage конкретного устройства. Если на этом устройстве язык
-      // ещё не выбирали вручную ЛОКАЛЬНО (или он расходится с тем, что
-      // сохранено в аккаунте), подтягиваем сохранённое значение из БД —
-      // иначе на телефоне после первого открытия язык навсегда остаётся
-      // дефолтным "EN", даже если на ноуте давно выбран UA. Локальный
-      // localStorage продолжает работать как быстрый кэш поверх этого
-      // значения (changeLanguage ниже пишет туда же).
-      if (
-        (profile.language === "EN" || profile.language === "UA" || profile.language === "DE") &&
-        profile.language !== language
-      ) {
-        setLanguage(profile.language);
-      }
+      // profile уже получен и язык уже скорректирован в начале эффекта
+      // (см. profilePromise выше) — здесь только используем оставшиеся поля.
       const displayName = profile.full_name || email.split("@")[0] || "";
       if (displayName) {
         setProfileName(displayName);
@@ -2234,10 +2240,10 @@ if (!subInfo) {
                         </>
                       );
                     })()}
-                    <div className="flex justify-center gap-6 mt-4 pt-3 text-[10px] text-gray-600 border-t border-gray-800">
-                      <div className="flex items-center gap-1"><div className="w-3 h-3 bg-blue-500 rounded-sm" /><span>{T.demoRevenueForecast || "Revenue Forecast"}</span></div>
-                      <div className="flex items-center gap-1"><div className="w-3 h-3 bg-blue-500/30 rounded-sm" /><span>{T.demoActualRevenue || "Actual Revenue"}</span></div>
-                      <div className="flex items-center gap-1"><div className="w-3 h-3 bg-rose-500/60 rounded-sm" /><span>{T.demoExpensesForecast || "Expenses"}</span></div>
+                    <div className="flex flex-wrap justify-center gap-x-4 gap-y-1.5 sm:gap-x-6 mt-4 pt-3 text-[10px] text-gray-600 border-t border-gray-800">
+                      <div className="flex items-center gap-1 whitespace-nowrap"><div className="w-3 h-3 bg-blue-500 rounded-sm shrink-0" /><span>{T.demoRevenueForecast || "Revenue Forecast"}</span></div>
+                      <div className="flex items-center gap-1 whitespace-nowrap"><div className="w-3 h-3 bg-blue-500/30 rounded-sm shrink-0" /><span>{T.demoActualRevenue || "Actual Revenue"}</span></div>
+                      <div className="flex items-center gap-1 whitespace-nowrap"><div className="w-3 h-3 bg-rose-500/60 rounded-sm shrink-0" /><span>{T.demoExpensesForecast || "Expenses"}</span></div>
                     </div>
                   </div>
 
