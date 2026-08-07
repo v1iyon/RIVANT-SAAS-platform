@@ -400,7 +400,16 @@ function RevenueExpensesChart({ history }: {
     Math.round((new Date(b + "T00:00:00Z").getTime() - new Date(a + "T00:00:00Z").getTime()) / 86400000);
 
   const MAX_WINDOW_DAYS = 14;
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0, 10);
+  // Начало текущего календарного месяца — окно графика никогда не должно
+  // "заходить" в предыдущий месяц. Раньше стартом ленты была самая первая
+  // запись за всю историю бизнеса: если синк только начался, скажем, 28
+  // июля, а сегодня 7 августа, лента показывала все 11 дней подряд (28.07–
+  // 07.08), из-за чего "7-й день месяца" на графике выглядел как "11 дней
+  // данных" — не сходилось с карточками метрик наверху, которые честно
+  // считают только текущий месяц.
+  const monthStartStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
 
   let chartData: { day: number; date: string; revenue: number; expenses: number; profit: number; margin: number }[];
 
@@ -411,9 +420,12 @@ function RevenueExpensesChart({ history }: {
   } else {
     const byDate = new Map(history.map((h) => [h.date, h]));
     const firstDate = history[0].date;
-    const spanDays = diffDaysStr(firstDate, todayStr) + 1;
+    // Реальный старт ленты — не раньше начала текущего месяца, даже если
+    // история бизнеса длиннее.
+    const earliestAllowedDate = firstDate > monthStartStr ? firstDate : monthStartStr;
+    const spanDays = diffDaysStr(earliestAllowedDate, todayStr) + 1;
     const windowDays = Math.min(Math.max(spanDays, 1), MAX_WINDOW_DAYS);
-    const windowStart = spanDays > MAX_WINDOW_DAYS ? addDaysStr(todayStr, -(windowDays - 1)) : firstDate;
+    const windowStart = spanDays > MAX_WINDOW_DAYS ? addDaysStr(todayStr, -(windowDays - 1)) : earliestAllowedDate;
     chartData = Array.from({ length: windowDays }, (_, i) => {
       const date = addDaysStr(windowStart, i);
       const real = byDate.get(date);
@@ -568,20 +580,12 @@ function RevenueExpensesChart({ history }: {
                       192-256px контейнера даже на максимальном значении, и при
                       сравнении вкладок расходы/прибыль казались "почти на уровне"
                       дохода просто из-за этого масштабного бага. */}
-                  {noData ? (
-                    <div
-                      ref={(el) => { barRefs.current[idx] = el; }}
-                      className="w-full rounded-t-sm border border-dashed border-gray-700"
-                      style={{ height: "3px" }}
-                      title={language === "UA" ? "Немає оплат за цей день" : language === "DE" ? "Keine Zahlungen an diesem Tag" : "No payments this day"}
-                    />
-                  ) : (
-                    <div
-                      ref={(el) => { barRefs.current[idx] = el; }}
-                      className={`w-full ${getBarColor()} rounded-t-sm transition-all duration-150`}
-                      style={{ height: `${Math.max(percent, 1.5)}%`, minHeight: "3px" }}
-                    />
-                  )}
+                  <div
+                    ref={(el) => { barRefs.current[idx] = el; }}
+                    className={`w-full ${getBarColor()} rounded-t-sm transition-all duration-150 ${noData ? "opacity-40" : ""}`}
+                    style={{ height: `${Math.max(percent, 1.5)}%`, minHeight: "3px" }}
+                    title={noData ? (language === "UA" ? "Немає оплат за цей день" : language === "DE" ? "Keine Zahlungen an diesem Tag" : "No payments this day") : undefined}
+                  />
                 </div>
               </div>
             );

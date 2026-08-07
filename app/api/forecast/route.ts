@@ -40,6 +40,31 @@ interface MetricsRow {
   margin_pct: number;
 }
 
+// Раньше дни без единой Stripe-оплаты вообще не попадали в metrics_computed
+// (см. фикс byDate в sync-stripe-core.mjs), из-за чего linearRegression()
+// ниже считал по ИНДЕКСУ массива, а не по календарным дням — пропущенный
+// "нулевой" день просто исчезал из тренда, сжимая таймлайн и искажая наклон
+// прогноза. Заодно "сколько дней данных" (days = metricsRows.length)
+// занижался: человек видел "прогноз по 10 дням" на 12-й реальный день с
+// момента подключения. Заполняем дырки реальными нулями по календарю — от
+// первой даты в данных ДО СЕГОДНЯ (не до последней строки — если синк ещё
+// не успел прогнать сегодняшний день, он всё равно должен считаться).
+function fillCalendarGaps(rows: MetricsRow[]): MetricsRow[] {
+  if (rows.length === 0) return rows;
+  const byDate = new Map(rows.map((r) => [r.date, r]));
+  const first = rows[0].date;
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const filled: MetricsRow[] = [];
+  const cursor = new Date(first + "T00:00:00Z");
+  const end = new Date(todayStr + "T00:00:00Z");
+  while (cursor <= end) {
+    const dateStr = cursor.toISOString().slice(0, 10);
+    filled.push(byDate.get(dateStr) || { date: dateStr, revenue: 0, cost: 0, margin_pct: 0 });
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return filled;
+}
+
 async function getBusinessId(email: string) {
   const { data: appUser } = await admin.from("users").select("id").eq("email", email).maybeSingle();
   if (!appUser) return null;
@@ -239,7 +264,7 @@ if (!stripeConnected) return Response.json({ sufficient: false, days: 0, tier: "
     }
   }
 
-  const metricsRows: MetricsRow[] = rawRows;
+  const metricsRows: MetricsRow[] = fillCalendarGaps(rawRows);
   const days = metricsRows.length;
   const tier = getTier(days);
 

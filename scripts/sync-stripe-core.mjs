@@ -337,7 +337,7 @@ async function main(businessId) {
 
             const { data: user } = await admin
               .from("users")
-              .select("telegram_id, email, email_enabled, language")
+              .select("telegram_id, email, email_enabled, push_enabled, language")
               .eq("id", business.user_id)
               .maybeSingle();
 
@@ -391,7 +391,10 @@ if (existingAlerts?.length) continue;
               ? `${severityLabel}\n${message}\n\n${aiExplanation}`
               : `${severityLabel}\n${message}`;
 
-            if (user?.telegram_id) {
+            // push_enabled раньше не проверялся здесь вовсе (см. тот же фикс
+            // в lib/alerts.mjs) — тумблер уведомлений в кабинете ни на что не
+            // влиял для этого конкретного алерта (revenue_drop).
+            if (user?.telegram_id && user?.push_enabled !== false) {
               await sendTelegram(user.telegram_id, fullMessage);
             }
             if (user?.email_enabled && user?.email) {

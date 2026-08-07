@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, ReactNode, useEffect, useCallback } from "react";
+import { createContext, useContext, useState, ReactNode, useCallback } from "react";
 
 export type Language = "EN" | "UA" | "DE";
 
@@ -203,7 +203,7 @@ export const translations = {
     cac: "CAC",
     activeAlerts: "Active Alerts",
     viewAll: "View all",
-    revenueVsExpenses: "Revenue vs Expenses (30 Days)",
+    revenueVsExpenses: "Revenue vs Expenses (this month)",
     expenses: "Expenses",
     activeRisks: "Active Risks",
     exportReport: "Export Report",
@@ -490,7 +490,7 @@ registerSubtitle: "Start your 14-day free trial"
     cac: "CAC",
     activeAlerts: "Активні сповіщення",
     viewAll: "Переглянути всі",
-    revenueVsExpenses: "Дохід проти витрат (30 днів)",
+    revenueVsExpenses: "Дохід проти витрат (цей місяць)",
     expenses: "Витрати",
     activeRisks: "Активні ризики",
     exportReport: "Експортувати звіт",
@@ -780,7 +780,7 @@ minutes: "Minuten",
     cac: "CAC",
     activeAlerts: "Aktive Warnungen",
     viewAll: "Alle anzeigen",
-    revenueVsExpenses: "Umsatz vs. Ausgaben (30 Tage)",
+    revenueVsExpenses: "Umsatz vs. Ausgaben (diesen Monat)",
     expenses: "Ausgaben",
     activeRisks: "Aktive Risiken",
     exportReport: "Bericht exportieren",
@@ -878,15 +878,24 @@ interface LanguageContextType {
 
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
-export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [language, setLanguageState] = useState<Language>("EN");
+function getInitialLanguage(): Language {
+  // Раньше стейт всегда стартовал с "EN" и переключался на сохранённый язык
+  // только в useEffect (т.е. уже ПОСЛЕ первого рендера). На вебе разница в
+  // доли секунды незаметна, но на телефоне (более медленный JS-поток,
+  // задержки гидратации) запросы, которые уходят сразу на маунте компонента
+  // (например /api/forecast в дашборде), успевали улететь с language=EN
+  // до того, как этот эффект успевал прочитать localStorage — и AI-текст
+  // прогноза кэшировался/приходил на английском, даже если весь остальной
+  // интерфейс уже был на украинском. Читаем localStorage синхронно прямо в
+  // инициализаторе useState, чтобы правильный язык был известен уже на
+  // самом первом рендере, без "мигания" EN и без гонки с сетевыми запросами.
+  if (typeof window === "undefined") return "EN";
+  const saved = localStorage.getItem("preferredLanguage") as Language;
+  return saved === "EN" || saved === "UA" || saved === "DE" ? saved : "EN";
+}
 
-  useEffect(() => {
-    const saved = localStorage.getItem("preferredLanguage") as Language;
-    if (saved === "EN" || saved === "UA" || saved === "DE") {
-      setLanguageState(saved);
-    }
-  }, []);
+export function LanguageProvider({ children }: { children: ReactNode }) {
+  const [language, setLanguageState] = useState<Language>(getInitialLanguage);
 
   const setLanguage = useCallback((lang: Language) => {
     console.log("Setting language to:", lang);
