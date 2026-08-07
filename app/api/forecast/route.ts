@@ -29,9 +29,16 @@ const admin = createClient(
   process.env.SUPABASE_SERVICE_KEY!
 );
 
-const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 часов
 const MIN_DAYS_ABSOLUTE = 3; // меньше — вообще не показываем прогноз
 const MIN_DAYS_FULL_CONFIDENCE = 14; // с этого порога — обычная уверенность
+
+// Прогноз должен быть "снимком на сутки": одинаковый на всех устройствах
+// в течение одного календарного дня (UTC) и обновляющийся ровно раз в
+// день — а не при каждом открытии дашборда. today() ниже — единственная
+// точка правды о "текущем дне" для кэша.
+function todayUTC(): string {
+  return new Date().toISOString().slice(0, 10);
+}
 
 interface MetricsRow {
   date: string;
@@ -310,7 +317,7 @@ if (!stripeConnected) return Response.json({ sufficient: false, days: 0, tier: "
   const cacheLanguageKey = `${language}::${horizonDays}::${currency}`;
   const { data: cachedRows, error: cacheReadErr } = await admin
     .from("forecast_cache")
-    .select("id, days, language, explanation, generated_at")
+    .select("id, days, language, explanation, numbers, generated_at")
     .eq("business_id", businessId)
     .order("generated_at", { ascending: false });
 
@@ -327,16 +334,31 @@ if (!stripeConnected) return Response.json({ sufficient: false, days: 0, tier: "
     await admin.from("forecast_cache").delete().in("id", staleDuplicateIds);
   }
 
+  // Прогноз — снимок на календарный день (UTC), а не "живой" пересчёт на
+  // каждый запрос. Раньше кэшировался только текст объяснения (на 6 часов),
+  // а сами цифры (revenueHorizon/expensesHorizon/dailyGrowthPct и т.д.)
+  // считались заново при КАЖДОМ открытии дашборда прямо из metrics_computed.
+  // Строка "сегодня" в metrics_computed продолжает получать выручку по
+  // мере поступления оплат в течение дня, поэтому регрессия по последней
+  // точке чуть менялась от захода к заходу — и телефон с ноутом (открытые
+  // в разное время того же дня) могли показать разные цифры. Теперь: если
+  // есть кэш за СЕГОДНЯ с тем же days/language/horizon/currency — отдаём
+  // его как есть, не пересчитывая. Новый снимок считается ровно один раз —
+  // при первом открытии дашборда после смены календарного дня (или когда
+  // days реально изменился, т.е. пришли новые синхронизированные данные).
   const cacheIsFresh =
-    cached &&
+    !!cached &&
     cached.days === days &&
     cached.language === cacheLanguageKey &&
-    Date.now() - new Date(cached.generated_at).getTime() < CACHE_TTL_MS;
+    cached.numbers != null &&
+    new Date(cached.generated_at).toISOString().slice(0, 10) === todayUTC();
 
   let explanation: string;
+  let numbersToReturn: Record<string, unknown> = forecastNumbers;
 
   if (cacheIsFresh) {
     explanation = cached.explanation;
+    numbersToReturn = cached.numbers as Record<string, unknown>;
   } else {
     try {
       explanation = await generateExplanation(language, currency, {
@@ -349,24 +371,25 @@ if (!stripeConnected) return Response.json({ sufficient: false, days: 0, tier: "
         expensesHorizon,
         r2: revenueReg.r2,
       });
-      const cacheRow = {
-        business_id: businessId,
-        days,
-        language: cacheLanguageKey,
-        explanation,
-        generated_at: new Date().toISOString(),
-      };
-      if (cached?.id) {
-        await admin.from("forecast_cache").update(cacheRow).eq("id", cached.id);
-      } else {
-        await admin.from("forecast_cache").insert(cacheRow);
-      }
     } catch (e) {
       console.error("Forecast explanation generation failed:", e);
       // Честный fallback: не роняем весь ответ, просто без AI-текста.
       explanation = "";
     }
+    const cacheRow = {
+      business_id: businessId,
+      days,
+      language: cacheLanguageKey,
+      explanation,
+      numbers: forecastNumbers,
+      generated_at: new Date().toISOString(),
+    };
+    if (cached?.id) {
+      await admin.from("forecast_cache").update(cacheRow).eq("id", cached.id);
+    } else {
+      await admin.from("forecast_cache").insert(cacheRow);
+    }
   }
 
-  return Response.json({ ...forecastNumbers, explanation });
+  return Response.json({ ...numbersToReturn, explanation });
 }

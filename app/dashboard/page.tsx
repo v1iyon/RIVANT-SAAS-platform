@@ -1161,6 +1161,20 @@ if (bizData.business) {
       if (verifiedFactor) setMfaFactorId(verifiedFactor.id);
       const profileRes = await fetch(`/api/profile?email=${encodeURIComponent(email)}`, { cache: "no-store" });
       const profile = await profileRes.json();
+      // Язык теперь привязан к аккаунту (users.language), а не только к
+      // localStorage конкретного устройства. Если на этом устройстве язык
+      // ещё не выбирали вручную ЛОКАЛЬНО (или он расходится с тем, что
+      // сохранено в аккаунте), подтягиваем сохранённое значение из БД —
+      // иначе на телефоне после первого открытия язык навсегда остаётся
+      // дефолтным "EN", даже если на ноуте давно выбран UA. Локальный
+      // localStorage продолжает работать как быстрый кэш поверх этого
+      // значения (changeLanguage ниже пишет туда же).
+      if (
+        (profile.language === "EN" || profile.language === "UA" || profile.language === "DE") &&
+        profile.language !== language
+      ) {
+        setLanguage(profile.language);
+      }
       const displayName = profile.full_name || email.split("@")[0] || "";
       if (displayName) {
         setProfileName(displayName);
@@ -1526,6 +1540,18 @@ const getPlanLabel = (plan: string | null | undefined): string => {
 
   const changeLanguage = (lang: Language) => {
     setLanguage(lang);
+    // Пишем язык и в аккаунт (users.language через /api/profile), а не
+    // только в localStorage этого браузера — чтобы на другом устройстве
+    // (телефон/ноут) при следующем логине подтянулся тот же язык, а не
+    // дефолтный EN. localStorage продолжает работать как мгновенный кэш
+    // (см. getInitialLanguage в lib/translations.tsx).
+    if (profileEmail) {
+      fetch("/api/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: profileEmail, language: lang }),
+      }).catch((e) => console.error("Failed to persist language to account", e));
+    }
   };
 
   const T = t as any;
@@ -2030,9 +2056,34 @@ if (!subInfo) {
 </Button>
       </div>
     ) : !forecastLoaded ? (
-                <div className="text-center py-16 bg-gray-900/30 rounded-xl border border-gray-800">
-                  <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-                  <p className="text-gray-500 text-sm">{getTranslation("loading", "Loading...")}</p>
+                // Раньше тут был отдельный полноэкранный спиннер на всю вкладку
+                // (см. скрин "Завантаження..."), из-за чего Прогноз при каждом
+                // обновлении страницы/переключении на вкладку моргал пустым
+                // экраном, в отличие от Огляду, где карточки сразу видны с
+                // нулевыми значениями и просто "оживают" по мере загрузки.
+                // Приводим Прогноз к тому же паттерну: тот же каркас карточек,
+                // только с €0/0% и приглушённым pulse вместо содержимого.
+                <div className="space-y-4 animate-pulse">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="bg-gradient-to-br from-blue-500/10 to-transparent rounded-xl p-5 border border-blue-500/20">
+                      <div className="text-sm text-blue-400 font-semibold mb-1">
+                        {T.projectedRevenue || "Projected Revenue"}
+                      </div>
+                      <div className="text-3xl font-bold text-white">{symbol}0</div>
+                      <div className="text-sm mt-2 text-gray-600">—%/{language === "UA" ? "день (тренд)" : language === "DE" ? "Tag (Trend)" : "day (trend)"}</div>
+                    </div>
+                    <div className="bg-gradient-to-br from-orange-500/10 to-transparent rounded-xl p-5 border border-orange-500/20">
+                      <div className="text-sm text-orange-400 font-semibold mb-1">
+                        {T.projectedExpenses || "Projected Expenses"}
+                      </div>
+                      <div className="text-3xl font-bold text-white">{symbol}0</div>
+                      <div className="text-sm text-gray-500 mt-2">
+                        {language === "UA" ? "лінійна екстраполяція витрат" : language === "DE" ? "lineare Extrapolation der Kosten" : "linear extrapolation of costs"}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bg-gray-900/30 rounded-xl p-3 sm:p-5 border border-gray-800 h-64" />
+                  <div className="bg-gray-900/30 rounded-xl p-3 sm:p-5 border border-gray-800 h-24" />
                 </div>
               ) : !forecastData?.sufficient ? (
                 <div className="text-center py-16 bg-gray-900/30 rounded-xl border border-gray-800">

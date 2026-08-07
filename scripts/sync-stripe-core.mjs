@@ -133,11 +133,33 @@ async function getAIExplanation(business, today, yesterday, language = "EN", cha
 }
 
 async function fetchStripeCharges(apiKey, sinceUnix) {
-  const url = `https://api.stripe.com/v1/charges?created[gte]=${sinceUnix}&limit=100&expand[]=data.balance_transaction`;
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${apiKey}` } });
-  if (!res.ok) throw new Error(`Stripe error: ${res.status}`);
-  const data = await res.json();
-  return data.data || [];
+  // Раньше запрашивалась ровно одна страница (limit=100) — этого хватало,
+  // пока окно было фиксированные 48ч. Теперь окно может расширяться назад
+  // при бэкфилле пропущенных дней (см. вызов ниже), а значит charges может
+  // быть больше 100 — добавлена пагинация по Stripe starting_after, чтобы
+  // бэкфилл не обрезал старые дни молча.
+  let all = [];
+  let startingAfter = null;
+  for (let page = 0; page < 20; page++) {
+    // максимум 20 страниц (2000 charges) — защита от бесконечного цикла
+    const params = new URLSearchParams({
+      "created[gte]": String(sinceUnix),
+      limit: "100",
+    });
+    params.append("expand[]", "data.balance_transaction");
+    if (startingAfter) params.set("starting_after", startingAfter);
+
+    const res = await fetch(`https://api.stripe.com/v1/charges?${params.toString()}`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    if (!res.ok) throw new Error(`Stripe error: ${res.status}`);
+    const data = await res.json();
+    const pageData = data.data || [];
+    all = all.concat(pageData);
+    if (!data.has_more || pageData.length === 0) break;
+    startingAfter = pageData[pageData.length - 1].id;
+  }
+  return all;
 }
 
 async function main(businessId) {
@@ -162,7 +184,39 @@ async function main(businessId) {
       console.log("DEBUG processing integration:", integ.id, "business_id:", integ.business_id);
       const apiKey = decrypt(integ.api_key_encrypted);
       console.log("DEBUG decrypt OK, key prefix:", apiKey?.slice(0, 8));
-      const sinceUnix = Math.floor(Date.now() / 1000) - 48 * 3600;
+
+      // Самолечение пропущенных дней: крон гоняется раз в сутки (vercel.json),
+      // и если конкретный прогон падает (таймаут Stripe, сбой decrypt и т.п.),
+      // try/catch внизу это ловит и логирует в error_logs — но строка за тот
+      // день в metrics_computed так и не появляется. Раньше окно запроса к
+      // Stripe было жёстко 48ч, поэтому такой пропуск уже никогда не
+      // подтягивался обратно, и "N дней данных" на вкладке Прогноз навсегда
+      // отставало от реального возраста аккаунта. Здесь смотрим на пропуски
+      // в metrics_computed за последние 30 дней (не раньше самой первой
+      // известной даты — это просто означает "аккаунту меньше N дней", а не
+      // пропуск) и, если они есть, расширяем окно синка к Stripe так, чтобы
+      // захватить самый ранний пропущенный день.
+      let sinceUnix = Math.floor(Date.now() / 1000) - 48 * 3600;
+      const { data: existingDatesRows } = await admin
+        .from("metrics_computed")
+        .select("date")
+        .eq("business_id", integ.business_id)
+        .gte("date", new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString().slice(0, 10))
+        .order("date", { ascending: true });
+      const existingDateSet = new Set((existingDatesRows || []).map((r) => r.date));
+      if (existingDateSet.size > 0) {
+        const earliestKnown = [...existingDateSet][0];
+        for (let i = 2; i < 30; i++) {
+          const d = new Date(Date.now() - i * 24 * 3600 * 1000).toISOString().slice(0, 10);
+          if (d < earliestKnown) break;
+          if (!existingDateSet.has(d)) {
+            const gapUnix = Math.floor(new Date(`${d}T00:00:00Z`).getTime() / 1000);
+            sinceUnix = Math.min(sinceUnix, gapUnix);
+            console.log("DEBUG gap day detected, widening sync window to backfill:", d);
+          }
+        }
+      }
+
       const charges = await fetchStripeCharges(apiKey, sinceUnix);
       console.log("DEBUG charges fetched:", charges.length);
       const successful = charges.filter((c) => c.paid && !c.refunded);
@@ -183,15 +237,18 @@ async function main(businessId) {
       // дата вообще не попадала в byDate — а значит для неё никогда не
       // создавалась строка в metrics_computed. Столбик в графике на фронте
       // просто исчезал, из-за чего дни с оплатами "склеивались" друг с
-      // другом и создавали ложное впечатление непрерывного роста. Теперь
-      // явно добавляем сегодня и вчера (весь диапазон sinceUnix = 48ч) в
-      // byDate с нулевой выручкой, если их там ещё нет — реальный $0-день
-      // теперь тоже пишется в базу и попадает в график/прогноз/бота.
+      // другом и создавали ложное впечатление непрерывного роста. Явно
+      // добавляем в byDate КАЖДУЮ дату из фактически покрытого окна синка
+      // (не только сегодня/вчера — окно может быть расширено бэкфиллом
+      // пропущенных дней выше) с нулевой выручкой, если её там ещё нет —
+      // реальный $0-день теперь тоже пишется в базу и попадает в
+      // график/прогноз/бота.
       const todayStr = new Date().toISOString().slice(0, 10);
-      const yesterdayStr = new Date(Date.now() - 24 * 3600 * 1000).toISOString().slice(0, 10);
-      for (const d of [todayStr, yesterdayStr]) {
+      for (let t = sinceUnix; t <= Math.floor(Date.now() / 1000); t += 24 * 3600) {
+        const d = new Date(t * 1000).toISOString().slice(0, 10);
         if (!byDate[d]) byDate[d] = { revenue: 0, orders: 0, stripeFee: 0 };
       }
+      if (!byDate[todayStr]) byDate[todayStr] = { revenue: 0, orders: 0, stripeFee: 0 };
 
       const { data: business, error: bizErr } = await admin
         .from("businesses")
