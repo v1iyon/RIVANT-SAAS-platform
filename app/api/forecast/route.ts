@@ -40,31 +40,6 @@ interface MetricsRow {
   margin_pct: number;
 }
 
-// Раньше дни без единой Stripe-оплаты вообще не попадали в metrics_computed
-// (см. фикс byDate в sync-stripe-core.mjs), из-за чего linearRegression()
-// ниже считал по ИНДЕКСУ массива, а не по календарным дням — пропущенный
-// "нулевой" день просто исчезал из тренда, сжимая таймлайн и искажая наклон
-// прогноза. Заодно "сколько дней данных" (days = metricsRows.length)
-// занижался: человек видел "прогноз по 10 дням" на 12-й реальный день с
-// момента подключения. Заполняем дырки реальными нулями по календарю — от
-// первой даты в данных ДО СЕГОДНЯ (не до последней строки — если синк ещё
-// не успел прогнать сегодняшний день, он всё равно должен считаться).
-function fillCalendarGaps(rows: MetricsRow[]): MetricsRow[] {
-  if (rows.length === 0) return rows;
-  const byDate = new Map(rows.map((r) => [r.date, r]));
-  const first = rows[0].date;
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const filled: MetricsRow[] = [];
-  const cursor = new Date(first + "T00:00:00Z");
-  const end = new Date(todayStr + "T00:00:00Z");
-  while (cursor <= end) {
-    const dateStr = cursor.toISOString().slice(0, 10);
-    filled.push(byDate.get(dateStr) || { date: dateStr, revenue: 0, cost: 0, margin_pct: 0 });
-    cursor.setUTCDate(cursor.getUTCDate() + 1);
-  }
-  return filled;
-}
-
 async function getBusinessId(email: string) {
   const { data: appUser } = await admin.from("users").select("id").eq("email", email).maybeSingle();
   if (!appUser) return null;
@@ -264,7 +239,7 @@ if (!stripeConnected) return Response.json({ sufficient: false, days: 0, tier: "
     }
   }
 
-  const metricsRows: MetricsRow[] = fillCalendarGaps(rawRows);
+  const metricsRows: MetricsRow[] = rawRows;
   const days = metricsRows.length;
   const tier = getTier(days);
 
@@ -318,17 +293,39 @@ if (!stripeConnected) return Response.json({ sufficient: false, days: 0, tier: "
     forecastNumbers.expenses90 = expensesHorizon;
   }
 
-  // Кэш forecast_cache — одна строка на бизнес, поэтому кладём горизонт прямо
-  // в поле language ("UA::30"), чтобы апгрейд/даунгрейд тарифа не подсовывал
-  // закэшированное объяснение с упоминанием чужого горизонта прогноза.
-  // валюту добавляем в ключ, чтобы переключение USD/EUR не подсовывало
-  // закэшированное объяснение с суммами не в той валюте.
+  // Кэш forecast_cache — задумана как одна строка на бизнес, но upsert()
+  // ниже раньше вызывался БЕЗ onConflict и без id в данных. Если в таблице
+  // нет жёсткого unique-ограничения на business_id (похоже, что нет), каждый
+  // такой вызов не обновлял существующую строку, а тихо ВСТАВЛЯЛ новую. Со
+  // временем на бизнес накапливалось несколько строк, и .maybeSingle() при
+  // чтении начинал либо падать с ошибкой (multiple rows), либо (в
+  // зависимости от версии клиента) отдавать первую попавшуюся — например,
+  // самую раннюю, ещё англоязычную, запись, сделанную до того, как у
+  // пользователя вообще появилось языковое предпочтение. В итоге новые
+  // объяснения на украинском исправно генерировались и записывались, но
+  // никогда не читались обратно — на экране навсегда оставался тот самый
+  // первый английский текст. Ниже логика читает ВСЕ строки по business_id,
+  // берёт самую свежую по generated_at, и явно обновляет её по id (или
+  // создаёт новую, если строк ещё не было) — без опоры на констрейнт в БД.
   const cacheLanguageKey = `${language}::${horizonDays}::${currency}`;
-  const { data: cached } = await admin
+  const { data: cachedRows, error: cacheReadErr } = await admin
     .from("forecast_cache")
-    .select("days, language, explanation, generated_at")
+    .select("id, days, language, explanation, generated_at")
     .eq("business_id", businessId)
-    .maybeSingle();
+    .order("generated_at", { ascending: false });
+
+  if (cacheReadErr) {
+    console.error("forecast_cache read error:", cacheReadErr);
+  }
+
+  const cached = cachedRows?.[0] || null;
+  // Лишние дублирующиеся строки (побочный эффект старого бага) — подчищаем,
+  // чтобы дальше .maybeSingle()-подобные запросы где-либо ещё в коде не
+  // ловили ту же проблему повторно.
+  const staleDuplicateIds = (cachedRows || []).slice(1).map((r) => r.id);
+  if (staleDuplicateIds.length) {
+    await admin.from("forecast_cache").delete().in("id", staleDuplicateIds);
+  }
 
   const cacheIsFresh =
     cached &&
@@ -352,13 +349,18 @@ if (!stripeConnected) return Response.json({ sufficient: false, days: 0, tier: "
         expensesHorizon,
         r2: revenueReg.r2,
       });
-      await admin.from("forecast_cache").upsert({
+      const cacheRow = {
         business_id: businessId,
         days,
         language: cacheLanguageKey,
         explanation,
         generated_at: new Date().toISOString(),
-      });
+      };
+      if (cached?.id) {
+        await admin.from("forecast_cache").update(cacheRow).eq("id", cached.id);
+      } else {
+        await admin.from("forecast_cache").insert(cacheRow);
+      }
     } catch (e) {
       console.error("Forecast explanation generation failed:", e);
       // Честный fallback: не роняем весь ответ, просто без AI-текста.
