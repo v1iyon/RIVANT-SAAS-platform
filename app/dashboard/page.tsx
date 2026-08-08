@@ -569,18 +569,6 @@ function RevenueExpensesChart({ history }: {
                   </ChartTooltipPortal>
                 )}
                 <div className="w-full h-full flex flex-col justify-end mt-auto">
-                  {/* Реф — на самом закрашенном столбике, а не на всю (фиксированной
-                      высоты) колонку-обёртку. Раньше тултип якорился к верху всей
-                      h-48/h-64 области графика независимо от значения дня, из-за
-                      чего для невысоких столбиков тултип "улетал" далеко вверх и
-                      перекрывал карточки метрик над графиком. Теперь якорь — верх
-                      именно того кусочка, который человек навёл/нажал.
-                      ВАЖНО: высота теперь в % от контейнера (h-48/h-64), а не в px —
-                      раньше percent (0-100) подставлялся как height:${percent}px,
-                      из-за чего столбик физически не мог дотянуться до верха
-                      192-256px контейнера даже на максимальном значении, и при
-                      сравнении вкладок расходы/прибыль казались "почти на уровне"
-                      дохода просто из-за этого масштабного бага. */}
                   <div
                     ref={(el) => { barRefs.current[idx] = el; }}
                     className={`w-full ${getBarColor()} rounded-t-sm transition-all duration-150 ${noData ? "opacity-40" : ""}`}
@@ -2082,13 +2070,6 @@ if (!subInfo) {
 </Button>
       </div>
     ) : !forecastLoaded ? (
-                // Раньше тут был отдельный полноэкранный спиннер на всю вкладку
-                // (см. скрин "Завантаження..."), из-за чего Прогноз при каждом
-                // обновлении страницы/переключении на вкладку моргал пустым
-                // экраном, в отличие от Огляду, где карточки сразу видны с
-                // нулевыми значениями и просто "оживают" по мере загрузки.
-                // Приводим Прогноз к тому же паттерну: тот же каркас карточек,
-                // только с €0/0% и приглушённым pulse вместо содержимого.
                 <div className="space-y-4 animate-pulse">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="bg-gradient-to-br from-blue-500/10 to-transparent rounded-xl p-5 border border-blue-500/20">
@@ -2171,16 +2152,6 @@ if (!subInfo) {
                         : (T.forecastMonthlyTitle || "Next 3 months")}
                     </h3>
                     {(() => {
-                      // Growth (30д) — тижнева розбивка накопичувального прогнозу
-                      // в межах поточного місяця. Scale/Trial (90д) — розбивка по
-                      // реальних календарних місяцях наперед від сьогодні (не
-                      // хардкод: серпень зараз -> Сер/Вер/Жов, за місяць саме собою
-                      // стане Вер/Жов/Лис).
-                      // Реальний "фактичний дохід" для першого стовпця (як у демо-лайв,
-                      // де Лип/Сер мали actual, а Вер — ще ні, бо в майбутньому). Рахуємо
-                      // суму реальної виручки з metricsRows за поточний календарний
-                      // місяць від 1 числа до сьогодні. Для 2-го і 3-го стовпця (майбутні
-                      // місяці) фактичних даних ще не існує — там бар просто не рендериться.
                       const now = new Date();
                       const monthStartStr = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
                       const todayStr = now.toISOString().slice(0, 10);
@@ -2213,9 +2184,6 @@ if (!subInfo) {
                                 {m.revenueActual != null ? (
                                   <div className="w-4 sm:w-8 bg-blue-500/30 rounded-t" style={{ height: `${Math.min(Math.max(m.revenueActual / scale, 2), 100)}px` }} />
                                 ) : (
-                                  // Пустая колонка-заглушка вместо пропущенного бара — держит
-                                  // одинаковую структуру (3 столбика) во всех месяцах, даже
-                                  // если фактических данных за этот месяц ещё нет.
                                   <div
                                     className="w-4 sm:w-8 rounded-t border border-dashed border-gray-700"
                                     style={{ height: "2px" }}
@@ -2485,7 +2453,7 @@ if (!subInfo) {
                   <BellRing className="w-4 h-4 text-primary" /> {T.settingsNotifications || "Notification Preferences"}
                 </h3>
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between gap-3 py-2">
+                <div className="flex items-center justify-between gap-3 py-2">
                     <div className="flex-1 min-w-0"><p className="font-medium text-foreground">{T.settingsPush || "Push Notifications"}</p><p className="text-xs text-muted-foreground">{T.settingsPushDesc || "Receive alerts in dashboard"}</p></div>
                     <div className="shrink-0 bg-secondary/40 rounded-full p-1">
                       <Switch checked={notificationsEnabled} onCheckedChange={(val) => {
@@ -2498,7 +2466,6 @@ if (!subInfo) {
                       }} />
                     </div>
                   </div>
-
                   <div className="flex items-center justify-between gap-3 py-2">
                     <div className="flex-1 min-w-0"><p className="font-medium text-foreground">{T.settingsEmail || "Email Alerts"}</p><p className="text-xs text-muted-foreground">{T.settingsEmailDesc || "Receive alerts via email"}</p></div>
                     <div className="shrink-0 bg-secondary/40 rounded-full p-1">
@@ -2512,24 +2479,33 @@ if (!subInfo) {
                       }} />
                     </div>
                   </div>
-
                   <div className="flex items-center justify-between gap-3 py-2">
                     <div className="flex-1 min-w-0"><p className="font-medium text-foreground">{T.settingsTelegram || "Telegram Notifications"}</p><p className="text-xs text-muted-foreground">{T.settingsTelegramDesc || "Connect Telegram for instant alerts"}</p></div>
                     {hasGrowthAccess ? (
-                      telegramConnected ? (
-                        <Button variant="outline" size="sm" className="shrink-0" onClick={handleDisconnectTelegram}>
-                          {language === "UA" ? "Відключити" : language === "DE" ? "Trennen" : "Disconnect"}
-                        </Button>
-                      ) : (
-                        <Button variant="outline" size="sm" className="shrink-0" onClick={handleConnectTelegram}>{T.settingsConnect || "Connect"}</Button>
-                      )
-                    ) : (
-                      <Button variant="outline" size="sm" className="shrink-0" onClick={() => router.push("/#pricing")}>
-                        {language === "UA" ? "Оновити" : language === "DE" ? "Upgrade" : "Upgrade"}
-                      </Button>
+  telegramConnected ? (
+    <Button variant="outline" size="sm" className="shrink-0" onClick={handleDisconnectTelegram}>
+      {language === "UA" ? "Відключити" : language === "DE" ? "Trennen" : "Disconnect"}
+    </Button>
+  ) : (
+    <Button variant="outline" size="sm" className="shrink-0" onClick={handleConnectTelegram}>{T.settingsConnect || "Connect"}</Button>
+  )
+) : (
+
+  <Button variant="outline" size="sm" className="shrink-0" onClick={() => router.push("/#pricing")}>
+    {language === "UA" ? "Оновити" : language === "DE" ? "Upgrade" : "Upgrade"}
+  </Button>
                     )}
                   </div>
 
+                  <TeamAccessCard email={profileEmail} />
+                </div>
+              </div>
+
+              <div className="bg-card rounded-xl p-6 border border-border">
+                <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
+                  <Shield className="w-4 h-4 text-primary" /> {T.settingsSecurity || "Security"}
+                </h3>
+                <div className="space-y-4">
                   <div className="flex items-center justify-between gap-3 py-2">
                     <div className="flex-1 min-w-0"><p className="font-medium text-foreground">{T.settings2FA || "Two-Factor Authentication"}</p><p className="text-xs text-muted-foreground">{T.settings2FADesc || "Add an extra layer of security"}</p></div>
                     <div className="shrink-0 bg-secondary/40 rounded-full p-1">
@@ -2539,17 +2515,15 @@ if (!subInfo) {
                       />
                     </div>
                   </div>
-
-                  <div className="flex items-center justify-between gap-3 py-2">
+                <div className="flex items-center justify-between gap-3 py-2">
                     <div className="flex-1 min-w-0"><p className="font-medium text-foreground">{T.settingsChangePassword || "Change Password"}</p><p className="text-xs text-muted-foreground">{T.settingsChangePasswordDesc || "Update your password"}</p></div>
                     <Button variant="outline" size="sm" className="shrink-0" onClick={() => setShowPasswordModal(true)}>{T.settingsUpdate || "Update"}</Button>
                   </div>
-
                   <div className="flex items-center justify-between gap-3 py-2">
                     <div className="flex-1 min-w-0"><p className="font-medium text-foreground">{T.settingsApiKeys || "API Keys"}</p><p className="text-xs text-muted-foreground">{T.settingsApiKeysDesc || "Manage API access tokens"}</p></div>
                     <Button variant="outline" size="sm" className="shrink-0" disabled>
-                      {language === "UA" ? "Скоро" : language === "DE" ? "Bald" : "Coming soon"}
-                    </Button>
+  {language === "UA" ? "Скоро" : language === "DE" ? "Bald" : "Coming soon"}
+</Button>
                   </div>
                 </div>
               </div>
@@ -2578,7 +2552,7 @@ if (!subInfo) {
                 </div>
               </div>
 
-              <div className="bg-card rounded-xl p-6 border border-border">
+<div className="bg-card rounded-xl p-6 border border-border">
                 <h3 className="font-semibold text-foreground mb-4">
                   {language === "UA" ? "Залишити відгук" : language === "DE" ? "Bewertung abgeben" : "Leave a Review"}
                 </h3>
@@ -2596,8 +2570,8 @@ if (!subInfo) {
                     language === "UA"
                       ? "Поділіться своїм досвідом використання RIVANT..."
                       : language === "DE"
-                        ? "Teilen Sie Ihre Erfahrung mit RIVANT..."
-                        : "Share your experience with RIVANT..."
+                      ? "Teilen Sie Ihre Erfahrung mit RIVANT..."
+                      : "Share your experience with RIVANT..."
                   }
                   className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-foreground text-sm min-h-[80px]"
                 />
@@ -2613,69 +2587,68 @@ if (!subInfo) {
                 </Button>
               </div>
 
-              <div className="bg-card rounded-xl p-6 border border-border">
-                <h3 className="font-semibold text-foreground mb-4">
-                  {language === "UA" ? "Повідомити про проблему" : language === "DE" ? "Problem melden" : "Report an issue"}
-                </h3>
-                <div className="flex gap-2 mb-3">
-                  <button
-                    onClick={() => setFeedbackType("bug")}
-                    className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-colors ${
-                      feedbackType === "bug" ? "bg-red-500/20 text-red-400" : "bg-secondary text-muted-foreground hover:bg-secondary/80"
-                    }`}
-                  >
-                    {language === "UA" ? "Проблема" : language === "DE" ? "Fehler" : "Bug"}
-                  </button>
-                  <button
-                    onClick={() => setFeedbackType("feature")}
-                    className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-colors ${
-                      feedbackType === "feature" ? "bg-blue-500/20 text-blue-400" : "bg-secondary text-muted-foreground hover:bg-secondary/80"
-                    }`}
-                  >
-                    {language === "UA" ? "Пропозиція функції" : language === "DE" ? "Funktionsvorschlag" : "Feature request"}
-                  </button>
-                </div>
-                <textarea
-                  value={feedbackMessage}
-                  onChange={(e) => setFeedbackMessage(e.target.value)}
-                  placeholder={
-                    language === "UA"
-                      ? "Опишіть проблему або ідею..."
-                      : language === "DE"
-                        ? "Beschreiben Sie das Problem oder die Idee..."
-                        : "Describe the issue or idea..."
-                  }
-                  className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-foreground text-sm min-h-[80px]"
-                />
-                {feedbackMsg && (
-                  <p className="text-sm text-primary mt-2">
-                    {feedbackMsg === "success"
-                      ? (language === "UA" ? "Дякуємо! Ми розглянемо це найближчим часом." : language === "DE" ? "Danke! Wir prüfen das zeitnah." : "Thanks! We'll look into it soon.")
-                      : (language === "UA" ? "Щось пішло не так, спробуйте ще раз." : language === "DE" ? "Etwas ist schiefgelaufen, versuchen Sie es erneut." : "Something went wrong, try again.")}
-                  </p>
-                )}
-                <Button className="mt-3" onClick={submitFeedback} disabled={!feedbackMessage.trim()}>
-                  {language === "UA" ? "Надіслати" : language === "DE" ? "Senden" : "Submit"}
-                </Button>
-              </div>
+<div className="bg-card rounded-xl p-6 border border-border">
+  <h3 className="font-semibold text-foreground mb-4">
+    {language === "UA" ? "Повідомити про проблему" : language === "DE" ? "Problem melden" : "Report an issue"}
+  </h3>
+  <div className="flex gap-2 mb-3">
+    <button
+      onClick={() => setFeedbackType("bug")}
+      className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-colors ${
+        feedbackType === "bug" ? "bg-red-500/20 text-red-400" : "bg-secondary text-muted-foreground hover:bg-secondary/80"
+      }`}
+    >
+      {language === "UA" ? "Проблема" : language === "DE" ? "Fehler" : "Bug"}
+    </button>
+    <button
+      onClick={() => setFeedbackType("feature")}
+      className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-colors ${
+        feedbackType === "feature" ? "bg-blue-500/20 text-blue-400" : "bg-secondary text-muted-foreground hover:bg-secondary/80"
+      }`}
+    >
+      {language === "UA" ? "Пропозиція функції" : language === "DE" ? "Funktionsvorschlag" : "Feature request"}
+    </button>
+  </div>
+  <textarea
+    value={feedbackMessage}
+    onChange={(e) => setFeedbackMessage(e.target.value)}
+    placeholder={
+      language === "UA"
+        ? "Опишіть проблему або ідею..."
+        : language === "DE"
+        ? "Beschreiben Sie das Problem oder die Idee..."
+        : "Describe the issue or idea..."
+    }
+    className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-foreground text-sm min-h-[80px]"
+  />
+  {feedbackMsg && (
+    <p className="text-sm text-primary mt-2">
+      {feedbackMsg === "success"
+        ? (language === "UA" ? "Дякуємо! Ми розглянемо це найближчим часом." : language === "DE" ? "Danke! Wir prüfen das zeitnah." : "Thanks! We'll look into it soon.")
+        : (language === "UA" ? "Щось пішло не так, спробуйте ще раз." : language === "DE" ? "Etwas ist schiefgelaufen, versuchen Sie es erneut." : "Something went wrong, try again.")}
+    </p>
+  )}
+  <Button className="mt-3" onClick={submitFeedback} disabled={!feedbackMessage.trim()}>
+    {language === "UA" ? "Надіслати" : language === "DE" ? "Senden" : "Submit"}
+  </Button>
+</div>
 
               <div className="bg-card rounded-xl p-6 border border-border">
                 <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 text-primary" /> {T.settingsDangerZone || "Danger Zone"}
                 </h3>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="font-medium text-foreground">
-                        {language === "UA" ? "Видалити акаунт" : language === "DE" ? "Konto löschen" : "Delete account"}
-                      </p>
-                      <p className="text-xs text-muted-foreground">{T.settingsDeleteAccountDesc || "Permanently delete your account and all data"}</p>
-                    </div>
-                    <Button variant="destructive" size="sm" className="shrink-0" onClick={() => setShowDeleteAccountModal(true)}>
-                      {language === "UA" ? "Видалити" : language === "DE" ? "Löschen" : "Delete"}
-                    </Button>
-                  </div>
-
+               <div className="space-y-3">
+ <div className="flex items-center justify-between gap-3">
+  <div className="min-w-0">
+    <p className="font-medium text-foreground">
+      {language === "UA" ? "Видалити акаунт" : language === "DE" ? "Konto löschen" : "Delete account"}
+    </p>
+    <p className="text-xs text-muted-foreground">{T.settingsDeleteAccountDesc || "Permanently delete your account and all data"}</p>
+  </div>
+  <Button variant="destructive" size="sm" className="shrink-0" onClick={() => setShowDeleteAccountModal(true)}>
+    {language === "UA" ? "Видалити" : language === "DE" ? "Löschen" : "Delete"}
+  </Button>
+</div>
                   <div ref={exportMenuRef} className="flex items-center justify-between pt-2 border-t border-border relative">
                     <div><p className="font-medium text-foreground">{T.settingsExportData || "Export All Data"}</p><p className="text-xs text-muted-foreground">{T.settingsExportDataDesc || "Download all your business data"}</p></div>
                     <Button variant="outline" size="sm" onClick={() => setExportMenuOpen((v) => !v)} disabled={exportingFormat}>
@@ -2695,7 +2668,6 @@ if (!subInfo) {
           )}
         </div>
       </main>
-      
 
       <nav className="fixed bottom-0 left-0 right-0 z-40 lg:hidden bg-background/95 backdrop-blur-xl border-t border-border px-2 py-2">
         <div className="flex items-center justify-around">
