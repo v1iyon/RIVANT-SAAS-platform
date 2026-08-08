@@ -22,9 +22,11 @@ interface ServiceOrder {
   users: OrderUser | null;
 }
 
+// Названия услуг оставлены на украинском — так же, как они называются
+// на маркетинговом сайте (lib/translations.tsx, UA).
 const SERVICE_LABEL: Record<string, string> = {
-  whatif_analysis: "AI-реконструкция прошлого",
-  monthly_digest: "AI-дайджест эффективности",
+  whatif_analysis: "AI-Реконструкція минулого",
+  monthly_digest: "AI-Дайджест ефективності",
 };
 
 const STATUS_LABEL: Record<string, string> = {

@@ -33,7 +33,7 @@ export default function AdminDashboardPage() {
   }, []);
 
   if (!metrics) {
-    return <p className="p-6 text-sm text-gray-500">Loading...</p>;
+    return <p className="p-6 text-sm text-gray-500">Загрузка...</p>;
   }
 
   const cards = [

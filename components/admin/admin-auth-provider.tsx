@@ -75,7 +75,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     });
     setLoading(false);
     if (!res.ok) {
-      setError("Invalid secret or server error");
+      setError("Неверный ключ или ошибка сервера");
       return;
     }
     sessionStorage.setItem(STORAGE_KEY, input);

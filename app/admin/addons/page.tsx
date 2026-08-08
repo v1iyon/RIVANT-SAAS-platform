@@ -26,9 +26,11 @@ interface AddonSubscription {
   businesses: AddonBusiness | null;
 }
 
+// Названия услуг оставлены на украинском — так же, как они называются
+// на маркетинговом сайте (lib/translations.tsx, UA).
 const ADDON_LABEL: Record<string, string> = {
-  monthly_digest: "AI-дайджест эффективности",
-  team_alerts: "Уведомления для команды",
+  monthly_digest: "AI-Дайджест ефективності",
+  team_alerts: "Сповіщення для команди",
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -113,7 +115,7 @@ export default function AdminAddonsPage() {
       <h1 className="mb-6 text-2xl font-bold text-white">Addon-подписки</h1>
 
       <h2 className="mb-3 font-semibold text-white">
-        AI-Дайджест ефективності — активные ({byType.digestActive.length})
+        {ADDON_LABEL.monthly_digest} — активные ({byType.digestActive.length})
       </h2>
       <div className="mb-10 space-y-3">
         {byType.digestActive.length === 0 && <p className="text-sm text-gray-500">Пока никто не подключил.</p>}
@@ -123,7 +125,7 @@ export default function AdminAddonsPage() {
       </div>
 
       <h2 className="mb-3 font-semibold text-white">
-        Сповіщення для команди — активные ({byType.teamActive.length})
+        {ADDON_LABEL.team_alerts} — активные ({byType.teamActive.length})
       </h2>
       <div className="mb-10 space-y-3">
         {byType.teamActive.length === 0 && <p className="text-sm text-gray-500">Пока никто не подключил.</p>}

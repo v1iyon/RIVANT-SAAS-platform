@@ -54,7 +54,7 @@ export async function POST(req) {
     await admin.from("leads").insert({
       name: email.split("@")[0],
       email,
-      message: `Interested in addon: ${serviceType}`,
+      message: `Заявка на допуслугу: ${serviceType}`,
       source: `addon_${serviceType}`,
     });
   } catch (e) {

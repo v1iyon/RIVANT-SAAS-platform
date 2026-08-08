@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useAdminAuth } from "@/components/admin/admin-auth-provider";
 
 interface Lead {
   id: string;
@@ -15,69 +16,35 @@ interface Lead {
 }
 
 export default function AdminLeadsPage() {
-  const [secret, setSecret] = useState("");
-  const [unlocked, setUnlocked] = useState(false);
+  const { adminFetch } = useAdminAuth();
   const [leads, setLeads] = useState<Lead[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
 
-  const loadLeads = async (key: string) => {
+  const loadLeads = async () => {
     setLoading(true);
-    setError("");
-    const res = await fetch("/api/admin/leads", {
-      headers: { "x-admin-secret": key },
-    });
+    const res = await adminFetch("/api/admin/leads");
     setLoading(false);
-    if (!res.ok) {
-      setError("Invalid secret or server error");
-      return;
-    }
+    if (!res.ok) return;
     const data = await res.json();
     setLeads(data.leads || []);
-    setUnlocked(true);
-    sessionStorage.setItem("admin_secret", key);
   };
 
   useEffect(() => {
-    const saved = sessionStorage.getItem("admin_secret");
-    if (saved) {
-      setSecret(saved);
-      loadLeads(saved);
-    }
+    loadLeads();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const updateStatus = async (id: string, status: "contacted" | "rejected") => {
-    await fetch("/api/admin/leads", {
+    await adminFetch("/api/admin/leads", {
       method: "PUT",
-      headers: { "Content-Type": "application/json", "x-admin-secret": secret },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, status }),
     });
-    loadLeads(secret);
+    loadLeads();
   };
 
-  if (!unlocked) {
-    return (
-      <div className="min-h-screen bg-black flex items-center justify-center p-4">
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 w-full max-w-sm">
-          <h1 className="text-lg font-semibold text-white mb-4">Вход в админку</h1>
-          <input
-            type="password"
-            value={secret}
-            onChange={(e) => setSecret(e.target.value)}
-            placeholder="Admin secret"
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm mb-3"
-          />
-          {error && <p className="text-red-400 text-sm mb-3">Неверный пароль или ошибка сервера</p>}
-          <button
-            onClick={() => loadLeads(secret)}
-            disabled={loading}
-            className="w-full py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50"
-          >
-            {loading ? "..." : "Войти"}
-          </button>
-        </div>
-      </div>
-    );
+  if (loading && leads.length === 0) {
+    return <p className="p-6 text-sm text-gray-500">Загрузка...</p>;
   }
 
   const fresh = leads.filter((l) => l.status === "new");
@@ -90,14 +57,15 @@ export default function AdminLeadsPage() {
     return source || "—";
   };
 
+  // Автосгенерированный текст сообщения для допуслуг дублирует то, что уже
+  // показывает бейдж источника (sourceLabel) — не выводим его повторно.
+  const isAddonBoilerplate = (l: Lead) =>
+    Boolean(l.source?.startsWith("addon_")) &&
+    (Boolean(l.message?.startsWith("Interested in addon")) || Boolean(l.message?.startsWith("Заявка на допуслугу")));
+
   return (
     <div className="min-h-screen bg-black p-6">
-      <h1 className="text-2xl font-bold text-white mb-2">Лиды</h1>
-      <p className="text-xs text-gray-500 mb-6">
-        Это заявки от людей, которые оставили контакт (форма на сайте, калькулятор потерь, кнопка
-        «Замовити послугу» без подключённой оплаты) — им ещё нужно написать вручную и довести до
-        оплаты. Это НЕ действующие клиенты.
-      </p>
+      <h1 className="text-2xl font-bold text-white mb-6">Лиды</h1>
 
       <h2 className="text-white font-semibold mb-3">Новые ({fresh.length})</h2>
       <div className="space-y-3 mb-10">
@@ -118,7 +86,9 @@ export default function AdminLeadsPage() {
               {l.telegram && <span>TG: {l.telegram}</span>}
               <span>{new Date(l.created_at).toLocaleString("ru-RU")}</span>
             </div>
-            {l.message && <p className="text-gray-300 text-sm mb-3 whitespace-pre-line">{l.message}</p>}
+            {l.message && !isAddonBoilerplate(l) && (
+              <p className="text-gray-300 text-sm mb-3 whitespace-pre-line">{l.message}</p>
+            )}
             <div className="flex gap-2">
               <button
                 onClick={() => updateStatus(l.id, "contacted")}
