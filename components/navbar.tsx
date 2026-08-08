@@ -52,7 +52,14 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
-      if (data.session) setIsLoggedIn(true);
+      if (data.session) {
+        setIsLoggedIn(true);
+        // FIX: подстраховка — если у человека есть активная сессия, значит
+        // аккаунт точно существует. Фиксируем это в localStorage на случай,
+        // если флаг ещё не был проставлен раньше (например, старая сессия,
+        // созданная до этого фикса).
+        localStorage.setItem("rivant_has_account", "1");
+      }
     });
   }, []);
 
@@ -69,7 +76,14 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
   // модалки на уровень страницы: window.dispatchEvent(new CustomEvent("rivant:open-signup"))
   useEffect(() => {
     const handleOpenSignup = () => {
-      setAuthMode("signup");
+      // FIX: раньше здесь всегда стоял authMode "signup" — даже если человек
+      // уже регистрировался в этом браузере раньше. Теперь смотрим на флаг
+      // rivant_has_account (ставится ниже при успешном входе/регистрации) и
+      // открываем модалку сразу на вкладке "Увійти", если аккаунт уже был.
+      // Вкладка регистрации по-прежнему доступна одним кликом внизу модалки.
+      const hasAccount =
+        typeof window !== "undefined" && localStorage.getItem("rivant_has_account") === "1";
+      setAuthMode(hasAccount ? "signin" : "signup");
       setAuthError("");
       setIsLoginModalOpen(true);
       setIsMobileMenuOpen(false);
@@ -267,6 +281,10 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
       }
     }
 
+    // FIX: аккаунт точно существует (только что зарегистрировали или вошли) —
+    // фиксируем это в localStorage, чтобы rivant:open-signup в следующий раз
+    // открывал модалку сразу на "Увійти", а не "Зареєструватися".
+    localStorage.setItem("rivant_has_account", "1");
     setIsLoggedIn(true);
     setIsLoginModalOpen(false);
     setLoginEmail("");
@@ -293,6 +311,10 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
       setAuthError(translateAuthError(verErr.message));
       return;
     }
+    // FIX: тот же флаг, что и в handleLogin выше — этот путь используется
+    // теми, у кого включена 2FA, поэтому обычный хвост handleLogin до него
+    // не доходит и localStorage.setItem нужно продублировать здесь.
+    localStorage.setItem("rivant_has_account", "1");
     setIsLoggedIn(true);
     setIsLoginModalOpen(false);
     setMfaStep(false);
