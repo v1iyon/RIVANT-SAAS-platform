@@ -34,6 +34,19 @@ interface User {
 }
 
 const PLAN_OPTIONS = ["trial", "starter", "growth", "scale"] as const;
+const PLAN_LABEL_RU: Record<string, string> = {
+  trial: "Trial",
+  starter: "Starter",
+  growth: "Growth",
+  scale: "Scale",
+};
+const ACCESS_STATUS_LABEL_RU: Record<string, string> = {
+  active: "Активна",
+  trial: "Триал",
+  cancelled: "Отменена",
+  expired: "Истекла",
+  past_due: "Просрочен платёж",
+};
 
 function getSubscription(u: User): Subscription | null {
   return u.subscriptions?.[0] ?? null;
@@ -45,9 +58,9 @@ const INTEGRATION_LABELS: Record<string, string> = {
   meta_ads: "Meta Ads",
   google_ads: "Google Ads",
   quickbooks: "QuickBooks",
-  google_analytics: "Google Analytics",
+  plaid: "Plaid",
 };
-const INTEGRATION_ORDER = ["stripe", "shopify", "meta_ads", "google_ads", "quickbooks", "google_analytics"];
+const INTEGRATION_ORDER = ["stripe", "shopify", "meta_ads", "google_ads", "quickbooks", "plaid"];
 
 function getConnectedProviders(u: User): Set<string> {
   const connected = new Set<string>();
@@ -170,12 +183,12 @@ export default function AdminUsersPage() {
                 <div className="flex flex-wrap items-center gap-2">
                   {sub && (
                     <span className={`rounded-full px-2 py-0.5 text-xs ${planBadgeClass(sub.plan)}`}>
-                      {sub.plan}
+                      {PLAN_LABEL_RU[sub.plan] || sub.plan}
                     </span>
                   )}
                   {sub && (
                     <span className={`rounded-full px-2 py-0.5 text-xs ${accessBadgeClass(sub.access_status)}`}>
-                      {sub.access_status}
+                      {ACCESS_STATUS_LABEL_RU[sub.access_status] || sub.access_status}
                     </span>
                   )}
                 </div>
@@ -208,7 +221,7 @@ export default function AdminUsersPage() {
                   {!sub && <option value="">Нет подписки</option>}
                   {PLAN_OPTIONS.map((p) => (
                     <option key={p} value={p}>
-                      {p}
+                      {PLAN_LABEL_RU[p]}
                     </option>
                   ))}
                 </select>

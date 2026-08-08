@@ -51,7 +51,7 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="p-6">
-      <h1 className="mb-6 text-2xl font-bold text-white">Dashboard</h1>
+      <h1 className="mb-6 text-2xl font-bold text-white">Дашборд</h1>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
         {cards.map((c) => {
           const Icon = c.icon;

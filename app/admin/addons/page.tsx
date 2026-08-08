@@ -27,8 +27,15 @@ interface AddonSubscription {
 }
 
 const ADDON_LABEL: Record<string, string> = {
-  monthly_digest: "AI-Дайджест ефективності",
-  team_alerts: "Сповіщення для команди",
+  monthly_digest: "AI-дайджест эффективности",
+  team_alerts: "Уведомления для команды",
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  active: "Активна",
+  cancelled: "Отменена",
+  expired: "Истекла",
+  past_due: "Просрочен платёж",
 };
 
 function daysUntil(dateStr: string | null) {
@@ -54,7 +61,7 @@ function Row({ addon }: { addon: AddonSubscription }) {
             addon.status === "active" ? "bg-green-500/20 text-green-400" : "bg-gray-500/20 text-gray-400"
           }`}
         >
-          {addon.status}
+          {STATUS_LABEL[addon.status] || addon.status}
         </span>
       </div>
       <div className="flex flex-wrap gap-3 text-xs text-gray-400">

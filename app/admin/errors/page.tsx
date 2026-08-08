@@ -15,26 +15,34 @@ interface ErrorLog {
 const SOURCE_LABELS: Record<string, string> = {
   server: "Сервер",
   stripe: "Stripe",
+  shopify: "Shopify",
+  meta_ads: "Meta Ads",
+  google_ads: "Google Ads",
   telegram: "Telegram",
   ai: "AI",
+  ai_explanation: "AI-объяснение",
 };
 
 function sourceBadgeClass(source: string) {
   if (source === "stripe") return "bg-purple-500/20 text-purple-300";
+  if (source === "shopify") return "bg-green-500/20 text-green-300";
+  if (source === "meta_ads" || source === "google_ads") return "bg-orange-500/20 text-orange-300";
   if (source === "telegram") return "bg-blue-500/20 text-blue-300";
-  if (source === "ai") return "bg-cyan-500/20 text-cyan-300";
+  if (source === "ai" || source === "ai_explanation") return "bg-cyan-500/20 text-cyan-300";
   return "bg-red-500/20 text-red-300"; // server / прочее
 }
 
 function ErrorCard({
   err,
-  onToggleResolved,
+  onResolve,
+  onDelete,
 }: {
   err: ErrorLog;
-  onToggleResolved: (id: string, resolved: boolean) => void;
+  onResolve: (id: string) => void;
+  onDelete: (id: string) => void;
 }) {
   return (
-    <div className={`rounded-xl border p-4 ${err.resolved ? "border-gray-800/50 bg-gray-900/40 opacity-60" : "border-gray-800 bg-gray-900"}`}>
+    <div className="rounded-xl border border-gray-800 bg-gray-900 p-4">
       <div className="mb-1 flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="font-medium text-white break-words">{err.message}</p>
@@ -46,20 +54,24 @@ function ErrorCard({
           {SOURCE_LABELS[err.source] || err.source}
         </span>
       </div>
-      <div className="mt-2 flex items-center justify-between">
+      <div className="mt-2 flex items-center justify-between gap-2">
         <span className="text-xs text-gray-500">
           {new Date(err.created_at).toLocaleString("ru-RU")}
         </span>
-        <button
-          onClick={() => onToggleResolved(err.id, !err.resolved)}
-          className={`rounded-lg px-3 py-1 text-xs font-medium ${
-            err.resolved
-              ? "bg-gray-800 text-gray-400 hover:bg-gray-700"
-              : "bg-green-600/20 text-green-400 hover:bg-green-600/30"
-          }`}
-        >
-          {err.resolved ? "Вернуть в открытые" : "Отметить решённой"}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => onDelete(err.id)}
+            className="rounded-lg bg-gray-800 px-3 py-1 text-xs font-medium text-gray-400 hover:bg-red-900/40 hover:text-red-300"
+          >
+            Удалить
+          </button>
+          <button
+            onClick={() => onResolve(err.id)}
+            className="rounded-lg bg-green-600/20 px-3 py-1 text-xs font-medium text-green-400 hover:bg-green-600/30"
+          >
+            Решено
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -69,7 +81,9 @@ export default function AdminErrorsPage() {
   const { adminFetch } = useAdminAuth();
   const [errors, setErrors] = useState<ErrorLog[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<"all" | "server" | "stripe" | "telegram" | "ai">("all");
+  const [filter, setFilter] = useState<
+    "all" | "server" | "stripe" | "shopify" | "meta_ads" | "google_ads" | "telegram" | "ai" | "ai_explanation"
+  >("all");
 
   const load = async () => {
     setLoading(true);
@@ -85,25 +99,40 @@ export default function AdminErrorsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const toggleResolved = async (id: string, resolved: boolean) => {
-    setErrors((prev) => prev.map((e) => (e.id === id ? { ...e, resolved } : e)));
+  const resolveError = async (id: string) => {
+    setErrors((prev) => prev.filter((e) => e.id !== id));
     await adminFetch("/api/admin/errors", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, resolved }),
+      body: JSON.stringify({ id, resolved: true }),
     });
+  };
+
+  const deleteError = async (id: string) => {
+    setErrors((prev) => prev.filter((e) => e.id !== id));
+    await adminFetch(`/api/admin/errors?id=${id}`, { method: "DELETE" });
   };
 
   const filtered = useMemo(() => {
     if (filter === "all") return errors;
+    if (filter === "ai") return errors.filter((e) => e.source === "ai" || e.source === "ai_explanation");
     return errors.filter((e) => e.source === filter);
   }, [errors, filter]);
 
-  const openCount = errors.filter((e) => !e.resolved).length;
+  const openCount = errors.length;
   const counts = useMemo(() => {
-    const c: Record<string, number> = { server: 0, stripe: 0, telegram: 0, ai: 0 };
+    const c: Record<string, number> = {
+      server: 0,
+      stripe: 0,
+      shopify: 0,
+      meta_ads: 0,
+      google_ads: 0,
+      telegram: 0,
+      ai: 0,
+      ai_explanation: 0,
+    };
     errors.forEach((e) => {
-      if (!e.resolved && c[e.source] !== undefined) c[e.source]++;
+      if (c[e.source] !== undefined) c[e.source]++;
     });
     return c;
   }, [errors]);
@@ -116,8 +145,11 @@ export default function AdminErrorsPage() {
     { key: "all", label: `Все (${openCount})` },
     { key: "server", label: `Сервер (${counts.server})` },
     { key: "stripe", label: `Stripe (${counts.stripe})` },
+    { key: "shopify", label: `Shopify (${counts.shopify})` },
+    { key: "meta_ads", label: `Meta Ads (${counts.meta_ads})` },
+    { key: "google_ads", label: `Google Ads (${counts.google_ads})` },
     { key: "telegram", label: `Telegram (${counts.telegram})` },
-    { key: "ai", label: `AI (${counts.ai})` },
+    { key: "ai", label: `AI (${counts.ai + counts.ai_explanation})` },
   ];
 
   return (
@@ -145,7 +177,7 @@ export default function AdminErrorsPage() {
           <p className="text-sm text-gray-500">Ошибок нет — всё работает штатно.</p>
         )}
         {filtered.map((err) => (
-          <ErrorCard key={err.id} err={err} onToggleResolved={toggleResolved} />
+          <ErrorCard key={err.id} err={err} onResolve={resolveError} onDelete={deleteError} />
         ))}
       </div>
     </div>

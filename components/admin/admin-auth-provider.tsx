@@ -89,22 +89,22 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center p-4">
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 w-full max-w-sm">
-          <h1 className="text-lg font-semibold text-white mb-4">Admin Access</h1>
+          <h1 className="text-lg font-semibold text-white mb-4">Вход в админку</h1>
           <input
             type="password"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && tryUnlock()}
-            placeholder="Admin secret"
+            placeholder="Секретный ключ"
             className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm mb-3"
           />
-          {error && <p className="text-red-400 text-sm mb-3">{error}</p>}
+          {error && <p className="text-red-400 text-sm mb-3">Неверный ключ или ошибка сервера</p>}
           <button
             onClick={tryUnlock}
             disabled={loading}
             className="w-full py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50"
           >
-            {loading ? "..." : "Unlock"}
+            {loading ? "..." : "Войти"}
           </button>
         </div>
       </div>

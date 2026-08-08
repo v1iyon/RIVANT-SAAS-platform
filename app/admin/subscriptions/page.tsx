@@ -33,6 +33,13 @@ function planBadgeClass(plan: string) {
   return "bg-gray-500/20 text-gray-300";
 }
 
+const PLAN_LABEL_RU: Record<string, string> = {
+  trial: "Trial",
+  starter: "Starter",
+  growth: "Growth",
+  scale: "Scale",
+};
+
 function Row({ sub }: { sub: Subscription }) {
   const days = daysUntil(sub.current_period_end);
   return (
@@ -42,7 +49,7 @@ function Row({ sub }: { sub: Subscription }) {
           <p className="font-medium text-white">{sub.users?.full_name || "Без имени"}</p>
           <p className="text-xs text-gray-500">{sub.users?.email}</p>
         </div>
-        <span className={`rounded-full px-2 py-0.5 text-xs ${planBadgeClass(sub.plan)}`}>{sub.plan}</span>
+        <span className={`rounded-full px-2 py-0.5 text-xs ${planBadgeClass(sub.plan)}`}>{PLAN_LABEL_RU[sub.plan] || sub.plan}</span>
       </div>
       <div className="flex flex-wrap gap-3 text-xs text-gray-400">
         {sub.current_period_end && (

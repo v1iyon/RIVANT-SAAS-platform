@@ -23,8 +23,15 @@ interface ServiceOrder {
 }
 
 const SERVICE_LABEL: Record<string, string> = {
-  whatif_analysis: "AI-Реконструкція минулого",
-  monthly_digest: "AI-Дайджест ефективності (разовий запуск)",
+  whatif_analysis: "AI-реконструкция прошлого",
+  monthly_digest: "AI-дайджест эффективности",
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  pending: "В очереди",
+  processing: "В обработке",
+  delivered: "Доставлено",
+  failed: "Ошибка",
 };
 
 function statusBadgeClass(status: string) {
@@ -45,7 +52,7 @@ function Row({ order }: { order: ServiceOrder }) {
           </p>
         </div>
         <span className={`rounded-full px-2 py-0.5 text-xs ${statusBadgeClass(order.status)}`}>
-          {order.status}
+          {STATUS_LABEL[order.status] || order.status}
         </span>
       </div>
       <div className="flex flex-wrap gap-3 text-xs text-gray-400">
@@ -123,25 +130,13 @@ export default function AdminServiceOrdersPage() {
             disabled={processing || pending.length === 0}
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
           >
-            {processing ? "Обрабатываю..." : `Обработать pending сейчас (${pending.length})`}
+            {processing ? "Обрабатываю..." : `Обработать сейчас (${pending.length})`}
           </button>
         </div>
       </div>
-      <div className="mb-6 space-y-1 rounded-lg border border-gray-800 bg-gray-900/60 p-3 text-xs text-gray-400">
-        <p>
-          Здесь видно, кто заказал платную допуслугу с лендинга — «AI-Реконструкція минулого»
-          ($199 разово) или «AI-Дайджест ефективності» ($49/мес) — и на каком этапе находится
-          выполнение: заявка создана (pending) → готовится отчёт (в обработке) → отправлен клиенту в
-          Telegram/email (доставлено), либо не хватило данных / произошла ошибка.
-        </p>
-        <p>
-          Крон, который обрабатывает это автоматически (/api/cron/process-service-orders), пока не
-          добавлен в vercel.json, поэтому строки будут висеть в «Pending», пока не нажмёшь кнопку
-          выше — она вызывает тот же роут вручную, конфиг крона при этом не трогается.
-        </p>
-      </div>
 
-      <h2 className="mb-3 font-semibold text-white">Pending ({pending.length})</h2>
+
+      <h2 className="mb-3 font-semibold text-white">В очереди ({pending.length})</h2>
       <div className="mb-10 space-y-3">
         {pending.length === 0 && <p className="text-sm text-gray-500">Ничего не ждёт обработки.</p>}
         {pending.map((o) => (
