@@ -17,7 +17,7 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Users, X, Copy, Check } from "lucide-react";
+import { X, Copy, Check } from "lucide-react";
 import { useLanguage } from "@/lib/translations";
 
 type Member = { id: string; telegram_username: string | null; role: string; created_at: string };
@@ -135,9 +135,7 @@ export function TeamAccessCard({ email }: { email: string }) {
   return (
     <div className="flex items-center justify-between gap-3 py-2">
       <div className="flex-1 min-w-0">
-        <p className="font-medium text-foreground flex items-center gap-1.5">
-          <Users className="w-3.5 h-3.5 text-muted-foreground" /> {tr.title}
-        </p>
+        <p className="font-medium text-foreground">{tr.title}</p>
         <p className="text-xs text-muted-foreground">{tr.desc}</p>
 
         {errorCode && (
