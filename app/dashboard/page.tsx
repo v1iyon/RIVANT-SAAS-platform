@@ -11,6 +11,7 @@ import { useLanguage, Language } from "@/lib/translations";
 import { useCurrency, Currency } from "@/lib/currency";
 import { getSeverityLabel, getSeverityColorClasses } from "@/lib/severity";
 import { TrialPromptModal } from "@/components/dashboard/trial-prompt-modal";
+import { TeamAccessCard } from "@/components/dashboard/team-access-card";
 import {
   LayoutDashboard,
   AlertTriangle,
@@ -2525,10 +2526,12 @@ if (!subInfo) {
   <Button variant="outline" size="sm" className="shrink-0" onClick={() => router.push("/#pricing")}>
     {language === "UA" ? "Оновити" : language === "DE" ? "Upgrade" : "Upgrade"}
   </Button>
-                    )}
+                   )}
                   </div>
                 </div>
               </div>
+
+              <TeamAccessCard email={profileEmail} />
 
               <div className="bg-card rounded-xl p-6 border border-border">
                 <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
