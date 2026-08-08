@@ -39,7 +39,10 @@ export function TeamAccessCard({ email }: { email: string }) {
   const [members, setMembers] = useState<Member[]>([]);
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // Храним КОД ошибки, а не готовый переведённый текст — иначе при смене
+  // языка после неудачного клика сообщение оставалось на том языке, на
+  // котором было в момент ошибки, а не на текущем языке интерфейса.
+  const [errorCode, setErrorCode] = useState<"no_active_subscription" | "generic" | null>(null);
   const [copied, setCopied] = useState(false);
 
   const tr = {
@@ -82,7 +85,7 @@ export function TeamAccessCard({ email }: { email: string }) {
 
   const handleInvite = async () => {
     setLoading(true);
-    setError(null);
+    setErrorCode(null);
     setInviteUrl(null);
     setCopied(false);
     try {
@@ -93,13 +96,13 @@ export function TeamAccessCard({ email }: { email: string }) {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error === "no_active_subscription" ? tr.needsSub : data.message || tr.genericError);
+        setErrorCode(data.error === "no_active_subscription" ? "no_active_subscription" : "generic");
         return;
       }
       setInviteUrl(data.url);
     } catch (e) {
       console.error("Failed to create team invite", e);
-      setError(tr.genericError);
+      setErrorCode("generic");
     } finally {
       setLoading(false);
     }
@@ -137,7 +140,11 @@ export function TeamAccessCard({ email }: { email: string }) {
         </p>
         <p className="text-xs text-muted-foreground">{tr.desc}</p>
 
-        {error && <p className="text-xs text-red-400 mt-1.5">{error}</p>}
+        {errorCode && (
+          <p className="text-xs text-red-400 mt-1.5">
+            {errorCode === "no_active_subscription" ? tr.needsSub : tr.genericError}
+          </p>
+        )}
 
         {members.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mt-2">

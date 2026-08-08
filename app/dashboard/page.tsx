@@ -2485,7 +2485,7 @@ if (!subInfo) {
                   <BellRing className="w-4 h-4 text-primary" /> {T.settingsNotifications || "Notification Preferences"}
                 </h3>
                 <div className="space-y-4">
-                <div className="flex items-center justify-between gap-3 py-2">
+                  <div className="flex items-center justify-between gap-3 py-2">
                     <div className="flex-1 min-w-0"><p className="font-medium text-foreground">{T.settingsPush || "Push Notifications"}</p><p className="text-xs text-muted-foreground">{T.settingsPushDesc || "Receive alerts in dashboard"}</p></div>
                     <div className="shrink-0 bg-secondary/40 rounded-full p-1">
                       <Switch checked={notificationsEnabled} onCheckedChange={(val) => {
@@ -2498,6 +2498,7 @@ if (!subInfo) {
                       }} />
                     </div>
                   </div>
+
                   <div className="flex items-center justify-between gap-3 py-2">
                     <div className="flex-1 min-w-0"><p className="font-medium text-foreground">{T.settingsEmail || "Email Alerts"}</p><p className="text-xs text-muted-foreground">{T.settingsEmailDesc || "Receive alerts via email"}</p></div>
                     <div className="shrink-0 bg-secondary/40 rounded-full p-1">
@@ -2511,35 +2512,24 @@ if (!subInfo) {
                       }} />
                     </div>
                   </div>
+
                   <div className="flex items-center justify-between gap-3 py-2">
                     <div className="flex-1 min-w-0"><p className="font-medium text-foreground">{T.settingsTelegram || "Telegram Notifications"}</p><p className="text-xs text-muted-foreground">{T.settingsTelegramDesc || "Connect Telegram for instant alerts"}</p></div>
                     {hasGrowthAccess ? (
-  telegramConnected ? (
-    <Button variant="outline" size="sm" className="shrink-0" onClick={handleDisconnectTelegram}>
-      {language === "UA" ? "Відключити" : language === "DE" ? "Trennen" : "Disconnect"}
-    </Button>
-  ) : (
-    <Button variant="outline" size="sm" className="shrink-0" onClick={handleConnectTelegram}>{T.settingsConnect || "Connect"}</Button>
-  )
-) : (
-
-  <Button variant="outline" size="sm" className="shrink-0" onClick={() => router.push("/#pricing")}>
-    {language === "UA" ? "Оновити" : language === "DE" ? "Upgrade" : "Upgrade"}
-  </Button>
+                      telegramConnected ? (
+                        <Button variant="outline" size="sm" className="shrink-0" onClick={handleDisconnectTelegram}>
+                          {language === "UA" ? "Відключити" : language === "DE" ? "Trennen" : "Disconnect"}
+                        </Button>
+                      ) : (
+                        <Button variant="outline" size="sm" className="shrink-0" onClick={handleConnectTelegram}>{T.settingsConnect || "Connect"}</Button>
+                      )
+                    ) : (
+                      <Button variant="outline" size="sm" className="shrink-0" onClick={() => router.push("/#pricing")}>
+                        {language === "UA" ? "Оновити" : language === "DE" ? "Upgrade" : "Upgrade"}
+                      </Button>
                     )}
                   </div>
 
-                  <TeamAccessCard email={profileEmail} />
-                </div>
-              </div>
-
-              <TeamAccessCard email={profileEmail} />
-
-              <div className="bg-card rounded-xl p-6 border border-border">
-                <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
-                  <Shield className="w-4 h-4 text-primary" /> {T.settingsSecurity || "Security"}
-                </h3>
-                <div className="space-y-4">
                   <div className="flex items-center justify-between gap-3 py-2">
                     <div className="flex-1 min-w-0"><p className="font-medium text-foreground">{T.settings2FA || "Two-Factor Authentication"}</p><p className="text-xs text-muted-foreground">{T.settings2FADesc || "Add an extra layer of security"}</p></div>
                     <div className="shrink-0 bg-secondary/40 rounded-full p-1">
@@ -2549,15 +2539,17 @@ if (!subInfo) {
                       />
                     </div>
                   </div>
-                <div className="flex items-center justify-between gap-3 py-2">
+
+                  <div className="flex items-center justify-between gap-3 py-2">
                     <div className="flex-1 min-w-0"><p className="font-medium text-foreground">{T.settingsChangePassword || "Change Password"}</p><p className="text-xs text-muted-foreground">{T.settingsChangePasswordDesc || "Update your password"}</p></div>
                     <Button variant="outline" size="sm" className="shrink-0" onClick={() => setShowPasswordModal(true)}>{T.settingsUpdate || "Update"}</Button>
                   </div>
+
                   <div className="flex items-center justify-between gap-3 py-2">
                     <div className="flex-1 min-w-0"><p className="font-medium text-foreground">{T.settingsApiKeys || "API Keys"}</p><p className="text-xs text-muted-foreground">{T.settingsApiKeysDesc || "Manage API access tokens"}</p></div>
                     <Button variant="outline" size="sm" className="shrink-0" disabled>
-  {language === "UA" ? "Скоро" : language === "DE" ? "Bald" : "Coming soon"}
-</Button>
+                      {language === "UA" ? "Скоро" : language === "DE" ? "Bald" : "Coming soon"}
+                    </Button>
                   </div>
                 </div>
               </div>
@@ -2586,7 +2578,7 @@ if (!subInfo) {
                 </div>
               </div>
 
-<div className="bg-card rounded-xl p-6 border border-border">
+              <div className="bg-card rounded-xl p-6 border border-border">
                 <h3 className="font-semibold text-foreground mb-4">
                   {language === "UA" ? "Залишити відгук" : language === "DE" ? "Bewertung abgeben" : "Leave a Review"}
                 </h3>
@@ -2604,8 +2596,8 @@ if (!subInfo) {
                     language === "UA"
                       ? "Поділіться своїм досвідом використання RIVANT..."
                       : language === "DE"
-                      ? "Teilen Sie Ihre Erfahrung mit RIVANT..."
-                      : "Share your experience with RIVANT..."
+                        ? "Teilen Sie Ihre Erfahrung mit RIVANT..."
+                        : "Share your experience with RIVANT..."
                   }
                   className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-foreground text-sm min-h-[80px]"
                 />
@@ -2621,68 +2613,69 @@ if (!subInfo) {
                 </Button>
               </div>
 
-<div className="bg-card rounded-xl p-6 border border-border">
-  <h3 className="font-semibold text-foreground mb-4">
-    {language === "UA" ? "Повідомити про проблему" : language === "DE" ? "Problem melden" : "Report an issue"}
-  </h3>
-  <div className="flex gap-2 mb-3">
-    <button
-      onClick={() => setFeedbackType("bug")}
-      className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-colors ${
-        feedbackType === "bug" ? "bg-red-500/20 text-red-400" : "bg-secondary text-muted-foreground hover:bg-secondary/80"
-      }`}
-    >
-      {language === "UA" ? "Проблема" : language === "DE" ? "Fehler" : "Bug"}
-    </button>
-    <button
-      onClick={() => setFeedbackType("feature")}
-      className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-colors ${
-        feedbackType === "feature" ? "bg-blue-500/20 text-blue-400" : "bg-secondary text-muted-foreground hover:bg-secondary/80"
-      }`}
-    >
-      {language === "UA" ? "Пропозиція функції" : language === "DE" ? "Funktionsvorschlag" : "Feature request"}
-    </button>
-  </div>
-  <textarea
-    value={feedbackMessage}
-    onChange={(e) => setFeedbackMessage(e.target.value)}
-    placeholder={
-      language === "UA"
-        ? "Опишіть проблему або ідею..."
-        : language === "DE"
-        ? "Beschreiben Sie das Problem oder die Idee..."
-        : "Describe the issue or idea..."
-    }
-    className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-foreground text-sm min-h-[80px]"
-  />
-  {feedbackMsg && (
-    <p className="text-sm text-primary mt-2">
-      {feedbackMsg === "success"
-        ? (language === "UA" ? "Дякуємо! Ми розглянемо це найближчим часом." : language === "DE" ? "Danke! Wir prüfen das zeitnah." : "Thanks! We'll look into it soon.")
-        : (language === "UA" ? "Щось пішло не так, спробуйте ще раз." : language === "DE" ? "Etwas ist schiefgelaufen, versuchen Sie es erneut." : "Something went wrong, try again.")}
-    </p>
-  )}
-  <Button className="mt-3" onClick={submitFeedback} disabled={!feedbackMessage.trim()}>
-    {language === "UA" ? "Надіслати" : language === "DE" ? "Senden" : "Submit"}
-  </Button>
-</div>
+              <div className="bg-card rounded-xl p-6 border border-border">
+                <h3 className="font-semibold text-foreground mb-4">
+                  {language === "UA" ? "Повідомити про проблему" : language === "DE" ? "Problem melden" : "Report an issue"}
+                </h3>
+                <div className="flex gap-2 mb-3">
+                  <button
+                    onClick={() => setFeedbackType("bug")}
+                    className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-colors ${
+                      feedbackType === "bug" ? "bg-red-500/20 text-red-400" : "bg-secondary text-muted-foreground hover:bg-secondary/80"
+                    }`}
+                  >
+                    {language === "UA" ? "Проблема" : language === "DE" ? "Fehler" : "Bug"}
+                  </button>
+                  <button
+                    onClick={() => setFeedbackType("feature")}
+                    className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-colors ${
+                      feedbackType === "feature" ? "bg-blue-500/20 text-blue-400" : "bg-secondary text-muted-foreground hover:bg-secondary/80"
+                    }`}
+                  >
+                    {language === "UA" ? "Пропозиція функції" : language === "DE" ? "Funktionsvorschlag" : "Feature request"}
+                  </button>
+                </div>
+                <textarea
+                  value={feedbackMessage}
+                  onChange={(e) => setFeedbackMessage(e.target.value)}
+                  placeholder={
+                    language === "UA"
+                      ? "Опишіть проблему або ідею..."
+                      : language === "DE"
+                        ? "Beschreiben Sie das Problem oder die Idee..."
+                        : "Describe the issue or idea..."
+                  }
+                  className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-foreground text-sm min-h-[80px]"
+                />
+                {feedbackMsg && (
+                  <p className="text-sm text-primary mt-2">
+                    {feedbackMsg === "success"
+                      ? (language === "UA" ? "Дякуємо! Ми розглянемо це найближчим часом." : language === "DE" ? "Danke! Wir prüfen das zeitnah." : "Thanks! We'll look into it soon.")
+                      : (language === "UA" ? "Щось пішло не так, спробуйте ще раз." : language === "DE" ? "Etwas ist schiefgelaufen, versuchen Sie es erneut." : "Something went wrong, try again.")}
+                  </p>
+                )}
+                <Button className="mt-3" onClick={submitFeedback} disabled={!feedbackMessage.trim()}>
+                  {language === "UA" ? "Надіслати" : language === "DE" ? "Senden" : "Submit"}
+                </Button>
+              </div>
 
               <div className="bg-card rounded-xl p-6 border border-border">
                 <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 text-primary" /> {T.settingsDangerZone || "Danger Zone"}
                 </h3>
-               <div className="space-y-3">
- <div className="flex items-center justify-between gap-3">
-  <div className="min-w-0">
-    <p className="font-medium text-foreground">
-      {language === "UA" ? "Видалити акаунт" : language === "DE" ? "Konto löschen" : "Delete account"}
-    </p>
-    <p className="text-xs text-muted-foreground">{T.settingsDeleteAccountDesc || "Permanently delete your account and all data"}</p>
-  </div>
-  <Button variant="destructive" size="sm" className="shrink-0" onClick={() => setShowDeleteAccountModal(true)}>
-    {language === "UA" ? "Видалити" : language === "DE" ? "Löschen" : "Delete"}
-  </Button>
-</div>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-medium text-foreground">
+                        {language === "UA" ? "Видалити акаунт" : language === "DE" ? "Konto löschen" : "Delete account"}
+                      </p>
+                      <p className="text-xs text-muted-foreground">{T.settingsDeleteAccountDesc || "Permanently delete your account and all data"}</p>
+                    </div>
+                    <Button variant="destructive" size="sm" className="shrink-0" onClick={() => setShowDeleteAccountModal(true)}>
+                      {language === "UA" ? "Видалити" : language === "DE" ? "Löschen" : "Delete"}
+                    </Button>
+                  </div>
+
                   <div ref={exportMenuRef} className="flex items-center justify-between pt-2 border-t border-border relative">
                     <div><p className="font-medium text-foreground">{T.settingsExportData || "Export All Data"}</p><p className="text-xs text-muted-foreground">{T.settingsExportDataDesc || "Download all your business data"}</p></div>
                     <Button variant="outline" size="sm" onClick={() => setExportMenuOpen((v) => !v)} disabled={exportingFormat}>
@@ -2702,6 +2695,7 @@ if (!subInfo) {
           )}
         </div>
       </main>
+      
 
       <nav className="fixed bottom-0 left-0 right-0 z-40 lg:hidden bg-background/95 backdrop-blur-xl border-t border-border px-2 py-2">
         <div className="flex items-center justify-around">
