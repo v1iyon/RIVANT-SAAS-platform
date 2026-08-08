@@ -9,7 +9,7 @@ const admin = createClient(
   process.env.SUPABASE_SERVICE_KEY
 );
 
-const SUPPORTED_PROVIDERS = ["meta_ads", "google_ads", "shopify", "quickbooks", "plaid"];
+const SUPPORTED_PROVIDERS = ["meta_ads", "google_ads", "shopify", "quickbooks", "google_analytics"];
 
 // Простая проверка "непустой строки разумной длины" — реальная проверка валидности
 // ключа у каждого провайдера своя (Этап 3, sync-модули), сюда её добавим позже.

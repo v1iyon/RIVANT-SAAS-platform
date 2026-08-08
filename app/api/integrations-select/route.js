@@ -7,7 +7,7 @@ const admin = createClient(
 );
 
 // Growth — 1 доп. интеграция сверх Stripe, Scale — все сразу без выбора.
-const SELECTABLE_PROVIDERS = ["meta_ads", "google_ads", "shopify", "quickbooks", "plaid"];
+const SELECTABLE_PROVIDERS = ["meta_ads", "google_ads", "shopify", "quickbooks", "google_analytics"];
 
 export async function GET(req) {
   const email = new URL(req.url).searchParams.get("email");

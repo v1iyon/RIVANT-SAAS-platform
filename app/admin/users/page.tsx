@@ -45,9 +45,9 @@ const INTEGRATION_LABELS: Record<string, string> = {
   meta_ads: "Meta Ads",
   google_ads: "Google Ads",
   quickbooks: "QuickBooks",
-  plaid: "Plaid",
+  google_analytics: "Google Analytics",
 };
-const INTEGRATION_ORDER = ["stripe", "shopify", "meta_ads", "google_ads", "quickbooks", "plaid"];
+const INTEGRATION_ORDER = ["stripe", "shopify", "meta_ads", "google_ads", "quickbooks", "google_analytics"];
 
 function getConnectedProviders(u: User): Set<string> {
   const connected = new Set<string>();
