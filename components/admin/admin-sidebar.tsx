@@ -16,16 +16,22 @@ import {
   LogOut,
   Menu,
   X,
+  Contact,
+  PackageCheck,
+  Puzzle,
 } from "lucide-react";
 
 // Единственное место, где нужно дописать пункт меню при добавлении раздела.
 const NAV_ITEMS = [
   { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/users", label: "Пользователи", icon: Users },
+  { href: "/admin/leads", label: "Лиды", icon: Contact },
   { href: "/admin/reviews", label: "Отзывы", icon: Star },
   { href: "/admin/errors", label: "Ошибки", icon: AlertTriangle },
   { href: "/admin/feedback", label: "Обратная связь", icon: MessageSquare },
   { href: "/admin/subscriptions", label: "Подписки", icon: CreditCard },
+  { href: "/admin/service-orders", label: "Допуслуги", icon: PackageCheck },
+  { href: "/admin/addons", label: "Addon-подписки", icon: Puzzle },
   { href: "/admin/notifications", label: "Уведомления", icon: Bell },
   { href: "/admin/analytics", label: "Аналитика продукта", icon: LineChart },
 ] as const;
