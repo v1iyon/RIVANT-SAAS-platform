@@ -2526,8 +2526,10 @@ if (!subInfo) {
   <Button variant="outline" size="sm" className="shrink-0" onClick={() => router.push("/#pricing")}>
     {language === "UA" ? "Оновити" : language === "DE" ? "Upgrade" : "Upgrade"}
   </Button>
-                   )}
+                    )}
                   </div>
+
+                  <TeamAccessCard email={profileEmail} />
                 </div>
               </div>
 
