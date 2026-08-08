@@ -26,6 +26,54 @@ bot.command("start", async (ctx) => {
     return ctx.reply(getDict("EN").welcomeNoToken, { link_preview_options: { is_disabled: true } });
   }
 
+  // Командний інвайт (допуслуга "Сповіщення для команди") — окрема гілка,
+  // бо прив'язує telegram_id до team_members (business_id), а не до
+  // users.telegram_id, як звичайний /start токен власника акаунту нижче.
+  if (token.startsWith("tm_")) {
+    const { data: invite } = await supabase
+      .from("team_invites")
+      .select("*")
+      .eq("token", token)
+      .eq("used", false)
+      .maybeSingle();
+
+    if (!invite || new Date(invite.expires_at) < new Date()) {
+      return ctx.reply(getDict("EN").linkInvalid);
+    }
+
+    // Подвійна перевірка активної підписки на випадок, якщо вона скасувалась
+    // уже ПІСЛЯ того, як власник згенерував посилання (див. app/api/team/invite).
+    const { data: addon } = await supabase
+      .from("addon_subscriptions")
+      .select("status, current_period_end")
+      .eq("business_id", invite.business_id)
+      .eq("addon_type", "team_alerts")
+      .maybeSingle();
+
+    if (!addon || addon.status !== "active" || new Date(addon.current_period_end) < new Date()) {
+      return ctx.reply(
+        "Ця підписка на командні сповіщення більше не активна. Попросіть власника акаунту оновити оплату та надіслати нове посилання."
+      );
+    }
+
+    const { error: upsertError } = await supabase.from("team_members").upsert(
+      {
+        business_id: invite.business_id,
+        telegram_id: ctx.from.id,
+        telegram_username: ctx.from.username || null,
+        invited_by: invite.created_by,
+        status: "active",
+      },
+      { onConflict: "business_id,telegram_id" }
+    );
+    await supabase.from("team_invites").update({ used: true, used_by_telegram_id: ctx.from.id }).eq("token", token);
+
+    if (upsertError) {
+      return ctx.reply("Сталася помилка приєднання до команди. Спробуйте ще раз пізніше.");
+    }
+    return ctx.reply("✅ Вас додано до команди RIVANT. Тепер ви отримуватимете сповіщення про бізнес-алерти в цьому чаті.");
+  }
+
   const { data: linkToken, error } = await supabase
     .from("link_tokens")
     .select("*")

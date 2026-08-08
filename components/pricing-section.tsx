@@ -4,7 +4,7 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase-browser";
 import { loadPaddle, openPaddleCheckout } from "@/lib/paddle-client";
 import { Button } from "@/components/ui/button";
-import { Check, Zap, Settings, FileText, Users, ArrowRight } from "lucide-react";
+import { Check, Zap, FileText, Users, ArrowRight } from "lucide-react";
 import { useLanguage } from "@/lib/translations";
 import { useCurrency } from "@/lib/currency";
 
@@ -86,21 +86,49 @@ export function PricingSection() {
     },
   ];
 
-  const handleOrderService = async () => {
+  const [orderingService, setOrderingService] = useState<string | null>(null);
+
+  const handleOrderService = async (serviceType: string) => {
     const { data } = await supabase.auth.getSession();
     if (!data.session) {
       window.dispatchEvent(new CustomEvent("rivant:open-signup"));
       return;
     }
-    // Уже зарегистрирован — пока нет отдельного чекаута под допуслуги,
-    // ведём в кабинет, реальную оплату услуг добавим отдельно.
-    window.location.href = "/dashboard";
+
+    setOrderingService(serviceType);
+    try {
+      const res = await fetch("/api/orders/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: data.session.user.email, serviceType }),
+      });
+      const result = await res.json();
+
+      if (result.mode === "redirect") {
+        window.location.href = result.url; // напр. business_setup -> calendar booking
+      } else if (result.mode === "checkout") {
+        await loadPaddle();
+        openPaddleCheckout({ priceId: result.priceId, email: data.session.user.email!, plan: serviceType });
+      } else {
+        // lead_captured — оплата ще не підключена, заявку вже надіслано тобі в Telegram
+        window.location.href = "/dashboard?order=received";
+      }
+    } catch (e) {
+      console.error("order create error:", e);
+      alert("Не вдалося оформити заявку, спробуйте ще раз");
+    } finally {
+      setOrderingService(null);
+    }
   };
 
+  // "Налаштування бізнесу" замінено на автоматизовану What-If послугу, а
+  // "Квартальний аудит" — на дешевший щомісячний дайджест того ж движка
+  // (обидва повністю автоматичні, без участі людини). "Сповіщення для
+  // команди" лишається, тепер реально підключене до /api/team/invite.
   const addons = [
-    { icon: Settings, name: T.businessSetup ?? "Business Setup", price: 199, priceType: T.oneTime ?? "One-time", description: T.businessSetupDesc ?? "Professional setup service" },
-    { icon: FileText, name: T.quarterlyAudit ?? "Quarterly Audit", price: 299, priceType: T.perQuarter ?? "Per quarter", description: T.quarterlyAuditDesc ?? "Regular audit service" },
-    { icon: Users, name: T.teamAlerts ?? "Team Alerts", price: 29, priceType: T.perMonth ?? "Per month", description: T.teamAlertsDesc ?? "Alert your team" },
+    { icon: FileText, key: "whatif_analysis", name: T.whatifAnalysis ?? "AI Historical Analysis", price: 199, priceType: T.oneTime ?? "One-time", description: T.whatifAnalysisDesc ?? "Automated analysis of your last 12 months of data" },
+    { icon: Zap, key: "monthly_digest", name: T.monthlyDigest ?? "AI Performance Digest", price: 49, priceType: T.perMonth ?? "Per month", description: T.monthlyDigestDesc ?? "Automated monthly snapshot of your key metrics" },
+    { icon: Users, key: "team_alerts", name: T.teamAlerts ?? "Team Alert Access", price: 29, priceType: T.perMonth ?? "Per month", description: T.teamAlertsDesc ?? "Enable real-time Telegram alerts for your team" },
   ];
 
   return (
@@ -187,9 +215,10 @@ export function PricingSection() {
                 <Button
                   variant="outline"
                   className="w-full mt-auto group-hover:bg-primary group-hover:text-white group-hover:border-primary transition-all"
-                  onClick={handleOrderService}
+                  onClick={() => handleOrderService(addon.key)}
+                  disabled={orderingService === addon.key}
                 >
-  {t.orderService || "Order Service"} <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
+  {orderingService === addon.key ? "..." : (t.orderService || "Order Service")} <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
 </Button>
               </div>
             ))}
