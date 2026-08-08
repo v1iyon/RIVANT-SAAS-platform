@@ -26,17 +26,17 @@ export async function GET(req) {
       { count: registeredWeek },
       { count: totalBusinesses },
       { count: stripeConnected },
-      { data: allEvents }, 
-      { data: allInterest },
       { data: allUsers },
       { data: allSubs },
+      { data: allEvents },
+      { data: allInterest },
     ] = await Promise.all([
       admin.from("users").select("id", { count: "exact", head: true }),
       admin.from("users").select("id", { count: "exact", head: true }).gte("created_at", startOfDay(0)),
       admin.from("users").select("id", { count: "exact", head: true }).gte("created_at", startOfDay(7)),
       admin.from("businesses").select("id", { count: "exact", head: true }),
       admin.from("integrations").select("id", { count: "exact", head: true }).eq("provider", "stripe").eq("status", "connected"),
-     admin.from("users").select("id, telegram_id"),
+      admin.from("users").select("id, telegram_id"),
       admin.from("subscriptions").select("plan, access_status"),
       admin.from("user_events").select("event_type, channel, created_at"),
       admin.from("interest_signals").select("email, response, created_at"),
@@ -96,7 +96,8 @@ export async function GET(req) {
         createdBusiness: totalBusinesses || 0,
         onboarded: onboardedUserIds.size,
         paid: paidCount,
-    trialEngagement: {
+      },
+      trialEngagement: {
         promptsSent,
         promptsYes,
         promptsNo,
@@ -106,7 +107,6 @@ export async function GET(req) {
       activityByChannel: {
         telegram: telegramClicks,
         web: webEvents,
-      },
       },
     });
   } catch (err) {

@@ -39,10 +39,24 @@ function getSubscription(u: User): Subscription | null {
   return u.subscriptions?.[0] ?? null;
 }
 
-function isStripeConnected(u: User) {
-  return u.businesses?.some((b) =>
-    b.integrations?.some((i) => i.provider === "stripe" && i.status === "connected")
+const INTEGRATION_LABELS: Record<string, string> = {
+  stripe: "Stripe",
+  shopify: "Shopify",
+  meta_ads: "Meta Ads",
+  google_ads: "Google Ads",
+  quickbooks: "QuickBooks",
+  plaid: "Plaid",
+};
+const INTEGRATION_ORDER = ["stripe", "shopify", "meta_ads", "google_ads", "quickbooks", "plaid"];
+
+function getConnectedProviders(u: User): Set<string> {
+  const connected = new Set<string>();
+  u.businesses?.forEach((b) =>
+    b.integrations?.forEach((i) => {
+      if (i.status === "connected") connected.add(i.provider);
+    })
   );
+  return connected;
 }
 
 function planBadgeClass(plan: string) {
@@ -134,7 +148,7 @@ export default function AdminUsersPage() {
         {filtered.length === 0 && <p className="text-sm text-gray-500">Ничего не найдено.</p>}
         {filtered.map((u) => {
           const sub = getSubscription(u);
-          const stripeOk = isStripeConnected(u);
+          const connected = getConnectedProviders(u);
           const telegramOk = Boolean(u.telegram_id);
           const isSaving = savingId === u.id;
 
@@ -168,9 +182,14 @@ export default function AdminUsersPage() {
               </div>
 
               <div className="mb-3 flex flex-wrap gap-3 text-xs text-gray-400">
-                <span className={stripeOk ? "text-green-400" : "text-gray-600"}>
-                  {stripeOk ? "✓" : "—"} Stripe
-                </span>
+                {INTEGRATION_ORDER.map((key) => {
+                  const ok = connected.has(key);
+                  return (
+                    <span key={key} className={ok ? "text-green-400" : "text-gray-600"}>
+                      {ok ? "✓" : "—"} {INTEGRATION_LABELS[key]}
+                    </span>
+                  );
+                })}
                 <span className={telegramOk ? "text-green-400" : "text-gray-600"}>
                   {telegramOk ? "✓" : "—"} Telegram
                 </span>

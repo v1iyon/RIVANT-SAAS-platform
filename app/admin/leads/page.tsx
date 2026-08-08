@@ -59,7 +59,7 @@ export default function AdminLeadsPage() {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center p-4">
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 w-full max-w-sm">
-          <h1 className="text-lg font-semibold text-white mb-4">Admin Access</h1>
+          <h1 className="text-lg font-semibold text-white mb-4">Вход в админку</h1>
           <input
             type="password"
             value={secret}
@@ -67,13 +67,13 @@ export default function AdminLeadsPage() {
             placeholder="Admin secret"
             className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm mb-3"
           />
-          {error && <p className="text-red-400 text-sm mb-3">{error}</p>}
+          {error && <p className="text-red-400 text-sm mb-3">Неверный пароль или ошибка сервера</p>}
           <button
             onClick={() => loadLeads(secret)}
             disabled={loading}
             className="w-full py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50"
           >
-            {loading ? "..." : "Unlock"}
+            {loading ? "..." : "Войти"}
           </button>
         </div>
       </div>
@@ -84,18 +84,24 @@ export default function AdminLeadsPage() {
   const other = leads.filter((l) => l.status !== "new");
 
   const sourceLabel = (source: string | null) => {
-    if (source === "loss_calculator") return "Loss Calculator";
-    if (source === "contact_form") return "Contact Form";
+    if (source === "loss_calculator") return "Калькулятор потерь";
+    if (source === "contact_form") return "Форма контактов";
+    if (source?.startsWith("addon_")) return `Заявка на допуслугу: ${source.replace("addon_", "")}`;
     return source || "—";
   };
 
   return (
     <div className="min-h-screen bg-black p-6">
-      <h1 className="text-2xl font-bold text-white mb-6">Leads</h1>
+      <h1 className="text-2xl font-bold text-white mb-2">Лиды</h1>
+      <p className="text-xs text-gray-500 mb-6">
+        Это заявки от людей, которые оставили контакт (форма на сайте, калькулятор потерь, кнопка
+        «Замовити послугу» без подключённой оплаты) — им ещё нужно написать вручную и довести до
+        оплаты. Это НЕ действующие клиенты.
+      </p>
 
-      <h2 className="text-white font-semibold mb-3">New ({fresh.length})</h2>
+      <h2 className="text-white font-semibold mb-3">Новые ({fresh.length})</h2>
       <div className="space-y-3 mb-10">
-        {fresh.length === 0 && <p className="text-gray-500 text-sm">No new leads.</p>}
+        {fresh.length === 0 && <p className="text-gray-500 text-sm">Новых лидов нет.</p>}
         {fresh.map((l) => (
           <div key={l.id} className="bg-gray-900 border border-gray-800 rounded-xl p-4">
             <div className="flex justify-between items-start mb-2">
@@ -110,7 +116,7 @@ export default function AdminLeadsPage() {
             <div className="text-gray-400 text-xs mb-2 space-x-3">
               <a href={`mailto:${l.email}`} className="hover:text-white underline">{l.email}</a>
               {l.telegram && <span>TG: {l.telegram}</span>}
-              <span>{new Date(l.created_at).toLocaleString()}</span>
+              <span>{new Date(l.created_at).toLocaleString("ru-RU")}</span>
             </div>
             {l.message && <p className="text-gray-300 text-sm mb-3 whitespace-pre-line">{l.message}</p>}
             <div className="flex gap-2">
@@ -118,20 +124,20 @@ export default function AdminLeadsPage() {
                 onClick={() => updateStatus(l.id, "contacted")}
                 className="px-4 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700"
               >
-                Mark contacted
+                Связался
               </button>
               <button
                 onClick={() => updateStatus(l.id, "rejected")}
                 className="px-4 py-1.5 bg-red-600/80 text-white text-sm rounded-lg hover:bg-red-700"
               >
-                Reject
+                Отклонить
               </button>
             </div>
           </div>
         ))}
       </div>
 
-      <h2 className="text-white font-semibold mb-3">History ({other.length})</h2>
+      <h2 className="text-white font-semibold mb-3">История ({other.length})</h2>
       <div className="space-y-2">
         {other.map((l) => (
           <div key={l.id} className="bg-gray-900/50 border border-gray-800 rounded-xl p-3 flex justify-between items-center">
@@ -139,7 +145,7 @@ export default function AdminLeadsPage() {
               <p className="text-gray-300 text-sm">{l.name} — {l.email}</p>
             </div>
             <span className={`text-xs px-2 py-0.5 rounded-full ${l.status === "contacted" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>
-              {l.status}
+              {l.status === "contacted" ? "связались" : "отклонён"}
             </span>
           </div>
         ))}

@@ -127,10 +127,19 @@ export default function AdminServiceOrdersPage() {
           </button>
         </div>
       </div>
-      <p className="mb-6 text-xs text-gray-500">
-        Крон /api/cron/process-service-orders пока не висит в vercel.json — кнопка выше вызывает тот же
-        роут вручную, без изменения крон-конфига.
-      </p>
+      <div className="mb-6 space-y-1 rounded-lg border border-gray-800 bg-gray-900/60 p-3 text-xs text-gray-400">
+        <p>
+          Здесь видно, кто заказал платную допуслугу с лендинга — «AI-Реконструкція минулого»
+          ($199 разово) или «AI-Дайджест ефективності» ($49/мес) — и на каком этапе находится
+          выполнение: заявка создана (pending) → готовится отчёт (в обработке) → отправлен клиенту в
+          Telegram/email (доставлено), либо не хватило данных / произошла ошибка.
+        </p>
+        <p>
+          Крон, который обрабатывает это автоматически (/api/cron/process-service-orders), пока не
+          добавлен в vercel.json, поэтому строки будут висеть в «Pending», пока не нажмёшь кнопку
+          выше — она вызывает тот же роут вручную, конфиг крона при этом не трогается.
+        </p>
+      </div>
 
       <h2 className="mb-3 font-semibold text-white">Pending ({pending.length})</h2>
       <div className="mb-10 space-y-3">
