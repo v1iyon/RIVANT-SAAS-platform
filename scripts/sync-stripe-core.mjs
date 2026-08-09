@@ -34,31 +34,31 @@ async function sendEmail(to, subject, text) {
 
 const PROMPTS = {
   UA: (b, t, y, changePct) => `Дані бізнесу "${b.name}":
-Сьогодні: виручка $${t.revenue}, витрати $${t.cost}, маржа ${t.margin_pct}%
-Вчора: виручка $${y.revenue}, витрати $${y.cost}, маржа ${y.margin_pct}%
+За останні 24 години: виручка $${t.revenue}, витрати $${t.cost}, маржа ${t.margin_pct}%
+За попередні 24 години: виручка $${y.revenue}, витрати $${y.cost}, маржа ${y.margin_pct}%
 Напиши ОДНЕ речення (до 30 слів) українською, професійним діловим тоном, без розмовних слів типу "тож" чи "отже". Формат:
-"[Назва показника] [зросла/впала] на ${Math.abs(changePct).toFixed(0)}% (з $${y.revenue} до $${t.revenue}), маржа [не змінилась / знизилась / зросла] і становить ${t.margin_pct}%. Перевірте: [2-3 конкретні пункти, релевантні саме цій проблемі]."
+"[Назва показника] [зросла/впала] на ${Math.abs(changePct).toFixed(0)}% за останні 24 години (з $${y.revenue} до $${t.revenue}), маржа [не змінилась / знизилась / зросла] і становить ${t.margin_pct}%. Перевірте: [2-3 конкретні пункти, релевантні саме цій проблемі]."
 Відповідай ЛИШЕ цим реченням, без лапок і пояснень.`,
 
   EN: (b, t, y, changePct) => `Data for business "${b.name}":
-Today: revenue $${t.revenue}, costs $${t.cost}, margin ${t.margin_pct}%
-Yesterday: revenue $${y.revenue}, costs $${y.cost}, margin ${y.margin_pct}%
+Last 24 hours: revenue $${t.revenue}, costs $${t.cost}, margin ${t.margin_pct}%
+Previous 24 hours: revenue $${y.revenue}, costs $${y.cost}, margin ${y.margin_pct}%
 Write ONE sentence (max 30 words) in English, professional business tone, no filler words. Format:
-"[Metric name] [dropped/rose] ${Math.abs(changePct).toFixed(0)}% (from $${y.revenue} to $${t.revenue}), margin [unchanged/lower/higher] at ${t.margin_pct}%. Check: [2-3 specific items relevant to this issue]."
+"[Metric name] [dropped/rose] ${Math.abs(changePct).toFixed(0)}% over the last 24 hours (from $${y.revenue} to $${t.revenue}), margin [unchanged/lower/higher] at ${t.margin_pct}%. Check: [2-3 specific items relevant to this issue]."
 Reply ONLY with this sentence, no quotes or explanations.`,
 
   DE: (b, t, y, changePct) => `Daten für "${b.name}":
-Heute: Umsatz $${t.revenue}, Kosten $${t.cost}, Marge ${t.margin_pct}%
-Gestern: Umsatz $${y.revenue}, Kosten $${y.cost}, Marge ${y.margin_pct}%
+Letzte 24 Stunden: Umsatz $${t.revenue}, Kosten $${t.cost}, Marge ${t.margin_pct}%
+Vorherige 24 Stunden: Umsatz $${y.revenue}, Kosten $${y.cost}, Marge ${y.margin_pct}%
 Schreibe EINEN Satz (max. 30 Wörter) auf Deutsch, professioneller Geschäftston, keine Füllwörter. Format:
-"[Kennzahl] [gesunken/gestiegen] um ${Math.abs(changePct).toFixed(0)}% (von $${y.revenue} auf $${t.revenue}), Marge [unverändert/niedriger/höher] bei ${t.margin_pct}%. Prüfen Sie: [2-3 konkrete Punkte]."
+"[Kennzahl] [gesunken/gestiegen] um ${Math.abs(changePct).toFixed(0)}% in den letzten 24 Stunden (von $${y.revenue} auf $${t.revenue}), Marge [unverändert/niedriger/höher] bei ${t.margin_pct}%. Prüfen Sie: [2-3 konkrete Punkte]."
 Antworte NUR mit diesem Satz, ohne Anführungszeichen oder Erklärungen.`,
 };
 
 const REVENUE_DROP_MESSAGE = {
-  UA: (name, pct, date) => `Виручка "${name}" впала на ${pct}% (${date})`,
-  EN: (name, pct, date) => `Revenue for ${name} dropped ${pct}% on ${date}`,
-  DE: (name, pct, date) => `Umsatz von ${name} ist am ${date} um ${pct}% gesunken`,
+  UA: (name, pct) => `Виручка "${name}" впала на ${pct}% за останні 24 години`,
+  EN: (name, pct) => `Revenue for ${name} dropped ${pct}% over the last 24 hours`,
+  DE: (name, pct) => `Umsatz von ${name} ist in den letzten 24 Stunden um ${pct}% gesunken`,
 };
 
 // Резервне (не-AI) пояснення — використовується, коли Anthropic API
@@ -83,9 +83,9 @@ function buildFallbackExplanation(language, today, yesterday, changePct) {
     DE: "Prüfen Sie: Werbekampagnen-Ausfälle, Preis-/Sortimentsänderungen und ob alle Integrationen fehlerfrei synchronisieren.",
   };
   const templates = {
-    UA: `Виручка ${direction.UA} на ${Math.abs(changePct).toFixed(0)}% (з $${yesterday.revenue} до $${today.revenue}), маржа ${marginWord.UA} і становить ${today.margin_pct}%. ${checkList.UA}`,
-    EN: `Revenue ${direction.EN} ${Math.abs(changePct).toFixed(0)}% (from $${yesterday.revenue} to $${today.revenue}), margin ${marginWord.EN} at ${today.margin_pct}%. ${checkList.EN}`,
-    DE: `Der Umsatz ist um ${Math.abs(changePct).toFixed(0)}% ${direction.DE} (von $${yesterday.revenue} auf $${today.revenue}), die Marge ist ${marginWord.DE} bei ${today.margin_pct}%. ${checkList.DE}`,
+    UA: `Виручка ${direction.UA} на ${Math.abs(changePct).toFixed(0)}% за останні 24 години (з $${yesterday.revenue} до $${today.revenue}), маржа ${marginWord.UA} і становить ${today.margin_pct}%. ${checkList.UA}`,
+    EN: `Revenue ${direction.EN} ${Math.abs(changePct).toFixed(0)}% over the last 24 hours (from $${yesterday.revenue} to $${today.revenue}), margin ${marginWord.EN} at ${today.margin_pct}%. ${checkList.EN}`,
+    DE: `Der Umsatz ist in den letzten 24 Stunden um ${Math.abs(changePct).toFixed(0)}% ${direction.DE} (von $${yesterday.revenue} auf $${today.revenue}), die Marge ist ${marginWord.DE} bei ${today.margin_pct}%. ${checkList.DE}`,
   };
   return templates[language] || templates.EN;
 }
@@ -234,6 +234,32 @@ async function main(businessId) {
         byDate[date].stripeFee += feeCents / 100;
       }
 
+      // ФИКС ложных "выручка упала до $0": revenue_drop раньше сравнивал
+      // agg.revenue КАЛЕНДАРНОГО "сегодня" (растёт с $0 с полуночи и так
+      // весь день) с ПОЛНОЙ выручкой за вчера из metrics_computed. Синк
+      // гоняется раз в час (.github/workflows/sync-stripe.yml) — то есть
+      // каждую ночь в 00:xx это давало "упало со вчерашних $2392 до $0",
+      // в 01:xx — "до $150", и так по кругу, пока сегодняшний день не
+      // догонит вчерашний. Это не аномалия, это устройство календаря.
+      // Вместо "сегодня vs вчера" считаем СКОЛЬЗЯЩЕЕ окно "последние 24ч"
+      // vs "предыдущие 24ч" прямо по timestamp'ам charges — оба окна
+      // всегда одинаковой длины, поэтому полночь их не сбивает, и сигнал
+      // остаётся live (не ждём конца дня).
+      function sumChargesWindow(fromSec, toSec) {
+        let revenue = 0, orders = 0, stripeFee = 0;
+        for (const c of successful) {
+          if (c.created >= fromSec && c.created < toSec) {
+            revenue += c.amount / 100;
+            orders += 1;
+            stripeFee += (c.balance_transaction?.fee ?? 0) / 100;
+          }
+        }
+        return { revenue: Number(revenue.toFixed(2)), orders, stripeFee: Number(stripeFee.toFixed(2)) };
+      }
+      const nowSec = Math.floor(Date.now() / 1000);
+      const last24h = sumChargesWindow(nowSec - 24 * 3600, nowSec + 1);
+      const prev24h = sumChargesWindow(nowSec - 48 * 3600, nowSec - 24 * 3600);
+
       // ВАЖНО: раньше, если за день не было ни одного успешного списания,
       // дата вообще не попадала в byDate — а значит для неё никогда не
       // создавалась строка в metrics_computed. Столбик в графике на фронте
@@ -336,13 +362,6 @@ async function main(businessId) {
           .toISOString()
           .slice(0, 10);
 
-        const { data: prev } = await admin
-          .from("metrics_computed")
-          .select("revenue, cost, margin_pct")
-          .eq("business_id", business.id)
-          .eq("date", prevDate)
-          .maybeSingle();
-
         const cogsCost = agg.revenue * (costPct / 100);
         const stripeFee = agg.stripeFee || 0;
         const cost = Number((cogsCost + stripeFee).toFixed(2));
@@ -365,21 +384,24 @@ async function main(businessId) {
 
         if (date !== latestDate) continue; // см. комментарий про фикс спама выше
 
-        if (prev) {
-          // ВАЖНО: раньше здесь стояло `if (prev && prev.revenue > 0)` — если
-          // ВЧЕРА выручка уже была нулевой (два дня подряд без оплат), весь
-          // блок алерта пропускался целиком (защита от деления на ноль),
-          // включая случай, когда выручка ТОЛЬКО ЧТО упала с чего-то до нуля
-          // (это и есть самый важный сигнал для алерта!). Раньше это ещё
-          // маскировалось соседним багом: дни без оплат вообще не писались в
-          // metrics_computed (см. фикс byDate выше), поэтому prev почти
-          // всегда был null, а не 0 — сейчас, когда нулевые дни пишутся
-          // по-настоящему, division-by-zero guard остаётся нужен сам по себе.
-          const change = prev.revenue > 0
-            ? ((agg.revenue - prev.revenue) / prev.revenue) * 100
-            : (agg.revenue > 0 ? 100 : 0); // с нуля восстановились = рост, всё ещё 0 = без изменений (не новый алерт)
+        {
+          const last24hCogsCost = Number((last24h.revenue * (costPct / 100)).toFixed(2));
+          const last24hCost = Number((last24hCogsCost + last24h.stripeFee).toFixed(2));
+          const prev24hCogsCost = Number((prev24h.revenue * (costPct / 100)).toFixed(2));
+          const prev24hCost = Number((prev24hCogsCost + prev24h.stripeFee).toFixed(2));
 
-          if (change > -20) {
+          const change = prev24h.revenue > 0
+            ? ((last24h.revenue - prev24h.revenue) / prev24h.revenue) * 100
+            : (last24h.revenue > 0 ? 100 : 0); // с нуля восстановились = рост, всё ещё 0 = без изменений (не новый алерт)
+
+          // Игнорируем колебания на копеечных суммах: $5 -> $0 формально
+          // "-100%", но для реального бизнеса это шум, а не сигнал. Порог
+          // применяется к ПРЕДЫДУЩЕМУ окну — если там уже было мало денег,
+          // относительный % ничего не значит.
+          const MIN_REVENUE_FOR_ALERT = 20;
+          const tooSmallToMatter = prev24h.revenue < MIN_REVENUE_FOR_ALERT;
+
+          if (change > -20 || tooSmallToMatter) {
             const { data: resolved, error: resolveErr } = await admin
               .from("alerts_log")
               .update({ status: "resolved" })
@@ -390,7 +412,7 @@ async function main(businessId) {
             console.log("DEBUG auto-resolved alerts:", resolved?.length, "error:", resolveErr);
           }
 
-          if (change <= -20) {
+          if (change <= -20 && !tooSmallToMatter) {
             const severity = change <= -50 ? "critical" : change <= -35 ? "high" : "medium";
 
             const { data: user } = await admin
@@ -401,7 +423,7 @@ async function main(businessId) {
 
             const userLang = user?.language || "EN";
             const buildMessage = REVENUE_DROP_MESSAGE[userLang] || REVENUE_DROP_MESSAGE.EN;
-            const message = buildMessage(business.name, Math.abs(change).toFixed(0), date);
+            const message = buildMessage(business.name, Math.abs(change).toFixed(0));
 
            const oneDayAgo = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
 const { data: existingAlerts, error: dedupErr } = await admin
@@ -418,16 +440,16 @@ console.log("DEBUG dedup check:", existingAlerts?.length, "error:", dedupErr);
 if (existingAlerts?.length) continue;
 
             const { marginPct: todayFullMargin, fullCost: todayFullCost } = await getFullMargin(
-              business.id, date, agg.revenue, cost
+              business.id, date, last24h.revenue, last24hCost
             );
             const { marginPct: prevFullMargin, fullCost: prevFullCost } = await getFullMargin(
-              business.id, prevDate, prev.revenue, prev.cost
+              business.id, prevDate, prev24h.revenue, prev24hCost
             );
 
             const aiExplanation = await getAIExplanation(
               business,
-              { revenue: agg.revenue, cost: todayFullCost, margin_pct: todayFullMargin },
-              { revenue: prev.revenue, cost: prevFullCost, margin_pct: prevFullMargin },
+              { revenue: last24h.revenue, cost: todayFullCost, margin_pct: todayFullMargin },
+              { revenue: prev24h.revenue, cost: prevFullCost, margin_pct: prevFullMargin },
               userLang,
               change
             );
@@ -457,6 +479,7 @@ if (existingAlerts?.length) continue;
             }
             if (user?.email_enabled && user?.email) {
               await sendEmail(user.email, "RIVANT Alert", fullMessage);
+
             }
 
             // Допуслуга "Сповіщення для команди" — раньше эта функция вообще
