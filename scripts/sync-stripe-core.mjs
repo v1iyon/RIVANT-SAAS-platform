@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { decrypt } from "../lib/crypto.js";
 import { logError } from "../lib/log-error.js";
 import { getSeverityTelegramLabel } from "../lib/severity.js";
+import { getTeamContacts } from "../lib/alerts.mjs";
 
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
@@ -456,6 +457,16 @@ if (existingAlerts?.length) continue;
             }
             if (user?.email_enabled && user?.email) {
               await sendEmail(user.email, "RIVANT Alert", fullMessage);
+            }
+
+            // Допуслуга "Сповіщення для команди" — раньше эта функция вообще
+            // не вызывалась ни для одного алерта (см. lib/alerts.mjs), из-за
+            // чего подключившие её не получали ничего. revenue_drop — самый
+            // частый тип алерта (Stripe-синк раз в день), поэтому фан-аут
+            // добавлен именно сюда, а не только в Shopify/Meta/Google Ads.
+            const teamIds = await getTeamContacts(business.id);
+            if (teamIds.length) {
+              await Promise.all(teamIds.map((chatId) => sendTelegram(chatId, fullMessage)));
             }
           }
         }

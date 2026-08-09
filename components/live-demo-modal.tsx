@@ -1450,8 +1450,8 @@ const [googleAdsExtraValues, setGoogleAdsExtraValues] = useState<Record<string, 
 
 <DemoIntegrationCard
   name="Shopify"
-  placeholder="shpat_..."
-  hint={language === "UA" ? "Shopify Admin → Settings → Apps and sales channels → Develop apps → створіть Admin API access token." : language === "DE" ? "Shopify Admin → Settings → Apps and sales channels → Develop apps → Admin API access token erstellen." : "Shopify Admin → Settings → Apps and sales channels → Develop apps → create an Admin API access token."}
+  placeholder="Client Secret"
+  hint={language === "UA" ? "Shopify Dev Dashboard → ваш застосунок → Settings → Client ID і Client Secret." : language === "DE" ? "Shopify Dev Dashboard → Ihre App → Settings → Client ID und Client Secret." : "Shopify Dev Dashboard → your app → Settings → Client ID and Client Secret."}
   keyInput={shopifyKeyInput} setKeyInput={setShopifyKeyInput}
   connected={shopifyConnected} setConnected={setShopifyConnected}
   keyPreview={shopifyKeyPreview} setKeyPreview={setShopifyKeyPreview}

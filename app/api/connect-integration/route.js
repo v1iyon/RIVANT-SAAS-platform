@@ -17,11 +17,14 @@ function looksLikeAKey(value) {
   return typeof value === "string" && value.trim().length >= 8;
 }
 
-// Shopify и Meta Ads требуют одно доп. поле (домен магазина / Ad Account ID).
-// Google Ads требует сразу четыре: Customer ID, OAuth Client ID/Secret, Developer Token —
-// без них refresh token из основного поля нечем обменять на access token.
+// Shopify (с 1 января 2026, Dev Dashboard): домен магазина + Client ID —
+// сам ключ (apiKey) для Shopify теперь означает Client Secret, а не готовый
+// shpat_ токен (см. lib/shopify-token.mjs). Meta Ads требует одно доп. поле
+// (Ad Account ID). Google Ads требует сразу четыре: Customer ID, OAuth
+// Client ID/Secret, Developer Token — без них refresh token из основного
+// поля нечем обменять на access token.
 const REQUIRED_CONFIG_FIELDS = {
-  shopify: ["shop_domain"],
+  shopify: ["shop_domain", "client_id"],
   meta_ads: ["ad_account_id"],
   google_ads: ["customer_id", "client_id", "client_secret", "developer_token"],
 };

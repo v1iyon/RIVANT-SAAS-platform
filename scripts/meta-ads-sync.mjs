@@ -8,7 +8,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { decrypt } from "../lib/crypto.js";
 import { logError } from "../lib/log-error.js";
-import { sendAlert, getUserContact, generateAlertExplanation, detectExpenseAnomaly, detectCacAnomaly, formatTechnicalDetail } from "../lib/alerts.mjs";
+import { sendAlertToBusiness, getUserContact, generateAlertExplanation, detectExpenseAnomaly, detectCacAnomaly, formatTechnicalDetail } from "../lib/alerts.mjs";
 
 const SYNC_FAILURE_MESSAGE = {
   UA: () => `Не вдалося синхронізувати Meta Ads`,
@@ -144,13 +144,11 @@ async function main(businessId) {
             contact.userLang,
             `Meta Ads daily spend jumped ${anomaly.pct}% versus the 7-day average (from $${Math.round(anomaly.avg)} to $${Math.round(anomaly.today)}) on ${latestDate}.`
           );
-          await sendAlert({
-            businessId: integ.business_id,
+          await sendAlertToBusiness(integ.business_id, contact, {
             type: "ad_spend_spike_meta_ads",
             severity: anomaly.pct >= 100 ? "high" : "medium",
             message: msg,
             aiExplanation: explanation,
-            ...contact,
           });
         } else if (anomaly?.kind === "drop") {
           const msg = (SPEND_DROP_MESSAGE[contact.userLang] || SPEND_DROP_MESSAGE.EN)(anomaly.avg, anomaly.today, latestDate);
@@ -158,13 +156,11 @@ async function main(businessId) {
             contact.userLang,
             `Meta Ads daily spend dropped to $${Math.round(anomaly.today)} on ${latestDate}, versus a 7-day average of $${Math.round(anomaly.avg)}/day — this usually means a campaign was paused, disapproved, or a payment method failed.`
           );
-          await sendAlert({
-            businessId: integ.business_id,
+          await sendAlertToBusiness(integ.business_id, contact, {
             type: "ad_spend_drop_meta_ads",
             severity: "high",
             message: msg,
             aiExplanation: explanation,
-            ...contact,
           });
         }
 
@@ -175,13 +171,11 @@ async function main(businessId) {
             contact.userLang,
             `Customer acquisition cost (CAC) rose ${cacAnomaly.pct}% versus the 7-day average (from $${cacAnomaly.avgCac.toFixed(2)} to $${cacAnomaly.cacToday.toFixed(2)} per customer) on ${latestDate}, based on $${cacAnomaly.totalSpend.toFixed(2)} total ad spend across ${cacAnomaly.orders} orders.`
           );
-          await sendAlert({
-            businessId: integ.business_id,
+          await sendAlertToBusiness(integ.business_id, contact, {
             type: "cac_spike",
             severity: cacAnomaly.pct >= 80 ? "high" : "medium",
             message: msg,
             aiExplanation: explanation,
-            ...contact,
           });
         }
       }
@@ -209,13 +203,11 @@ async function main(businessId) {
         `The Meta Ads integration was previously connected and syncing successfully. It just failed with this error: "${err.message}". This usually means the access token expired or lost the ads_read permission.`
       );
       explanation = `${explanation}${formatTechnicalDetail(contact.userLang, err.message)}`;
-      await sendAlert({
-        businessId: integ.business_id,
+      await sendAlertToBusiness(integ.business_id, contact, {
         type: "sync_failure_meta_ads",
         severity: "high",
         message: msg,
         aiExplanation: explanation,
-        ...contact,
       });
     }
   }

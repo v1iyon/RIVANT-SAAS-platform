@@ -17,7 +17,8 @@
 import { createClient } from "@supabase/supabase-js";
 import { decrypt } from "../lib/crypto.js";
 import { logError } from "../lib/log-error.js";
-import { sendAlert, getUserContact, generateAlertExplanation, detectExpenseAnomaly, formatTechnicalDetail } from "../lib/alerts.mjs";
+import { resolveShopifyToken } from "../lib/shopify-token.mjs";
+import { sendAlertToBusiness, getUserContact, generateAlertExplanation, detectExpenseAnomaly, formatTechnicalDetail } from "../lib/alerts.mjs";
 
 const SYNC_FAILURE_MESSAGE = {
   UA: () => `Не вдалося синхронізувати Shopify`,
@@ -183,7 +184,12 @@ async function main(businessId) {
       if (!shopDomain) {
         throw new Error("Missing shop_domain in integration config");
       }
-      const token = decrypt(integ.api_key_encrypted);
+      const secretPayload = decrypt(integ.api_key_encrypted);
+      const token = await resolveShopifyToken({
+        shopDomain,
+        secretPayload,
+        clientId: integ.config?.client_id || null,
+      });
       const orders = await fetchShopifyOrders(shopDomain, token, sinceIso);
 
       const byDate = {};
@@ -242,13 +248,11 @@ async function main(businessId) {
               contact.userLang,
               `Shopify shipping costs jumped ${anomaly.pct}% versus the 7-day average (from $${Math.round(anomaly.avg)} to $${Math.round(anomaly.today)}) on ${latestDate}.`
             );
-            await sendAlert({
-              businessId: integ.business_id,
+            await sendAlertToBusiness(integ.business_id, contact, {
               type: "shipping_spike_shopify",
               severity: anomaly.pct >= 100 ? "high" : "medium",
               message: msg,
               aiExplanation: explanation,
-              ...contact,
             });
           }
         }
@@ -267,13 +271,11 @@ async function main(businessId) {
               contact.userLang,
               `Shopify cost of goods jumped ${anomaly.pct}% versus the 7-day average (from $${Math.round(anomaly.avg)} to $${Math.round(anomaly.today)}) on ${latestDate}. This directly compresses margin.`
             );
-            await sendAlert({
-              businessId: integ.business_id,
+            await sendAlertToBusiness(integ.business_id, contact, {
               type: "cogs_spike_shopify",
               severity: anomaly.pct >= 100 ? "high" : "medium",
               message: msg,
               aiExplanation: explanation,
-              ...contact,
             });
           }
         }
@@ -303,16 +305,14 @@ async function main(businessId) {
       const msg = (SYNC_FAILURE_MESSAGE[contact.userLang] || SYNC_FAILURE_MESSAGE.EN)();
       let explanation = await generateAlertExplanation(
         contact.userLang,
-        `The Shopify integration was previously connected and syncing successfully. It just failed with this error: "${err.message}". This usually means the Admin API access token was revoked or the store URL changed.`
+        `The Shopify integration was previously connected and syncing successfully. It just failed with this error: "${err.message}". This usually means the Admin API access token was revoked, the Client ID/Secret were rotated, or the store URL changed.`
       );
       explanation = `${explanation}${formatTechnicalDetail(contact.userLang, err.message)}`;
-      await sendAlert({
-        businessId: integ.business_id,
+      await sendAlertToBusiness(integ.business_id, contact, {
         type: "sync_failure_shopify",
         severity: "high",
         message: msg,
         aiExplanation: explanation,
-        ...contact,
       });
     }
   }

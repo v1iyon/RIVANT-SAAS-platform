@@ -2266,23 +2266,30 @@ if (!subInfo) {
                 email={profileEmail}
                 provider="shopify"
                 displayName="Shopify"
-                placeholder="shpat_..."
+                placeholder="Client Secret"
                 isExpiredTrial={isExpiredTrial}
                 planTier={subInfo?.plan ?? null}
                 selectedProviders={selectedProviders}
                 onSelected={(p) => setSelectedProviders([p])}
                 onLockedClick={() => router.push("/#pricing")}
-                extraField={{
-                  key: "shop_domain",
-                  label: language === "UA" ? "Домен магазину (yourshop.myshopify.com)" : language === "DE" ? "Shop-Domain (yourshop.myshopify.com)" : "Shop domain (yourshop.myshopify.com)",
-                  placeholder: "yourshop.myshopify.com",
-                }}
+                extraFields={[
+                  {
+                    key: "shop_domain",
+                    label: language === "UA" ? "Домен магазину (yourshop.myshopify.com)" : language === "DE" ? "Shop-Domain (yourshop.myshopify.com)" : "Shop domain (yourshop.myshopify.com)",
+                    placeholder: "yourshop.myshopify.com",
+                  },
+                  {
+                    key: "client_id",
+                    label: "Client ID",
+                    placeholder: "Client ID",
+                  },
+                ]}
                 hint={
                   language === "UA"
-                    ? "Shopify Admin → Settings → Apps and sales channels → Develop apps → створіть Admin API access token."
+                    ? "Shopify Dev Dashboard → ваш застосунок → Settings → скопіюйте Client ID і Client Secret (з 1 січня 2026 Shopify більше не показує готовий shpat_ токен — тільки ці дані)."
                     : language === "DE"
-                    ? "Shopify Admin → Settings → Apps and sales channels → Develop apps → Admin API access token erstellen."
-                    : "Shopify Admin → Settings → Apps and sales channels → Develop apps → create an Admin API access token."
+                    ? "Shopify Dev Dashboard → Ihre App → Settings → Client ID und Client Secret kopieren (seit 1. Januar 2026 zeigt Shopify keinen fertigen shpat_-Token mehr an — nur diese Daten)."
+                    : "Shopify Dev Dashboard → your app → Settings → copy the Client ID and Client Secret (since Jan 1, 2026 Shopify no longer shows a ready-made shpat_ token — only these)."
                 }
               />
               <IntegrationConnectCard
