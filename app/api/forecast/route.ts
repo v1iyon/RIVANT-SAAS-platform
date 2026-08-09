@@ -300,20 +300,8 @@ if (!stripeConnected) return Response.json({ sufficient: false, days: 0, tier: "
     forecastNumbers.expenses90 = expensesHorizon;
   }
 
-  // Кэш forecast_cache — задумана как одна строка на бизнес, но upsert()
-  // ниже раньше вызывался БЕЗ onConflict и без id в данных. Если в таблице
-  // нет жёсткого unique-ограничения на business_id (похоже, что нет), каждый
-  // такой вызов не обновлял существующую строку, а тихо ВСТАВЛЯЛ новую. Со
-  // временем на бизнес накапливалось несколько строк, и .maybeSingle() при
-  // чтении начинал либо падать с ошибкой (multiple rows), либо (в
-  // зависимости от версии клиента) отдавать первую попавшуюся — например,
-  // самую раннюю, ещё англоязычную, запись, сделанную до того, как у
-  // пользователя вообще появилось языковое предпочтение. В итоге новые
-  // объяснения на украинском исправно генерировались и записывались, но
-  // никогда не читались обратно — на экране навсегда оставался тот самый
-  // первый английский текст. Ниже логика читает ВСЕ строки по business_id,
-  // берёт самую свежую по generated_at, и явно обновляет её по id (или
-  // создаёт новую, если строк ещё не было) — без опоры на констрейнт в БД.
+  // Кэш forecast_cache — см. комментарий ниже про схему "ряд на каждую
+  // комбинацию язык+валюта+горизонт" (было по-другому, чинили дважды).
   const cacheLanguageKey = `${language}::${horizonDays}::${currency}`;
   const { data: cachedRows, error: cacheReadErr } = await admin
     .from("forecast_cache")
@@ -325,13 +313,31 @@ if (!stripeConnected) return Response.json({ sufficient: false, days: 0, tier: "
     console.error("forecast_cache read error:", cacheReadErr);
   }
 
-  const cached = cachedRows?.[0] || null;
-  // Лишние дублирующиеся строки (побочный эффект старого бага) — подчищаем,
-  // чтобы дальше .maybeSingle()-подобные запросы где-либо ещё в коде не
-  // ловили ту же проблему повторно.
-  const staleDuplicateIds = (cachedRows || []).slice(1).map((r) => r.id);
-  if (staleDuplicateIds.length) {
-    await admin.from("forecast_cache").delete().in("id", staleDuplicateIds);
+  // ВАЖНО: раньше здесь брался ПРОСТО самый свежий ряд (cachedRows[0]) —
+  // независимо от его языка/валюты — и именно ЕГО потом обновляли ниже.
+  // Из-за этого таблица фактически работала как ОДИН слот на бизнес, а не
+  // как кэш "на каждую комбинацию язык+валюта+горизонт свой ряд": если два
+  // запроса с разным language (например, UA с телефона и случайный/устаревший
+  // EN с ноута, ещё не подхвативший профиль) прилетали близко по времени,
+  // тот, что дозаписывался в базу ПОСЛЕДНИМ, "побеждал" и для другого языка
+  // тоже — следующий UA-запрос читал устаревший EN-ряд как "самый свежий",
+  // видел совпадение по generated_at=сегодня, но language не совпадал, поэтому
+  // перегенерировал заново (это спасало КОНКРЕТНЫЙ ответ), однако сам EN-ряд
+  // после этого снова становился "самым свежим" в таблице и ждал следующего
+  // клиента, который случайно придёт с EN и опять всё перезапишет — race
+  // на несколько запросов вместо одного стабильного значения. Теперь ищем
+  // ряд СРАЗУ с нужным language (=cacheLanguageKey) — у каждой комбинации
+  // язык+валюта+горизонт своя строка, которую больше никто другой не трогает.
+  const cached = (cachedRows || []).find((r) => r.language === cacheLanguageKey) || null;
+  // Лишние дублирующиеся строки (и старый баг "без constraint", и НЕАКТУАЛЬНЫЕ
+  // ряды других language/currency старше суток) — подчищаем, чтобы таблица не
+  // росла бесконечно вспять для аккаунта, который часто переключает язык/валюту.
+  const staleIds = (cachedRows || [])
+    .filter((r) => r.id !== cached?.id)
+    .filter((r) => r.language !== cacheLanguageKey || new Date(r.generated_at).toISOString().slice(0, 10) !== todayUTC())
+    .map((r) => r.id);
+  if (staleIds.length) {
+    await admin.from("forecast_cache").delete().in("id", staleIds);
   }
 
   // Прогноз — снимок на календарный день (UTC), а не "живой" пересчёт на
@@ -349,7 +355,6 @@ if (!stripeConnected) return Response.json({ sufficient: false, days: 0, tier: "
   const cacheIsFresh =
     !!cached &&
     cached.days === days &&
-    cached.language === cacheLanguageKey &&
     cached.numbers != null &&
     new Date(cached.generated_at).toISOString().slice(0, 10) === todayUTC();
 

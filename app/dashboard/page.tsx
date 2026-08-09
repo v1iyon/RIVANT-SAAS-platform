@@ -98,6 +98,7 @@ interface Risk {
 // сплеск/падіння рекламних витрат, CAC, собівартість/доставка).
 function alertTypeToCategory(type: string): Risk["category"] {
   if (type === "revenue_drop") return "finance";
+  if (type === "payment_silence_stripe") return "finance";
   if (type === "cac_spike") return "cac";
   if (type === "cogs_spike_shopify") return "margin";
   if (type === "shipping_spike_shopify") return "shipping";

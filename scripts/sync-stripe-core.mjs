@@ -61,6 +61,18 @@ const REVENUE_DROP_MESSAGE = {
   DE: (name, pct) => `Umsatz von ${name} ist in den letzten 24 Stunden um ${pct}% gesunken`,
 };
 
+// Отдельный, более быстрый сигнал специально про технический сбой (упал
+// Stripe/чекаут/сайт), а не про спад спроса — см. обсуждение с пользователем:
+// сравнение "последние N часов vs предыдущие N часов" ложно срабатывает на
+// обычный суточный ритм (вечер тише ночи и т.п.), поэтому вместо % от
+// выручки здесь считаем "давно не было ни одного платежа, хотя обычно
+// бывают" — порог свой для каждого бизнеса, по его собственной истории.
+const PAYMENT_SILENCE_MESSAGE = {
+  UA: (name, hours) => `У "${name}" вже ${hours} год. немає жодного успішного платежу — це довше, ніж зазвичай`,
+  EN: (name, hours) => `${name} has had no successful payments for ${hours}h — longer than usual`,
+  DE: (name, hours) => `${name} hatte seit ${hours} Std. keine erfolgreiche Zahlung — länger als üblich`,
+};
+
 // Резервне (не-AI) пояснення — використовується, коли Anthropic API
 // недоступний/впав. Раніше в такому випадку getAIExplanation повертав null,
 // і користувач бачив ЛИШЕ факт падіння виручки, без жодного пояснення чи
@@ -490,6 +502,99 @@ if (existingAlerts?.length) continue;
             const teamIds = await getTeamContacts(business.id);
             if (teamIds.length) {
               await Promise.all(teamIds.map((chatId) => sendTelegram(chatId, fullMessage)));
+            }
+          }
+        }
+      }
+
+      // "Тишина по платежам" — быстрый сигнал именно о технической проблеме,
+      // не диллюированный суточным окном как revenue_drop. Порог — свой для
+      // каждого бизнеса, по его собственной истории (не один общий порог
+      // на все аккаунты — иначе для тихого бизнеса 3 часа без оплат норма, а
+      // для бойкого — уже тревога).
+      {
+        const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+        const { data: history } = await admin
+          .from("metrics_computed")
+          .select("orders")
+          .eq("business_id", business.id)
+          .gte("date", fourteenDaysAgo)
+          .lt("date", latestDate); // без сегодняшнего частичного дня
+
+        const histDays = history || [];
+        const avgDailyOrders = histDays.length
+          ? histDays.reduce((s, r) => s + (r.orders || 0), 0) / histDays.length
+          : 0;
+
+        // Меньше 3 заказов/день в среднем — слишком мало истории, чтобы
+        // считать "тишину" аномалией (для такого бизнеса и сутки без
+        // платежей — обычное дело).
+        if (avgDailyOrders >= 3) {
+          const lastChargeAt = successful.length
+            ? Math.max(...successful.map((c) => c.created))
+            : null;
+          const hoursSinceLastCharge = lastChargeAt
+            ? (Date.now() / 1000 - lastChargeAt) / 3600
+            : (Date.now() - sinceUnix * 1000) / 3600000; // за всё окно fetch'а не было ни одного платежа
+
+          // "Обычный" разрыв между платежами при таком темпе, умноженный на
+          // 4 (чтобы не дёргать по каждому чуть более длинному, чем средний,
+          // перерыву) — но не меньше 2ч (не спамить по мелочи даже для очень
+          // активных магазинов) и не больше 12ч (не заставлять ждать почти
+          // сутки даже для менее активных).
+          const typicalGapHours = 24 / avgDailyOrders;
+          const quietThresholdHours = Math.min(12, Math.max(2, typicalGapHours * 4));
+
+          const { data: user } = await admin
+            .from("users")
+            .select("telegram_id, email, email_enabled, push_enabled, language")
+            .eq("id", business.user_id)
+            .maybeSingle();
+          const userLang = user?.language || "EN";
+
+          if (hoursSinceLastCharge < quietThresholdHours) {
+            await admin
+              .from("alerts_log")
+              .update({ status: "resolved" })
+              .eq("business_id", business.id)
+              .eq("type", "payment_silence_stripe")
+              .eq("status", "open");
+          } else {
+            const { data: existingSilence } = await admin
+              .from("alerts_log")
+              .select("id")
+              .eq("business_id", business.id)
+              .eq("type", "payment_silence_stripe")
+              .eq("status", "open")
+              .limit(1);
+
+            if (!existingSilence?.length) {
+              const buildMsg = PAYMENT_SILENCE_MESSAGE[userLang] || PAYMENT_SILENCE_MESSAGE.EN;
+              const message = buildMsg(business.name, Math.round(hoursSinceLastCharge));
+
+              await admin.from("alerts_log").insert({
+                business_id: business.id,
+                type: "payment_silence_stripe",
+                message,
+                ai_explanation: null,
+                status: "open",
+                severity: "high",
+                sent_at: new Date().toISOString(),
+              });
+
+              const severityLabel = getSeverityTelegramLabel("high", userLang);
+              const fullMessage = `${severityLabel}\n${message}`;
+
+              if (user?.telegram_id && user?.push_enabled !== false) {
+                await sendTelegram(user.telegram_id, fullMessage);
+              }
+              if (user?.email_enabled && user?.email) {
+                await sendEmail(user.email, "RIVANT Alert", fullMessage);
+              }
+              const teamIds = await getTeamContacts(business.id);
+              if (teamIds.length) {
+                await Promise.all(teamIds.map((chatId) => sendTelegram(chatId, fullMessage)));
+              }
             }
           }
         }

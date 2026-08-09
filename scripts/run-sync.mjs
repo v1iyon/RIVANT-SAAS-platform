@@ -2,12 +2,16 @@ import { runSync as runStripeSync } from "./sync-stripe-core.mjs";
 import { runSync as runShopifySync } from "./shopify-sync.mjs";
 import { runSync as runMetaAdsSync } from "./meta-ads-sync.mjs";
 import { runSync as runGoogleAdsSync } from "./google-ads-sync.mjs";
+import { runDailyReports } from "./daily-reports.mjs";
 
 const jobs = [
   { name: "stripe", run: runStripeSync },
   { name: "shopify", run: runShopifySync },
   { name: "meta_ads", run: runMetaAdsSync },
   { name: "google_ads", run: runGoogleAdsSync },
+  // Гоняется щогодини разом з рештою — сам вирішує всередині, чи зараз 08:00
+  // або 20:00 за Києвом, і чи вже не слав сьогодні (див. daily-reports.mjs).
+  { name: "daily_reports", run: runDailyReports },
 ];
 
 let hadFailure = false;
