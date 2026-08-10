@@ -30,7 +30,7 @@ export async function GET(req: Request) {
   const businessId = await getBusinessId(email);
   if (!businessId) return Response.json({ alerts: [] });
 
-  const { data: alerts, error } = await admin
+  const { data: openAlerts, error: openError } = await admin
     .from("alerts_log")
     .select("id, type, message, ai_explanation, status, severity, sent_at")
     .eq("business_id", businessId)
@@ -38,12 +38,26 @@ export async function GET(req: Request) {
     .order("sent_at", { ascending: false })
     .limit(30);
 
-  if (error) {
-    console.error("GET /api/alerts error:", error);
-    return Response.json({ alerts: [] });
+  // Раніше resolved-алерти (система сама закриває їх, коли виручка
+  // відновлюється — див. scripts/sync-stripe-core.mjs) взагалі не
+  // потрапляли на фронт: /api/alerts фільтрував лише status="open", і
+  // закрита проблема просто зникала з вкладки "Ризики" без сліду, хоча в
+  // базі вона нікуди не ділась. Тепер віддаємо їх окремим полем — фронт
+  // показує їх у вкладці "Історія", а не змішує з активними.
+  const { data: resolvedAlerts, error: resolvedError } = await admin
+    .from("alerts_log")
+    .select("id, type, message, ai_explanation, status, severity, sent_at")
+    .eq("business_id", businessId)
+    .eq("status", "resolved")
+    .order("sent_at", { ascending: false })
+    .limit(30);
+
+  if (openError || resolvedError) {
+    console.error("GET /api/alerts error:", openError || resolvedError);
+    return Response.json({ alerts: [], resolvedAlerts: [] });
   }
 
-  return Response.json({ alerts: alerts || [] });
+  return Response.json({ alerts: openAlerts || [], resolvedAlerts: resolvedAlerts || [] });
 }
 
 // Marks one alert (or all open alerts) as resolved. Called when the user

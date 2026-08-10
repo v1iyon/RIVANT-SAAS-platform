@@ -869,6 +869,8 @@ const [forecastLoaded, setForecastLoaded] = useState(false);
   const chartHistory = toChartHistory(metricsRows);
 
   const [risks, setRisks] = useState<Risk[]>([]);
+  const [resolvedRisks, setResolvedRisks] = useState<Risk[]>([]);
+  const [risksView, setRisksView] = useState<"active" | "history">("active");
   const [alertCount, setAlertCount] = useState(0);
   const [alertsLoaded, setAlertsLoaded] = useState(false);
 
@@ -1189,7 +1191,7 @@ if (bizData.business) {
       try {
         const alertsRes = await fetch(`/api/alerts?email=${encodeURIComponent(email)}`, { cache: "no-store" });
         const alertsData = await alertsRes.json();
-        const mapped: Risk[] = (alertsData.alerts || []).map((a: any) => ({
+        const mapRisk = (a: any): Risk => ({
           id: a.id,
           title: a.message,
           description: a.ai_explanation || "",
@@ -1203,12 +1205,21 @@ if (bizData.business) {
           action: "",
           category: alertTypeToCategory(a.type),
           alertType: a.type,
-        }));
+        });
+        const mapped: Risk[] = (alertsData.alerts || []).map(mapRisk);
+        // Раніше resolved-алерти взагалі не приходили з бекенду — вони
+        // автоматично закривались в scripts/sync-stripe-core.mjs, коли
+        // виручка відновлювалась, і просто зникали з вкладки "Ризики" без
+        // сліду. Тепер бекенд віддає їх окремо (/api/alerts -> resolvedAlerts),
+        // і ми показуємо їх у вкладці "Історія", щоб нічого не губилось з виду.
+        const mappedResolved: Risk[] = (alertsData.resolvedAlerts || []).map(mapRisk);
         setRisks(mapped);
+        setResolvedRisks(mappedResolved);
         setAlertCount(mapped.length);
       } catch (e) {
         console.error("Failed to load alerts", e);
         setRisks([]);
+        setResolvedRisks([]);
         setAlertCount(0);
       } finally {
         setAlertsLoaded(true);
@@ -2001,6 +2012,29 @@ if (!subInfo) {
   </div>
 ) : (
                 <>
+                  <div className="flex items-center gap-2 mb-1">
+                    <button
+                      onClick={() => setRisksView("active")}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                        risksView === "active" ? "bg-blue-600 text-white" : "text-gray-500 hover:text-gray-300"
+                      }`}
+                    >
+                      {language === "UA" ? "Активні" : language === "DE" ? "Aktiv" : "Active"}
+                      {risks.length > 0 && <span className="ml-1.5 opacity-70">{risks.length}</span>}
+                    </button>
+                    <button
+                      onClick={() => setRisksView("history")}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                        risksView === "history" ? "bg-blue-600 text-white" : "text-gray-500 hover:text-gray-300"
+                      }`}
+                    >
+                      {language === "UA" ? "Історія" : language === "DE" ? "Verlauf" : "History"}
+                      {resolvedRisks.length > 0 && <span className="ml-1.5 opacity-70">{resolvedRisks.length}</span>}
+                    </button>
+                  </div>
+
+                  {risksView === "active" && (
+                  <>
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-gray-500">{risks.length} {language === "UA" ? "сповіщень" : language === "DE" ? "Benachrichtigungen" : "notifications"}</span>
                     {risks.length > 0 && (
@@ -2082,6 +2116,40 @@ if (!subInfo) {
                       </div>
                     )}
                   </div>
+                  </>
+                  )}
+
+                  {risksView === "history" && (
+                    <div className="space-y-3 pr-1 pb-6">
+                      {resolvedRisks.map((risk) => (
+                        <div key={risk.id} className="bg-gray-900/30 rounded-xl p-4 border border-gray-800 opacity-80">
+                          <div className="flex items-start gap-3">
+                            <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-green-500/10">
+                              <CheckCircle className="w-5 h-5 text-green-500/70" />
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-green-500/10 text-green-500/80">
+                                  {language === "UA" ? "Вирішено" : language === "DE" ? "Gelöst" : "Resolved"}
+                                </span>
+                                <span className="text-xs text-gray-500">{risk.time}</span>
+                              </div>
+                              <h4 className="font-semibold text-gray-300 text-base">{risk.title}</h4>
+                              <p className="text-sm text-gray-500 mt-0.5">{risk.description}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      {alertsLoaded && resolvedRisks.length === 0 && (
+                        <div className="text-center py-12 text-gray-500">
+                          <CheckCircle className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                          <p className="text-base">
+                            {language === "UA" ? "Історія поки порожня." : language === "DE" ? "Der Verlauf ist noch leer." : "History is empty so far."}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </>
               )}
             </div>
