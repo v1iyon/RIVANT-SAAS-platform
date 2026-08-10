@@ -34,9 +34,19 @@ export async function GET(req) {
   // чтобы в UI строка отрисовалась сразу с корректным "не подключено" состоянием.
   const integrations = SUPPORTED_PROVIDERS.map((provider) => {
     const row = rows?.find((r) => r.provider === provider);
+    // "error" означает, что ключи вже збережені і раніше все підключалось —
+    // просто останній синк не пройшов (протух токен, змінені права і т.д.).
+    // Раніше ми показували таку інтеграцію як "не підключено" і UI стирав
+    // вже введені Client ID/Secret/домен, змушуючи вводити все заново навіть
+    // якщо користувачу просто треба почекати наступний синк або натиснути
+    // "Підключити" ще раз без жодних змін. Тепер лишаємо картку в стані
+    // "підключено", але передаємо прапорець sync_error, щоб UI показав
+    // попередження замість порожньої форми.
+    const connected = row?.status === "connected" || row?.status === "error";
     return {
       provider,
-      connected: row?.status === "connected",
+      connected,
+      sync_error: row?.status === "error",
       last_synced_at: row?.last_synced_at || null,
       key_preview: row?.key_preview || null,
       config: row?.config || {},

@@ -69,6 +69,9 @@ export function IntegrationConnectCard({
   const [errorMsg, setErrorMsg] = useState("");
   const [lastSynced, setLastSynced] = useState<string | null>(null);
   const [keyPreview, setKeyPreview] = useState<string | null>(null);
+  // Останній синк не пройшов, але ключі досі збережені й дійсні для UI —
+  // показуємо попередження, а не порожню форму підключення (див. loadStatus).
+  const [syncError, setSyncError] = useState(false);
   const [showLockedToast, setShowLockedToast] = useState(false);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
