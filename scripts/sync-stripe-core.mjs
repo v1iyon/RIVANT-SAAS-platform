@@ -6,6 +6,35 @@ import { getTeamContacts } from "../lib/alerts.mjs";
 
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
+const FALLBACK_TZ = "Europe/Kyiv"; // как в daily-reports.mjs — если у бизнеса почему-то нет timezone
+
+// Смещение таймзоны (в минутах от UTC) на конкретный момент времени —
+// нужно, чтобы посчитать, во сколько было "местная полночь" бизнеса в UTC.
+function tzOffsetMinutes(tz, date) {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", { timeZone: tz, timeZoneName: "shortOffset" }).formatToParts(date);
+    const tzName = parts.find((p) => p.type === "timeZoneName")?.value || "GMT+0";
+    const m = tzName.match(/GMT([+-]\d+)(?::(\d+))?/);
+    if (!m) return 0;
+    const hours = parseInt(m[1], 10);
+    const minutes = m[2] ? parseInt(m[2], 10) : 0;
+    return hours * 60 + (hours < 0 ? -minutes : minutes);
+  } catch {
+    return 0;
+  }
+}
+
+// Unix-время (сек) местной полуночи бизнеса, `daysAgo` дней назад. Нужно,
+// чтобы сравнивать "накопленное сегодня к текущему часу" с "накопленным
+// вчера к тому же часу" — по местному времени бизнеса, а не UTC.
+function localMidnightUnix(tz, daysAgo) {
+  const approx = new Date(Date.now() - daysAgo * 24 * 3600 * 1000);
+  const dateStr = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(approx); // YYYY-MM-DD
+  const offsetMin = tzOffsetMinutes(tz, approx);
+  const utcMs = new Date(`${dateStr}T00:00:00Z`).getTime() - offsetMin * 60000;
+  return Math.floor(utcMs / 1000);
+}
+
 async function sendTelegram(chatId, text) {
   if (!chatId) return;
   await fetch(`https://api.telegram.org/bot${process.env.BOT_TOKEN}/sendMessage`, {
@@ -32,33 +61,38 @@ async function sendEmail(to, subject, text) {
   });
 }
 
+// ВАЖНО: "t"/"y" теперь не всегда ровно 24ч — это "сегодня с місцевої
+// півночі до зараз" ("t") vs "учора з тієї ж півночі до того ж часу" ("y"),
+// см. комментарий у localMidnightUnix/sumChargesWindow ниже. Поэтому текст
+// промпта больше не говорит "останні/last/letzte 24 години/hours/Stunden" —
+// говорит "сьогодні"/"today"/"heute" vs "учора"/"yesterday"/"gestern".
 const PROMPTS = {
   UA: (b, t, y, changePct) => `Дані бізнесу "${b.name}":
-За останні 24 години: виручка $${t.revenue}, витрати $${t.cost}, маржа ${t.margin_pct}%
-За попередні 24 години: виручка $${y.revenue}, витрати $${y.cost}, маржа ${y.margin_pct}%
+Сьогодні (з півночі до зараз): виручка $${t.revenue}, витрати $${t.cost}, маржа ${t.margin_pct}%
+Учора (за той самий проміжок часу): виручка $${y.revenue}, витрати $${y.cost}, маржа ${y.margin_pct}%
 Напиши ОДНЕ речення (до 30 слів) українською, професійним діловим тоном, без розмовних слів типу "тож" чи "отже". Формат:
-"[Назва показника] [зросла/впала] на ${Math.abs(changePct).toFixed(0)}% за останні 24 години (з $${y.revenue} до $${t.revenue}), маржа [не змінилась / знизилась / зросла] і становить ${t.margin_pct}%. Перевірте: [2-3 конкретні пункти, релевантні саме цій проблемі]."
+"[Назва показника] [зросла/впала] на ${Math.abs(changePct).toFixed(0)}% порівняно з учора на цей самий час (з $${y.revenue} до $${t.revenue}), маржа [не змінилась / знизилась / зросла] і становить ${t.margin_pct}%. Перевірте: [2-3 конкретні пункти, релевантні саме цій проблемі]."
 Відповідай ЛИШЕ цим реченням, без лапок і пояснень.`,
 
   EN: (b, t, y, changePct) => `Data for business "${b.name}":
-Last 24 hours: revenue $${t.revenue}, costs $${t.cost}, margin ${t.margin_pct}%
-Previous 24 hours: revenue $${y.revenue}, costs $${y.cost}, margin ${y.margin_pct}%
+Today (from local midnight to now): revenue $${t.revenue}, costs $${t.cost}, margin ${t.margin_pct}%
+Yesterday (same time window): revenue $${y.revenue}, costs $${y.cost}, margin ${y.margin_pct}%
 Write ONE sentence (max 30 words) in English, professional business tone, no filler words. Format:
-"[Metric name] [dropped/rose] ${Math.abs(changePct).toFixed(0)}% over the last 24 hours (from $${y.revenue} to $${t.revenue}), margin [unchanged/lower/higher] at ${t.margin_pct}%. Check: [2-3 specific items relevant to this issue]."
+"[Metric name] [dropped/rose] ${Math.abs(changePct).toFixed(0)}% compared to the same time yesterday (from $${y.revenue} to $${t.revenue}), margin [unchanged/lower/higher] at ${t.margin_pct}%. Check: [2-3 specific items relevant to this issue]."
 Reply ONLY with this sentence, no quotes or explanations.`,
 
   DE: (b, t, y, changePct) => `Daten für "${b.name}":
-Letzte 24 Stunden: Umsatz $${t.revenue}, Kosten $${t.cost}, Marge ${t.margin_pct}%
-Vorherige 24 Stunden: Umsatz $${y.revenue}, Kosten $${y.cost}, Marge ${y.margin_pct}%
+Heute (seit lokaler Mitternacht bis jetzt): Umsatz $${t.revenue}, Kosten $${t.cost}, Marge ${t.margin_pct}%
+Gestern (gleicher Zeitraum): Umsatz $${y.revenue}, Kosten $${y.cost}, Marge ${y.margin_pct}%
 Schreibe EINEN Satz (max. 30 Wörter) auf Deutsch, professioneller Geschäftston, keine Füllwörter. Format:
-"[Kennzahl] [gesunken/gestiegen] um ${Math.abs(changePct).toFixed(0)}% in den letzten 24 Stunden (von $${y.revenue} auf $${t.revenue}), Marge [unverändert/niedriger/höher] bei ${t.margin_pct}%. Prüfen Sie: [2-3 konkrete Punkte]."
+"[Kennzahl] [gesunken/gestiegen] um ${Math.abs(changePct).toFixed(0)}% im Vergleich zur gleichen Zeit gestern (von $${y.revenue} auf $${t.revenue}), Marge [unverändert/niedriger/höher] bei ${t.margin_pct}%. Prüfen Sie: [2-3 konkrete Punkte]."
 Antworte NUR mit diesem Satz, ohne Anführungszeichen oder Erklärungen.`,
 };
 
 const REVENUE_DROP_MESSAGE = {
-  UA: (name, pct) => `Виручка "${name}" впала на ${pct}% за останні 24 години`,
-  EN: (name, pct) => `Revenue for ${name} dropped ${pct}% over the last 24 hours`,
-  DE: (name, pct) => `Umsatz von ${name} ist in den letzten 24 Stunden um ${pct}% gesunken`,
+  UA: (name, pct) => `Виручка "${name}" впала на ${pct}% порівняно з учора на цей самий час`,
+  EN: (name, pct) => `Revenue for ${name} dropped ${pct}% compared to the same time yesterday`,
+  DE: (name, pct) => `Umsatz von ${name} ist im Vergleich zur gleichen Zeit gestern um ${pct}% gesunken`,
 };
 
 // Отдельный, более быстрый сигнал специально про технический сбой (упал
@@ -95,9 +129,9 @@ function buildFallbackExplanation(language, today, yesterday, changePct) {
     DE: "Prüfen Sie: Werbekampagnen-Ausfälle, Preis-/Sortimentsänderungen und ob alle Integrationen fehlerfrei synchronisieren.",
   };
   const templates = {
-    UA: `Виручка ${direction.UA} на ${Math.abs(changePct).toFixed(0)}% за останні 24 години (з $${yesterday.revenue} до $${today.revenue}), маржа ${marginWord.UA} і становить ${today.margin_pct}%. ${checkList.UA}`,
-    EN: `Revenue ${direction.EN} ${Math.abs(changePct).toFixed(0)}% over the last 24 hours (from $${yesterday.revenue} to $${today.revenue}), margin ${marginWord.EN} at ${today.margin_pct}%. ${checkList.EN}`,
-    DE: `Der Umsatz ist in den letzten 24 Stunden um ${Math.abs(changePct).toFixed(0)}% ${direction.DE} (von $${yesterday.revenue} auf $${today.revenue}), die Marge ist ${marginWord.DE} bei ${today.margin_pct}%. ${checkList.DE}`,
+    UA: `Виручка ${direction.UA} на ${Math.abs(changePct).toFixed(0)}% порівняно з учора на цей самий час (з $${yesterday.revenue} до $${today.revenue}), маржа ${marginWord.UA} і становить ${today.margin_pct}%. ${checkList.UA}`,
+    EN: `Revenue ${direction.EN} ${Math.abs(changePct).toFixed(0)}% compared to the same time yesterday (from $${yesterday.revenue} to $${today.revenue}), margin ${marginWord.EN} at ${today.margin_pct}%. ${checkList.EN}`,
+    DE: `Der Umsatz ist im Vergleich zur gleichen Zeit gestern um ${Math.abs(changePct).toFixed(0)}% ${direction.DE} (von $${yesterday.revenue} auf $${today.revenue}), die Marge ist ${marginWord.DE} bei ${today.margin_pct}%. ${checkList.DE}`,
   };
   return templates[language] || templates.EN;
 }
@@ -253,10 +287,20 @@ async function main(businessId) {
       // каждую ночь в 00:xx это давало "упало со вчерашних $2392 до $0",
       // в 01:xx — "до $150", и так по кругу, пока сегодняшний день не
       // догонит вчерашний. Это не аномалия, это устройство календаря.
-      // Вместо "сегодня vs вчера" считаем СКОЛЬЗЯЩЕЕ окно "последние 24ч"
-      // vs "предыдущие 24ч" прямо по timestamp'ам charges — оба окна
-      // всегда одинаковой длины, поэтому полночь их не сбивает, и сигнал
-      // остаётся live (не ждём конца дня).
+      //
+      // Промежуточный фикс сравнивал скользящее окно "последние 24ч" (по
+      // UTC-таймстемпам charges) с "предыдущими 24ч" — это убрало ложные
+      // $0-провалы, НО завело новую нестыковку: карточки дашборда (%) и
+      // сам заголовок графика показывают "этот месяц" по МЕСТНОМУ времени
+      // бизнеса, а % на карточках при этом считался по чистому UTC-окну —
+      // человек в другом часовом поясе видел % от "вчера 15:00 UTC — сейчас",
+      // что не совпадает с его интуитивным "сегодня". Теперь считаем то же
+      // самое, что и предлагали в переписке: "накопленное СЕГОДНЯ (по
+      // местному времени бизнеса, с полуночи) к текущему часу" против
+      // "накопленного ВЧЕРА к тому же часу". Длина окна теперь не всегда
+      // 24ч (в начале дня — меньше), но обе половины сравнения всегда
+      // одной и той же длины, поэтому сравнение честное в любой момент
+      // суток, и полночь по-прежнему не даёт ложных провалов до $0.
       function sumChargesWindow(fromSec, toSec) {
         let revenue = 0, orders = 0, stripeFee = 0;
         for (const c of successful) {
@@ -268,9 +312,23 @@ async function main(businessId) {
         }
         return { revenue: Number(revenue.toFixed(2)), orders, stripeFee: Number(stripeFee.toFixed(2)) };
       }
+
+      // Часовой пояс нужен ДО расчёта окна ниже, поэтому берём его отдельным
+      // лёгким запросом здесь — полный business (name, cost_pct и т.д.)
+      // грузится, как и раньше, чуть ниже по коду.
+      const { data: tzRow } = await admin
+        .from("businesses")
+        .select("timezone")
+        .eq("id", integ.business_id)
+        .maybeSingle();
+      const businessTz = tzRow?.timezone || FALLBACK_TZ;
+
       const nowSec = Math.floor(Date.now() / 1000);
-      const last24h = sumChargesWindow(nowSec - 24 * 3600, nowSec + 1);
-      const prev24h = sumChargesWindow(nowSec - 48 * 3600, nowSec - 24 * 3600);
+      const todayMidnightLocal = localMidnightUnix(businessTz, 0);
+      const yesterdayMidnightLocal = localMidnightUnix(businessTz, 1);
+      const elapsedSinceLocalMidnight = nowSec - todayMidnightLocal;
+      const last24h = sumChargesWindow(todayMidnightLocal, nowSec + 1);
+      const prev24h = sumChargesWindow(yesterdayMidnightLocal, yesterdayMidnightLocal + elapsedSinceLocalMidnight + 1);
 
       // ВАЖНО: раньше, если за день не было ни одного успешного списания,
       // дата вообще не попадала в byDate — а значит для неё никогда не
