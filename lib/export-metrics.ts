@@ -65,11 +65,18 @@ export async function exportMetricsToPdf(rows: ExportRow[], businessName: string
     console.error("Failed to load logo for PDF export:", e);
   }
 
+  // icon08.png реальный размер 711×351 (≈2.03:1) — раньше вставлялся как
+  // 32×8 (4:1), из-за чего логотип и мелкий, и растянутый по горизонтали.
+  // 36×17.8 сохраняет реальную пропорцию и по размеру ближе к тому, как
+  // логотип выглядит в шапке настоящего делового отчёта (не игрушечный
+  // значок и не на полстраницы).
   let titleY = 16;
   if (logoDataUrl) {
     try {
-      doc.addImage(logoDataUrl, "PNG", 14, 8, 32, 8);
-      titleY = 26;
+      const logoWidth = 36;
+      const logoHeight = 17.8;
+      doc.addImage(logoDataUrl, "PNG", 14, 10, logoWidth, logoHeight);
+      titleY = 10 + logoHeight + 8;
     } catch (e) {
       console.error("Failed to embed logo in PDF:", e);
     }

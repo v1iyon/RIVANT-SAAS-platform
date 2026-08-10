@@ -926,7 +926,22 @@ const [companySaved, setCompanySaved] = useState(false);
   const [selectedProviders, setSelectedProviders] = useState<string[]>([]);
   const [telegramConnected, setTelegramConnected] = useState(false);
   const [businessName, setBusinessName] = useState("");
-  const [timezone, setTimezoneState] = useState("America/New_York");
+  // Раніше тут був захардкожений дефолт "America/New_York" — будь-хто, хто
+  // не зайшов у Налаштування і не поміняв вручну, отримував нью-йоркський
+  // часовий пояс незалежно від того, де реально знаходиться його бізнес.
+  // Це напряму ламало сенс daily-reports.mjs (він вже вміє слати звіт по
+  // локальному часу business.timezone) — бо в базу потрапляло невірне
+  // значення ще на етапі створення бізнесу. Intl.DateTimeFormat() не
+  // потребує жодного дозволу від користувача (на відміну від геолокації) і
+  // повертає справжню IANA-таймзону браузера одразу, без попапів.
+  const [timezone, setTimezoneState] = useState(() => {
+    if (typeof window === "undefined") return "America/New_York";
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York";
+    } catch {
+      return "America/New_York";
+    }
+  });
   // Скользящее окно "последние 24ч vs предыдущие 24ч" — тот же движок, что
   // считает revenue_drop для бота (scripts/sync-stripe-core.mjs), пишется
   // туда же в businesses.rolling_metrics при каждом часовом синке. Для
