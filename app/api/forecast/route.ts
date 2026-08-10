@@ -272,6 +272,23 @@ if (!stripeConnected) return Response.json({ sufficient: false, days: 0, tier: "
   const revenueHorizon = projectTotal(revenueReg, fromDay, horizonDays);
   const expensesHorizon = projectTotal(expensesReg, fromDay, horizonDays);
 
+  // "Впевненість" — это НЕ R² линейной регрессии. R² меряет, насколько
+  // ровно ложится ПРЯМАЯ линия на дневную выручку — а у любого живого
+  // бизнеса выручка скачет день ко дню (будни/выходные, случайный крупный
+  // заказ), поэтому R² почти всегда низкий ДАЖЕ при куче надёжных данных.
+  // Показывать это клиенту как "Confidence: 2%" выглядит как "инструмент
+  // сломан", хотя на самом деле это просто нормальное свойство любой
+  // реальной выручки — 14 дней надёжных данных не становятся "неувереннее"
+  // только потому что кривая не идеально прямая. Настоящее "чему я могу
+  // доверять" в прогнозе — это КОЛИЧЕСТВО накопленных данных: чем больше
+  // дней истории, тем меньше на прогноз влияет один случайный день.
+  // R² остаётся в промпте для ИИ-объяснения (там уместно упомянуть "тренд
+  // предсказывает не идеально") — просто не выносится в заголовочную цифру.
+  const confidence =
+    days >= MIN_DAYS_FULL_CONFIDENCE
+      ? Math.min(95, 60 + (days - MIN_DAYS_FULL_CONFIDENCE))
+      : Math.round((days / MIN_DAYS_FULL_CONFIDENCE) * 60);
+
   const forecastNumbers: Record<string, unknown> = {
     sufficient: true as const,
     days,
@@ -279,7 +296,7 @@ if (!stripeConnected) return Response.json({ sufficient: false, days: 0, tier: "
     horizonDays,
     dailyGrowthPct,
     marginSlope: marginReg.slope,
-    confidence: Math.round(revenueReg.r2 * 100),
+    confidence,
   };
 
   if (horizonDays === 30) {
