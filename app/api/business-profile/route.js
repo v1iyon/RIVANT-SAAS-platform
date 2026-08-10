@@ -14,7 +14,7 @@ export async function GET(req) {
 
   let { data: business } = await admin
     .from("businesses")
-    .select("id, name, timezone")
+    .select("id, name, timezone, rolling_metrics")
     .eq("user_id", appUser.id)
     .limit(1)
     .maybeSingle();
@@ -24,7 +24,7 @@ export async function GET(req) {
     const { data: created } = await admin
       .from("businesses")
       .insert({ user_id: appUser.id, name: "My Business", timezone: "America/New_York" })
-      .select("id, name, timezone")
+      .select("id, name, timezone, rolling_metrics")
       .single();
     business = created;
   }

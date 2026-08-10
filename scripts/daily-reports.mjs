@@ -1,12 +1,19 @@
 // scripts/daily-reports.mjs
 //
-// Ранковий (08:00) і вечірній (20:00) звіти — за київським часом (DST
-// врахований через Intl, без ручної математики зі зсувом). Запускається
-// з того ж hourly-крону, що і решта синків (.github/workflows/sync-stripe.yml
-// -> scripts/run-sync.mjs) — щогодини перевіряє поточну годину в Києві і
-// один раз за добу шле потрібний тип звіту. Дедуп — власний запис у
-// alerts_log (type: daily_digest_morning / daily_digest_evening), щоб
-// повторний прогін в межах тієї ж години нічого не задублював.
+// Ранковий (08:00) і вечірній (20:00) звіти — за ЧАСОВИМ ПОЯСОМ КОЖНОГО
+// БІЗНЕСУ окремо (businesses.timezone — вже є в базі, автовизначається
+// браузером при першому заході в кабінет, див. app/dashboard/page.tsx).
+// Клієнти RIVANT — з різних країн (US/EU/UA), тож "08:00" не може бути
+// одне на всіх: раніше було захардкоджено Europe/Kyiv для кожного бізнесу,
+// через що клієнту з США ранковий звіт приходив глибокою ніччю. Тепер
+// перевіряємо годину для КОЖНОГО бізнесу в ЙОГО власному поясі.
+//
+// Запускається з того ж hourly-крону, що і решта синків
+// (.github/workflows/sync-stripe.yml -> scripts/run-sync.mjs) — щогодини
+// перевіряє поточну годину в поясі кожного бізнесу і один раз за добу шле
+// потрібний тип звіту. Дедуп — власний запис у alerts_log (type:
+// daily_digest_morning / daily_digest_evening), щоб повторний прогін в
+// межах тієї ж години нічого не задублював.
 //
 // ВАЖЛИВО: це НЕ алерти про проблему — жодних порогів, жодного ризику
 // хибних спрацьовувань. Просто факти: вчорашній/сьогоднішній дохід + чи є
@@ -20,30 +27,46 @@ import { getUserContact, sendDailyReport } from "../lib/alerts.mjs";
 
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
-function kyivHour() {
-  return Number(
-    new Intl.DateTimeFormat("en-US", { timeZone: "Europe/Kyiv", hour: "numeric", hour12: false }).format(new Date())
-  );
+const FALLBACK_TZ = "Europe/Kyiv"; // если у бизнеса почему-то нет timezone (не должно случаться — колонка всегда заполняется на фронте)
+
+function localHour(tz) {
+  try {
+    return Number(
+      new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", hour12: false }).format(new Date())
+    );
+  } catch {
+    return Number(
+      new Intl.DateTimeFormat("en-US", { timeZone: FALLBACK_TZ, hour: "numeric", hour12: false }).format(new Date())
+    );
+  }
 }
 
-function kyivDateStr() {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Kyiv" }).format(new Date()); // YYYY-MM-DD
+function localDateStr(tz) {
+  try {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date()); // YYYY-MM-DD
+  } catch {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: FALLBACK_TZ }).format(new Date());
+  }
 }
 
 export async function runDailyReports() {
-  const hour = kyivHour();
-  const kind = hour === 8 ? "morning" : hour === 20 ? "evening" : null;
-  if (!kind) return; // не наш час — тихо виходимо, чекаємо наступного прогону
-
-  const digestType = kind === "morning" ? "daily_digest_morning" : "daily_digest_evening";
-  const today = kyivDateStr();
-
-  const { data: businesses } = await admin.from("businesses").select("id, user_id, name");
+  const { data: businesses } = await admin.from("businesses").select("id, user_id, name, timezone");
   if (!businesses?.length) return;
 
   for (const business of businesses) {
     try {
-      // Дедуп: якщо цей звіт для цього бізнесу вже слали сьогодні — пропускаємо.
+      const tz = business.timezone || FALLBACK_TZ;
+      const hour = localHour(tz);
+      const kind = hour === 8 ? "morning" : hour === 20 ? "evening" : null;
+      if (!kind) continue; // не час цього бізнесу — пропускаємо, наступний прогін за годину перевірить знову
+
+      const digestType = kind === "morning" ? "daily_digest_morning" : "daily_digest_evening";
+      const today = localDateStr(tz);
+
+      // Дедуп: якщо цей звіт для цього бізнесу вже слали сьогодні (за ЙОГО
+      // локальною датою) — пропускаємо. sent_at порівнюємо в UTC, тому
+      // формуємо межу доби через сам today (локальна дата) — цього достатньо,
+      // бо кожен бізнес перевіряється незалежно й максимум раз на добу.
       const { data: already } = await admin
         .from("alerts_log")
         .select("id")
@@ -59,7 +82,8 @@ export async function runDailyReports() {
       let revenue = 0, marginPct = 0, count = 0;
 
       if (kind === "morning") {
-        // Вчорашній ПОВНИЙ день — останній рядок metrics_computed до сьогодні.
+        // Вчорашній ПОВНИЙ день — останній рядок metrics_computed до сьогодні
+        // (сьогодні — за локальною датою бізнесу, не UTC/Київ).
         const { data: yesterday } = await admin
           .from("metrics_computed")
           .select("revenue, margin_pct")
@@ -108,7 +132,7 @@ export async function runDailyReports() {
         sent_at: new Date().toISOString(),
       });
     } catch (err) {
-      console.error(`daily-reports (${kind}) failed for business ${business.id}:`, err.message);
+      console.error(`daily-reports failed for business ${business.id}:`, err.message);
     }
   }
 }

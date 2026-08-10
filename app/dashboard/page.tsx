@@ -828,7 +828,15 @@ const [forecastLoaded, setForecastLoaded] = useState(false);
   const prevMonthKeyStr = prevMonthDate.toISOString().slice(0, 7);
 
   const currentMonthRows = metricsRows.filter((r) => monthKey(r.date) === nowMonthKey);
-  const prevMonthRows = metricsRows.filter((r) => monthKey(r.date) === prevMonthKeyStr);
+  const prevMonthRowsFull = metricsRows.filter((r) => monthKey(r.date) === prevMonthKeyStr);
+  // ВАЖНО: сравнение "весь этот месяц-до-сегодня" vs "ВЕСЬ прошлый месяц
+  // целиком" — та же болезнь, что чинили в revenue_drop (Stripe), только в
+  // масштабе месяца: 9 число всегда будет казаться "упавшим" против полных
+  // 31 дня июля, даже если бизнес растёт день ко дню. Сравниваем со СТОЛЬКИМИ
+  // ЖЕ по счёту днями прошлого месяца (первые N дней июля vs первые N дней
+  // августа), а не с месяцем целиком — так это честное "день в день" сравнение,
+  // а не "часть месяца vs целый месяц".
+  const prevMonthRows = prevMonthRowsFull.slice(0, currentMonthRows.length);
 
   const sumBy = (rows: MetricsRow[], f: (r: MetricsRow) => number) => rows.reduce((s, r) => s + f(r), 0);
   const marginFrom = (rows: MetricsRow[]) => {
@@ -919,6 +927,16 @@ const [companySaved, setCompanySaved] = useState(false);
   const [telegramConnected, setTelegramConnected] = useState(false);
   const [businessName, setBusinessName] = useState("");
   const [timezone, setTimezoneState] = useState("America/New_York");
+  // Скользящее окно "последние 24ч vs предыдущие 24ч" — тот же движок, что
+  // считает revenue_drop для бота (scripts/sync-stripe-core.mjs), пишется
+  // туда же в businesses.rolling_metrics при каждом часовом синке. Для
+  // карточек Дохід/Прибуток/Маржа наверху — рядом с бейджем "Наживо"
+  // сравнение по месяцам смотрелось не по-настоящему live.
+  const [rollingMetrics, setRollingMetrics] = useState<{
+    revenue_last24h: number; revenue_prev24h: number;
+    profit_last24h: number; profit_prev24h: number;
+    margin_last24h: number; margin_prev24h: number;
+  } | null>(null);
   const [allTimezones] = useState<string[]>(() => getAllTimezones().sort());
   const groupedTimezones = groupTimezonesByRegion(allTimezones);
   const [businessId, setBusinessId] = useState("");
@@ -1114,6 +1132,7 @@ const bizData = await bizRes.json();
 if (bizData.business) {
   setBusinessName(bizData.business.name || "");
   setBusinessId(bizData.business.id?.slice(0, 8).toUpperCase() || "");
+  setRollingMetrics(bizData.business.rolling_metrics || null);
 
   if (bizData.business.timezone) {
     setTimezoneState(bizData.business.timezone);
@@ -1222,9 +1241,21 @@ useEffect(() => {
 
 
   const pctChange = (curr: number, prev: number) => (prev ? ((curr - prev) / prev * 100).toFixed(1) : "0.0");
-  const revenueChange = pctChange(currentRevenue, prevRevenue);
-  const profitChange = pctChange(currentProfit, prevProfit);
-  const marginChange = (currentMargin - prevMargin).toFixed(1);
+  // "Наживо" — сравнение тоже должно быть живым: последние 24ч vs
+  // предыдущие 24ч (тот же движок, что уже считает это для бота), а не
+  // месяц-до-сегодня vs прошлый месяц. Пока rolling_metrics ещё не пришли
+  // (например бизнес только что подключил Stripe, первый час без синка) —
+  // используем старое сравнение по дням как временный фолбэк, чтобы карточка
+  // не показывала "0.0%" вникуда.
+  const revenueChange = rollingMetrics
+    ? pctChange(rollingMetrics.revenue_last24h, rollingMetrics.revenue_prev24h)
+    : pctChange(currentRevenue, prevRevenue);
+  const profitChange = rollingMetrics
+    ? pctChange(rollingMetrics.profit_last24h, rollingMetrics.profit_prev24h)
+    : pctChange(currentProfit, prevProfit);
+  const marginChange = rollingMetrics
+    ? (rollingMetrics.margin_last24h - rollingMetrics.margin_prev24h).toFixed(1)
+    : (currentMargin - prevMargin).toFixed(1);
   const cacChange = currentCac != null && prevCac ? pctChange(currentCac, prevCac) : "0.0";
   const cacMetaChange = currentCacMeta != null && prevCacMeta ? pctChange(currentCacMeta, prevCacMeta) : "0.0";
   const cacGoogleChange = currentCacGoogle != null && prevCacGoogle ? pctChange(currentCacGoogle, prevCacGoogle) : "0.0";

@@ -336,6 +336,31 @@ async function main(businessId) {
       const costPct = shopifyConnected ? 0 : Number(business.cost_pct) || 30;
       console.log("DEBUG byDate:", JSON.stringify(byDate), "shopifyConnected:", shopifyConnected);
 
+      // Дашборд (карточки Дохід/Прибуток/Маржа) раньше сравнивал "этот
+      // месяц-до-сегодня" с прошлым месяцем — рядом с бейджем "Наживо" это
+      // смотрелось не по-настоящему live, да ещё и страдало той же
+      // календарной болезнью, что мы чинили в revenue_drop. Пишем сюда те
+      // же last24h/prev24h, что уже считаем для алертов — один источник
+      // правды, дашборд просто читает готовое значение, без своего пересчёта.
+      {
+        const last24hCost = Number((last24h.revenue * (costPct / 100) + last24h.stripeFee).toFixed(2));
+        const prev24hCost = Number((prev24h.revenue * (costPct / 100) + prev24h.stripeFee).toFixed(2));
+        await admin
+          .from("businesses")
+          .update({
+            rolling_metrics: {
+              revenue_last24h: last24h.revenue,
+              revenue_prev24h: prev24h.revenue,
+              profit_last24h: Number((last24h.revenue - last24hCost).toFixed(2)),
+              profit_prev24h: Number((prev24h.revenue - prev24hCost).toFixed(2)),
+              margin_last24h: last24h.revenue > 0 ? Number((((last24h.revenue - last24hCost) / last24h.revenue) * 100).toFixed(1)) : 0,
+              margin_prev24h: prev24h.revenue > 0 ? Number((((prev24h.revenue - prev24hCost) / prev24h.revenue) * 100).toFixed(1)) : 0,
+              updated_at: new Date().toISOString(),
+            },
+          })
+          .eq("id", business.id);
+      }
+
       // ВАЖНО (фикс спама уведомлений): sinceUnix = now - 48h, поэтому byDate
       // почти всегда содержит ДВЕ даты — вчера и сегодня. Раньше alert-логика
       // (auto-resolve/dedup/insert) прогонялась для КАЖДОЙ даты в цикле. Из-за
