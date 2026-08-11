@@ -102,6 +102,7 @@ function alertTypeToCategory(type: string): Risk["category"] {
   if (type === "cac_spike") return "cac";
   if (type === "cogs_spike_shopify") return "margin";
   if (type === "shipping_spike_shopify") return "shipping";
+  if (type.startsWith("low_stock_shopify_")) return "inventory";
   if (type.startsWith("ad_spend_")) return "ads";
   if (type.startsWith("sync_failure_")) return "integration";
   return "integration";

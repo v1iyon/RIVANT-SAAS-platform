@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { CheckCircle, AlertCircle, Lock } from "lucide-react";
+import { CheckCircle, AlertCircle, Lock, RefreshCw } from "lucide-react";
 import { useLanguage } from "@/lib/translations";
 
 type LockReason = "expired" | "plan" | "selection" | null;
@@ -76,6 +76,7 @@ export function IntegrationConnectCard({
   const [errorMsg, setErrorMsg] = useState("");
   const [lastSynced, setLastSynced] = useState<string | null>(null);
   const [keyPreview, setKeyPreview] = useState<string | null>(null);
+  const [syncLoading, setSyncLoading] = useState(false);
   const [showLockedToast, setShowLockedToast] = useState(false);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -241,6 +242,28 @@ export function IntegrationConnectCard({
     window.location.href = oauthStartHref;
   };
 
+  const handleSyncNow = async () => {
+    setSyncLoading(true);
+    try {
+      const response = await fetch("/api/sync-now", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, provider }),
+      });
+      if (!response.ok) {
+        setStatus("error");
+        setErrorMsg(syncErrorMessage());
+        return;
+      }
+      await loadStatus();
+    } catch {
+      setStatus("error");
+      setErrorMsg(syncErrorMessage());
+    } finally {
+      setSyncLoading(false);
+    }
+  };
+
   const handleDisconnect = async () => {
     if (isExpiredTrial) {
       triggerLockedToast();
@@ -271,6 +294,7 @@ export function IntegrationConnectCard({
     connected: language === "UA" ? "Підключено" : language === "DE" ? "Verbunden" : "Connected",
     connectBtn: language === "UA" ? `Підключити ${displayName}` : language === "DE" ? `${displayName} verbinden` : `Connect ${displayName}`,
     disconnectBtn: language === "UA" ? "Відключити" : language === "DE" ? "Trennen" : "Disconnect",
+    syncNowBtn: language === "UA" ? "Синхронізувати зараз" : language === "DE" ? "Jetzt synchronisieren" : "Sync now",
     connecting: language === "UA" ? "Підключення..." : language === "DE" ? "Verbinde..." : "Connecting...",
   };
 
@@ -349,6 +373,9 @@ export function IntegrationConnectCard({
             <span className="text-xs px-2 py-1 rounded-full font-semibold bg-green-500/20 text-green-400 flex items-center gap-1 font-mono whitespace-nowrap">
               <CheckCircle className="w-3 h-3 shrink-0" /> {texts.connected}{keyPreview ? ` · ${keyPreview}` : ""}
             </span>
+            <Button size="icon" variant="outline" title={texts.syncNowBtn} aria-label={texts.syncNowBtn} className="border-blue-400/30 text-blue-300 hover:bg-blue-500/10 shrink-0" onClick={handleSyncNow} disabled={syncLoading}>
+              <RefreshCw className={`w-4 h-4 ${syncLoading ? "animate-spin" : ""}`} />
+            </Button>
             <Button size="sm" variant="outline" className="text-red-400 border-red-400/30 hover:bg-red-500/10 shrink-0" onClick={handleDisconnect}>
               {texts.disconnectBtn}
             </Button>

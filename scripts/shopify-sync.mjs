@@ -70,6 +70,7 @@ const SHIPPING_SPIKE_MESSAGE = {
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
 const SHOPIFY_API_VERSION = "2024-01";
+const LOW_STOCK_THRESHOLD = 20;
 
 function normalizeShopDomain(raw) {
   let domain = (raw || "").trim().replace(/^https?:\/\//, "").replace(/\/$/, "");
@@ -93,6 +94,35 @@ async function fetchShopifyOrders(shopDomain, token, sinceIso) {
   // проблема при синке раз в час, но стоит иметь в виду при росте объёма.
   return data.orders || [];
 }
+
+async function fetchLowStockVariants(shopDomain, token) {
+  const lowStock = [];
+  let url = `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/products.json?status=active&limit=250&fields=id,title,variants`;
+
+  while (url) {
+    const res = await fetch(url, { headers: { "X-Shopify-Access-Token": token } });
+    if (!res.ok) throw new Error(`Shopify inventory request failed: ${res.status}`);
+    const data = await res.json();
+    for (const product of data.products || []) {
+      for (const variant of product.variants || []) {
+        const quantity = Number(variant.inventory_quantity);
+        if (variant.inventory_management === "shopify" && Number.isFinite(quantity) && quantity < LOW_STOCK_THRESHOLD) {
+          lowStock.push({ id: variant.id, productTitle: product.title, variantTitle: variant.title, quantity });
+        }
+      }
+    }
+    const links = res.headers.get("link") || "";
+    const next = links.match(/<([^>]+)>;\s*rel="next"/);
+    url = next?.[1] || null;
+  }
+  return lowStock;
+}
+
+const LOW_STOCK_MESSAGE = {
+  UA: (name, quantity) => `Низький залишок: «${name}» — ${quantity} шт.`,
+  EN: (name, quantity) => `Low stock: “${name}” — ${quantity} units.`,
+  DE: (name, quantity) => `Niedriger Bestand: „${name}“ — ${quantity} Stück.`,
+};
 
 // current_total_price — це вже фактична сума ПІСЛЯ повернень/часткових
 // рефандів (на відміну від total_price, який лишається "як було виставлено
@@ -333,6 +363,29 @@ async function main(businessId) {
       // окремий "order_volume_drop" — падіння продажів вже ловить revenue_drop
       // зі Stripe-синку, дублювати той самий сигнал іншими словами тільки додасть
       // зайвих сповіщень, а не користі.
+      // Товарні залишки перевіряються лише для операційних сповіщень: вони не
+      // впливають на фінансові метрики, графіки чи текст прогнозу. Відсутність
+      // дозволу read_products не повинна зупиняти синхронізацію продажів.
+      try {
+        const lowStockVariants = await fetchLowStockVariants(shopDomain, token);
+        if (lowStockVariants.length) {
+          const contact = await getUserContact(await getBusinessUserId(integ.business_id));
+          for (const item of lowStockVariants) {
+            const displayName = item.variantTitle && item.variantTitle !== "Default Title"
+              ? `${item.productTitle} — ${item.variantTitle}`
+              : item.productTitle;
+            const message = (LOW_STOCK_MESSAGE[contact.userLang] || LOW_STOCK_MESSAGE.EN)(displayName, item.quantity);
+            await sendAlertToBusiness(integ.business_id, contact, {
+              type: `low_stock_shopify_${item.id}`,
+              severity: item.quantity === 0 ? "critical" : item.quantity <= 5 ? "medium" : "low",
+              message,
+            });
+          }
+        }
+      } catch (inventoryError) {
+        console.warn(`Shopify inventory check skipped for ${integ.id}:`, inventoryError.message);
+      }
+
       const allDates = [...new Set([...Object.keys(byDate), ...Object.keys(cogsByDate)])].sort();
       if (allDates.length) {
         const latestDate = allDates[allDates.length - 1];
