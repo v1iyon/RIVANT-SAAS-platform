@@ -142,13 +142,15 @@ async function generateExplanation(
   const expensesHorizonConverted = convertAmount(stats.expensesHorizon, currency);
   const currencySymbol = currency === "EUR" ? "€" : "$";
 
-  const system = `You are a financial analyst writing a short forecast explanation for RIVANT, an e-commerce analytics dashboard. Respond ONLY in ${langName}, 3-5 sentences, plain factual tone (no hype, no exclamation marks).
+  const system = `You are a financial analyst writing a useful forecast summary for RIVANT, an e-commerce analytics dashboard. Respond ONLY in ${langName}, 5-7 sentences, plain factual tone (no hype, no exclamation marks).
 
 Hard rules:
 - Use ONLY the numbers given to you below. Never invent revenue figures, seasonality, holidays, or market events not present in the data.
 - All monetary figures given to you are already in ${currencyLabel} — use that currency and its symbol (${currencySymbol}) consistently, never mention or convert to any other currency.
 - The forecast horizon is exactly ${stats.horizonDays} days — refer to that horizon only, never mention any other number of days for the projection.
-- Lead with the business forecast: expected revenue, expected expenses, and the direction of the revenue trend. Put the data source and calculation method in one brief final sentence.
+- Lead with the business forecast: expected revenue, expected expenses, and the direction of the revenue trend.
+- Explain what the trend means for planning and include one practical next step. The advice must be grounded in the supplied figures: for example, monitor sales and costs, revise the plan if actual results diverge, or be cautious with discretionary spending when the trend is negative. Do not suggest specific campaigns, channels, budgets, or causes that are not in the data.
+- Put the data source and calculation method in one brief final sentence.
 - If days < 30, explicitly say seasonality cannot be assessed yet from the available history.
 - If tier is "low", clearly state the forecast is preliminary and confidence will improve as more days of data accumulate — do not present the numbers as certain.
 - Do not repeat the raw numbers verbatim in a list; weave them into short prose instead.
@@ -214,12 +216,12 @@ function localizedFallbackExplanation(
   const expenses = Math.round(convertAmount(stats.expensesHorizon, currency)).toLocaleString();
   const trend = Math.abs(stats.dailyGrowthPct).toFixed(1);
   if (language === "UA") {
-    return `На наступні ${stats.horizonDays} днів очікувана виручка становить близько ${symbol}${revenue}, а витрати — близько ${symbol}${expenses}. Денний тренд виручки ${stats.dailyGrowthPct >= 0 ? "зростає" : "знижується"} приблизно на ${trend}%, тож це варто врахувати в плані продажів і витрат. Надійність оцінки — ${stats.confidence}%: це орієнтир для планування, а не гарантія. Прогноз сформовано за ${stats.days} днями фактичних даних із підключених синхронізованих джерел, методом аналізу щоденної виручки та витрат.`;
+    return `На наступні ${stats.horizonDays} днів очікувана виручка становить близько ${symbol}${revenue}, а витрати — близько ${symbol}${expenses}. Денний тренд виручки ${stats.dailyGrowthPct >= 0 ? "зростає" : "знижується"} приблизно на ${trend}%, тому прогноз варто врахувати в плані продажів і витрат. ${stats.dailyGrowthPct >= 0 ? "За зростаючого тренду контролюйте, щоб витрати не випереджали фактичну виручку." : "За спадного тренду варто обережно планувати необов’язкові витрати та регулярно звіряти їх із фактичними продажами."} Перевіряйте фактичні показники протягом періоду й оновлюйте план, якщо вони суттєво відхиляються від цього сценарію. Надійність оцінки — ${stats.confidence}%: це орієнтир для планування, а не гарантія. Прогноз сформовано за ${stats.days} днями фактичних даних із підключених синхронізованих джерел, методом аналізу щоденної виручки та витрат.`;
   }
   if (language === "DE") {
-    return `Die Prognose für die nächsten ${stats.horizonDays} Tage basiert auf ${stats.days} Tagen mit historischen Daten. Der erwartete Umsatz beträgt ${symbol}${revenue}, die Ausgaben ${symbol}${expenses}. Der tägliche Umsatztrend ${stats.dailyGrowthPct >= 0 ? "steigt" : "sinkt"} um etwa ${trend}%; die Prognose ist eine Schätzung.`;
+    return `Für die nächsten ${stats.horizonDays} Tage werden etwa ${symbol}${revenue} Umsatz und ${symbol}${expenses} Ausgaben erwartet. Der tägliche Umsatztrend ${stats.dailyGrowthPct >= 0 ? "steigt" : "sinkt"} um etwa ${trend}%, was bei der Verkaufs- und Kostenplanung berücksichtigt werden sollte. Prüfen Sie die tatsächlichen Ergebnisse regelmäßig und passen Sie den Plan bei deutlichen Abweichungen an. Die Zuverlässigkeit beträgt ${stats.confidence}% und ist ein Planungswert, keine Garantie. Die Prognose basiert auf ${stats.days} Tagen synchronisierter Daten aus verbundenen Quellen.`;
   }
-  return `The forecast for the next ${stats.horizonDays} days is based on ${stats.days} days of historical data. Expected revenue is ${symbol}${revenue} and expenses are ${symbol}${expenses}. Daily revenue is ${stats.dailyGrowthPct >= 0 ? "rising" : "declining"} by about ${trend}%; this forecast is an estimate.`;
+  return `For the next ${stats.horizonDays} days, expected revenue is about ${symbol}${revenue} and expenses are about ${symbol}${expenses}. Daily revenue is ${stats.dailyGrowthPct >= 0 ? "rising" : "declining"} by about ${trend}%, which should inform sales and cost planning. Review actual results regularly and adjust the plan if they materially differ from this scenario. Confidence is ${stats.confidence}%, so this is a planning guide rather than a guarantee. The forecast uses ${stats.days} days of synchronized data from connected sources.`;
 }
 
 export async function GET(req: Request) {
@@ -347,7 +349,7 @@ if (!stripeConnected) return Response.json({ sufficient: false, days: 0, tier: "
 
   // Кэш forecast_cache — см. комментарий ниже про схему "ряд на каждую
   // комбинацию язык+валюта+горизонт" (было по-другому, чинили дважды).
-  const cacheLanguageKey = `v2::${language}::${horizonDays}::${currency}`;
+  const cacheLanguageKey = `v3::${language}::${horizonDays}::${currency}`;
   const { data: cachedRows, error: cacheReadErr } = await admin
     .from("forecast_cache")
     .select("id, days, language, explanation, numbers, generated_at")
