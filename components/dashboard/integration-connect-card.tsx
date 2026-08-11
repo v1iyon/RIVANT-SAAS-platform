@@ -306,6 +306,13 @@ export function IntegrationConnectCard({
     lastSyncedLabel: language === "UA" ? "Остання синхронізація" : language === "DE" ? "Letzte Synchronisierung" : "Last synced",
     connected: language === "UA" ? "Підключено" : language === "DE" ? "Verbunden" : "Connected",
     connectBtn: language === "UA" ? `Підключити ${displayName}` : language === "DE" ? `${displayName} verbinden` : `Connect ${displayName}`,
+    reconnectBtn: language === "UA" ? "Оновити підключення" : language === "DE" ? "Verbindung aktualisieren" : "Update connection",
+    reconnectHint:
+      language === "UA"
+        ? "Введіть оновлені дані нижче й підключіть ще раз — не потрібно спершу відключати."
+        : language === "DE"
+        ? "Geben Sie unten aktualisierte Daten ein und verbinden Sie erneut — kein vorheriges Trennen nötig."
+        : "Enter updated details below and connect again — no need to disconnect first.",
     disconnectBtn: language === "UA" ? "Відключити" : language === "DE" ? "Trennen" : "Disconnect",
     syncErrorBadge: language === "UA" ? "Помилка синхронізації" : language === "DE" ? "Sync-Fehler" : "Sync error",
     syncNowBtn: language === "UA" ? "Синхронізувати зараз" : language === "DE" ? "Jetzt synchronisieren" : "Sync now",
@@ -415,11 +422,12 @@ export function IntegrationConnectCard({
         </div>
       )}
 
-      {status !== "connected" && oauthStartHref && (
+      {(status !== "connected" || hasSyncError) && oauthStartHref && (
         <div className="space-y-2">
+          {hasSyncError && <p className="text-xs text-gray-400">{texts.reconnectHint}</p>}
           <p className="text-xs text-gray-500">{hint}</p>
           <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={handleOAuthConnect}>
-            {oauthButtonLabel || texts.connectBtn}
+            {hasSyncError ? texts.reconnectBtn : oauthButtonLabel || texts.connectBtn}
           </Button>
 
           {showLockedToast && lockReason && (
@@ -444,8 +452,9 @@ export function IntegrationConnectCard({
         </div>
       )}
 
-      {status !== "connected" && !oauthStartHref && (
+      {(status !== "connected" || hasSyncError) && !oauthStartHref && (
         <div className="space-y-2">
+          {hasSyncError && <p className="text-xs text-gray-400">{texts.reconnectHint}</p>}
           {fields.map((f) => (
             <div key={f.key}>
               <input
@@ -480,7 +489,7 @@ export function IntegrationConnectCard({
             </p>
           )}
           <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={handleConnect} disabled={status === "loading"}>
-            {status === "loading" ? texts.connecting : texts.connectBtn}
+            {status === "loading" ? texts.connecting : hasSyncError ? texts.reconnectBtn : texts.connectBtn}
           </Button>
 
           {showLockedToast && lockReason && (
