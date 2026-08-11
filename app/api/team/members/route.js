@@ -32,7 +32,7 @@ export async function GET(req) {
 
   const { data: members } = await admin
     .from("team_members")
-    .select("id, telegram_username, role, status, created_at")
+    .select("id, telegram_id, telegram_username, role, status, created_at")
     .eq("business_id", businessId)
     .eq("status", "active")
     .order("created_at", { ascending: true });

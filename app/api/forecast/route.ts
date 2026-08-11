@@ -54,6 +54,8 @@ async function getBusinessId(email: string) {
     .from("businesses")
     .select("id")
     .eq("user_id", appUser.id)
+    .order("created_at", { ascending: true })
+    .limit(1)
     .maybeSingle();
   return business?.id ?? null;
 }

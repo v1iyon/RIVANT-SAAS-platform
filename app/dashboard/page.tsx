@@ -970,6 +970,7 @@ const [companySaved, setCompanySaved] = useState(false);
   const [allTimezones] = useState<string[]>(() => getAllTimezones().sort());
   const groupedTimezones = groupTimezonesByRegion(allTimezones);
   const [businessId, setBusinessId] = useState("");
+  const [profileSettingsLoaded, setProfileSettingsLoaded] = useState(false);
   const [broadcastNotif, setBroadcastNotif] = useState<{ id: string; message: string } | null>(null);
 
   const [showExpiredNotice, setShowExpiredNotice] = useState(false);
@@ -1092,7 +1093,7 @@ const [companySaved, setCompanySaved] = useState(false);
   };
 
 useEffect(() => {
-  if (!profileEmail) return;
+  if (!profileEmail || !profileSettingsLoaded) return;
   setForecastLoaded(false);
   // Стороны гонки: language/currency на маунте могут смениться почти сразу
   // (пока подгружаются из аккаунта — см. lib/currency.tsx), и этот эффект
@@ -1121,7 +1122,7 @@ useEffect(() => {
       if (!controller.signal.aborted) setForecastLoaded(true);
     });
   return () => controller.abort();
-}, [profileEmail, language, currency]);
+}, [profileEmail, profileSettingsLoaded, language, currency]);
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data }: any) => {
@@ -1130,6 +1131,7 @@ useEffect(() => {
         return;
       }
       const email = data.session.user.email || "";
+      setProfileSettingsLoaded(false);
       // ВАЖНО: /api/profile (несёт правильный language аккаунта) раньше
       // фетчился ПОСЛЕДНИМ, после 7-8 других последовательных await —
       // а setProfileEmail(email) ниже вызывался практически сразу. Именно
@@ -1155,13 +1157,14 @@ useEffect(() => {
         setLanguage(profile.language);
       }
       setProfileEmail(email);
+      setProfileSettingsLoaded(true);
       setEditEmail(email);
       setIsAuthenticated(true);
      const bizRes = await fetch(`/api/business-profile?email=${encodeURIComponent(email)}`);
 const bizData = await bizRes.json();
 if (bizData.business) {
   setBusinessName(bizData.business.name || "");
-  setBusinessId(bizData.business.id?.slice(0, 8).toUpperCase() || "");
+  setBusinessId(bizData.business.id || "");
   setRollingMetrics(bizData.business.rolling_metrics || null);
 
   if (bizData.business.timezone) {

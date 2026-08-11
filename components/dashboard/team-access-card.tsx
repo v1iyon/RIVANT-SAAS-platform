@@ -34,7 +34,13 @@ import {
 import { Users, X } from "lucide-react";
 import { useLanguage } from "@/lib/translations";
 
-type Member = { id: string; telegram_username: string | null; role: string; created_at: string };
+type Member = {
+  id: string;
+  telegram_id: number | null;
+  telegram_username: string | null;
+  role: string;
+  created_at: string;
+};
 
 // Тримаємо в одному місці — щоб не розійшлось з бекендом (app/api/team/invite/route.js).
 // Це лише для тексту "X із N" на фронті; реальний ліміт перевіряється на сервері.
@@ -148,7 +154,7 @@ function TeamManageModal({
                 {members.map((m) => (
                   <tr key={m.id} className="border-b border-border/50 last:border-0">
                     <td className="py-2.5 pr-2 text-foreground">
-                      {m.telegram_username ? `@${m.telegram_username}` : formatJoinedDate(m.created_at, language)}
+                      {m.telegram_id ? `Telegram ID: ${m.telegram_id}` : m.telegram_username ? `@${m.telegram_username}` : formatJoinedDate(m.created_at, language)}
                     </td>
                     <td className="py-2.5 pr-2 text-muted-foreground">{formatJoinedDate(m.created_at, language)}</td>
                     <td className="py-2.5">
@@ -266,7 +272,6 @@ export function TeamAccessCard({ email }: { email: string }) {
             className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground mt-2 transition-colors"
           >
             <Users className="w-3.5 h-3.5" />
-            {tr.connectedCount(members.length)}
             <span className="underline underline-offset-2">{tr.manage}</span>
           </button>
         )}

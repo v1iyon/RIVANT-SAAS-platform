@@ -10,9 +10,21 @@ export async function GET(req) {
   }
 
   try {
-    const { runSync } = await import("../../../../scripts/sync-stripe-core.mjs");
-    const result = await runSync();
-    return NextResponse.json({ ok: true, ...result });
+    // This endpoint is the production fallback for deployments where GitHub
+    // Actions is not configured. Previously it ran Stripe only, leaving
+    // connected Shopify and Google Ads accounts permanently stale.
+    const [stripe, shopify, metaAds, googleAds] = await Promise.allSettled([
+      import("../../../../scripts/sync-stripe-core.mjs").then(({ runSync }) => runSync()),
+      import("../../../../scripts/shopify-sync.mjs").then(({ runSync }) => runSync()),
+      import("../../../../scripts/meta-ads-sync.mjs").then(({ runSync }) => runSync()),
+      import("../../../../scripts/google-ads-sync.mjs").then(({ runSync }) => runSync()),
+    ]);
+    const results = { stripe, shopify, metaAds, googleAds };
+    const failed = Object.entries(results)
+      .filter(([, result]) => result.status === "rejected")
+      .map(([provider]) => provider);
+
+    return NextResponse.json({ ok: failed.length === 0, failed, results });
   } catch (err) {
     return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
   }

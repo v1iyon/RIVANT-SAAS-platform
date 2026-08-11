@@ -19,6 +19,8 @@ async function getBusinessId(email: string) {
     .from("businesses")
     .select("id")
     .eq("user_id", appUser.id)
+    .order("created_at", { ascending: true })
+    .limit(1)
     .maybeSingle();
   return business?.id ?? null;
 }
@@ -35,6 +37,7 @@ export async function GET(req: Request) {
     .select("id, type, message, ai_explanation, status, severity, sent_at")
     .eq("business_id", businessId)
     .eq("status", "open")
+    .not("type", "in", "(daily_digest_morning,daily_digest_evening)")
     .order("sent_at", { ascending: false })
     .limit(30);
 
@@ -49,6 +52,7 @@ export async function GET(req: Request) {
     .select("id, type, message, ai_explanation, status, severity, sent_at")
     .eq("business_id", businessId)
     .eq("status", "resolved")
+    .not("type", "in", "(daily_digest_morning,daily_digest_evening)")
     .order("sent_at", { ascending: false })
     .limit(30);
 
