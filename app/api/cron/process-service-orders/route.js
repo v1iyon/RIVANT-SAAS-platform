@@ -72,7 +72,8 @@ function reportTitle(serviceType, language) {
 
 export async function GET(req) {
   const secret = req.headers.get("x-cron-secret");
-  if (secret !== process.env.CRON_SECRET) return Response.json({ error: "unauthorized" }, { status: 401 });
+  const isVercelCron = req.headers.get("authorization") === `Bearer ${process.env.CRON_SECRET}`;
+  if (secret !== process.env.CRON_SECRET && !isVercelCron) return Response.json({ error: "unauthorized" }, { status: 401 });
 
   const { data: orders } = await admin
     .from("service_orders")

@@ -26,6 +26,35 @@ const SYNC_FAILURE_MESSAGE = {
   DE: () => `Shopify Synchronisierung fehlgeschlagen`,
 };
 
+function getSyncFailureReason(error) {
+  const message = String(error?.message || "").toLowerCase();
+  if (message.includes("app_not_installed")) return "app_not_installed";
+  if (message.includes("401") || message.includes("403") || message.includes("token")) return "access_denied";
+  if (message.includes("404") || message.includes("not found")) return "store_not_found";
+  return "connection_failed";
+}
+
+const SYNC_FAILURE_EXPLANATION = {
+  UA: {
+    app_not_installed: "Застосунок RIVANT не встановлено в Shopify.",
+    access_denied: "Перевірте доступ застосунку та токен Shopify.",
+    store_not_found: "Перевірте адресу магазину Shopify.",
+    connection_failed: "Перевірте доступ застосунку Shopify.",
+  },
+  EN: {
+    app_not_installed: "The RIVANT app is not installed in Shopify.",
+    access_denied: "Check the Shopify app access and token.",
+    store_not_found: "Check the Shopify store address.",
+    connection_failed: "Check the Shopify app access.",
+  },
+  DE: {
+    app_not_installed: "Die RIVANT-App ist nicht in Shopify installiert.",
+    access_denied: "Prüfen Sie App-Zugriff und Shopify-Token.",
+    store_not_found: "Prüfen Sie die Shopify-Shop-Adresse.",
+    connection_failed: "Prüfen Sie den Zugriff der Shopify-App.",
+  },
+};
+
 const COGS_SPIKE_MESSAGE = {
   UA: (pct, avg, today, date) => `Собівартість товарів зросла на ${pct}% (з $${Math.round(avg)} до $${Math.round(today)}) ${date}`,
   EN: (pct, avg, today, date) => `Cost of goods jumped ${pct}% (from $${Math.round(avg)} to $${Math.round(today)}) on ${date}`,
@@ -356,9 +385,10 @@ async function main(businessId) {
         }
       }
 
+      const { sync_error_reason: _previousError, ...cleanConfig } = integ.config || {};
       await admin
         .from("integrations")
-        .update({ last_synced_at: new Date().toISOString(), status: "connected" })
+        .update({ last_synced_at: new Date().toISOString(), status: "connected", config: cleanConfig })
         .eq("id", integ.id);
 
       console.log(
@@ -374,20 +404,15 @@ async function main(businessId) {
       });
       // Помечаем интеграцию как проблемную (видно в /admin), но не отключаем —
       // синк для остальных интеграций продолжается благодаря try/catch на каждой.
-      await admin.from("integrations").update({ status: "error" }).eq("id", integ.id);
+      const reason = getSyncFailureReason(err);
+      await admin
+        .from("integrations")
+        .update({ status: "error", config: { ...(integ.config || {}), sync_error_reason: reason } })
+        .eq("id", integ.id);
 
       const contact = await getUserContact(await getBusinessUserId(integ.business_id));
       const msg = (SYNC_FAILURE_MESSAGE[contact.userLang] || SYNC_FAILURE_MESSAGE.EN)();
-      const explanation = await generateAlertExplanation(
-        contact.userLang,
-        `The Shopify integration was previously connected and syncing successfully. It just failed with this error: "${err.message}". This usually means the Admin API access token was revoked, the Client ID/Secret were rotated, or the store URL changed.`
-      );
-      // Раніше сюди ще доклеювався formatTechnicalDetail(contact.userLang,
-      // err.message) — тобто ВЕСЬ сирий текст помилки (аж до HTML-сторінки
-      // 400 Oauth error від Shopify) летів прямо власнику бізнесу в Telegram.
-      // Йому ця деталь не потрібна і не безпечна показувати назовні — повний
-      // err.message і так вже пишеться в error_logs через logError() вище,
-      // адмін бачить це в /admin. Клієнт бачить лише людське пояснення.
+      const explanation = (SYNC_FAILURE_EXPLANATION[contact.userLang] || SYNC_FAILURE_EXPLANATION.EN)[reason];
       await sendAlertToBusiness(integ.business_id, contact, {
         type: "sync_failure_shopify",
         severity: "high",

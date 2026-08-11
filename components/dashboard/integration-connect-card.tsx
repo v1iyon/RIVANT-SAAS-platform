@@ -79,28 +79,59 @@ export function IntegrationConnectCard({
   const [showLockedToast, setShowLockedToast] = useState(false);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const loadStatus = () => {
-    if (!email) return;
-    fetch(`/api/integrations-status?email=${encodeURIComponent(email)}`, { cache: "no-store" })
-      .then((r) => r.json())
-      .then((d) => {
-        const row = (d.integrations || []).find((i: any) => i.provider === provider);
-        if (row?.connected) {
-          setStatus("connected");
-          setLastSynced(row.last_synced_at);
-          setKeyPreview(row.key_preview);
-          if (fields.length && row.config) {
-            const prefill: Record<string, string> = {};
-            for (const f of fields) {
-              if (row.config[f.key]) prefill[f.key] = row.config[f.key];
-            }
-            setExtraValues(prefill);
-          }
-        } else {
-          setStatus("idle");
+  const syncErrorMessage = (reason?: string) => {
+    const messages = language === "UA"
+      ? {
+          app_not_installed: "Застосунок RIVANT не встановлено в Shopify.",
+          access_denied: "Перевірте доступ застосунку та токен Shopify.",
+          store_not_found: "Перевірте адресу магазину Shopify.",
+          connection_failed: `Не вдалося синхронізувати ${displayName}. Перевірте доступ.`,
         }
-      })
-      .catch(() => setStatus("idle"));
+      : language === "DE"
+      ? {
+          app_not_installed: "Die RIVANT-App ist nicht in Shopify installiert.",
+          access_denied: "Prüfen Sie App-Zugriff und Shopify-Token.",
+          store_not_found: "Prüfen Sie die Shopify-Shop-Adresse.",
+          connection_failed: `${displayName} konnte nicht synchronisiert werden. Prüfen Sie den Zugriff.`,
+        }
+      : {
+          app_not_installed: "The RIVANT app is not installed in Shopify.",
+          access_denied: "Check the Shopify app access and token.",
+          store_not_found: "Check the Shopify store address.",
+          connection_failed: `Couldn't sync ${displayName}. Check the access.`,
+        };
+    return messages[reason as keyof typeof messages] || messages.connection_failed;
+  };
+
+  const loadStatus = async () => {
+    if (!email) return;
+    try {
+      const response = await fetch(`/api/integrations-status?email=${encodeURIComponent(email)}`, { cache: "no-store" });
+      const data = await response.json();
+      const row = (data.integrations || []).find((i: any) => i.provider === provider);
+      if (row?.sync_error) {
+        setStatus("error");
+        setErrorMsg(syncErrorMessage(row.config?.sync_error_reason));
+        setLastSynced(null);
+        setKeyPreview(null);
+      } else if (row?.connected) {
+        setStatus("connected");
+        setErrorMsg("");
+        setLastSynced(row.last_synced_at);
+        setKeyPreview(row.key_preview);
+        if (fields.length && row.config) {
+          const prefill: Record<string, string> = {};
+          for (const f of fields) {
+            if (row.config[f.key]) prefill[f.key] = row.config[f.key];
+          }
+          setExtraValues(prefill);
+        }
+      } else {
+        setStatus("idle");
+      }
+    } catch {
+      setStatus("idle");
+    }
   };
 
   useEffect(() => {
@@ -184,12 +215,17 @@ export function IntegrationConnectCard({
       }
 
       setApiKey("");
-      loadStatus();
-      fetch("/api/sync-now", {
+      const syncResponse = await fetch("/api/sync-now", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, provider }),
-      }).catch((e) => console.error("sync-now failed", e));
+      });
+      if (!syncResponse.ok) {
+        setStatus("error");
+        setErrorMsg(syncErrorMessage());
+        return;
+      }
+      await loadStatus();
     } catch {
       setStatus("error");
       setErrorMsg("Network error");

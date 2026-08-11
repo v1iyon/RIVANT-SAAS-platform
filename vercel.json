@@ -1,5 +1,8 @@
 {
   "crons": [
-    { "path": "/api/cron/sync-stripe", "schedule": "0 3 * * *" }
+    { "path": "/api/cron/sync-stripe", "schedule": "0 3 * * *" },
+    { "path": "/api/cron/process-service-orders", "schedule": "*/5 * * * *" },
+    { "path": "/api/cron/monthly-digest", "schedule": "0 4 1 * *" },
+    { "path": "/api/cron/addon-expiry", "schedule": "15 4 * * *" }
   ]
 }
