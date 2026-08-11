@@ -196,6 +196,31 @@ Write the explanation now.`;
   return text || "";
 }
 
+function hasExpectedLanguage(text: string, language: string): boolean {
+  if (!text) return false;
+  if (language === "UA") return /[іїєґІЇЄҐ]/.test(text);
+  if (language === "DE") return /[äöüßÄÖÜ]/.test(text) || /\b(und|der|die|das|ist)\b/i.test(text);
+  return /\b(the|and|with|forecast|revenue|expenses)\b/i.test(text);
+}
+
+function localizedFallbackExplanation(
+  language: string,
+  currency: Currency,
+  stats: { days: number; horizonDays: number; dailyGrowthPct: number; revenueHorizon: number; expensesHorizon: number }
+): string {
+  const symbol = currency === "EUR" ? "€" : "$";
+  const revenue = Math.round(convertAmount(stats.revenueHorizon, currency)).toLocaleString();
+  const expenses = Math.round(convertAmount(stats.expensesHorizon, currency)).toLocaleString();
+  const trend = Math.abs(stats.dailyGrowthPct).toFixed(1);
+  if (language === "UA") {
+    return `Прогноз на наступні ${stats.horizonDays} днів побудований на ${stats.days} днях історичних даних. Очікувана виручка — ${symbol}${revenue}, витрати — ${symbol}${expenses}. Денний тренд виручки ${stats.dailyGrowthPct >= 0 ? "зростає" : "знижується"} приблизно на ${trend}%; прогноз є орієнтовним.`;
+  }
+  if (language === "DE") {
+    return `Die Prognose für die nächsten ${stats.horizonDays} Tage basiert auf ${stats.days} Tagen mit historischen Daten. Der erwartete Umsatz beträgt ${symbol}${revenue}, die Ausgaben ${symbol}${expenses}. Der tägliche Umsatztrend ${stats.dailyGrowthPct >= 0 ? "steigt" : "sinkt"} um etwa ${trend}%; die Prognose ist eine Schätzung.`;
+  }
+  return `The forecast for the next ${stats.horizonDays} days is based on ${stats.days} days of historical data. Expected revenue is ${symbol}${revenue} and expenses are ${symbol}${expenses}. Daily revenue is ${stats.dailyGrowthPct >= 0 ? "rising" : "declining"} by about ${trend}%; this forecast is an estimate.`;
+}
+
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const email = url.searchParams.get("email");
@@ -380,7 +405,7 @@ if (!stripeConnected) return Response.json({ sufficient: false, days: 0, tier: "
   let explanation: string;
   let numbersToReturn: Record<string, unknown> = forecastNumbers;
 
-  if (cacheIsFresh) {
+  if (cacheIsFresh && hasExpectedLanguage(cached.explanation || "", language)) {
     explanation = cached.explanation;
     numbersToReturn = cached.numbers as Record<string, unknown>;
   } else {
@@ -395,10 +420,25 @@ if (!stripeConnected) return Response.json({ sufficient: false, days: 0, tier: "
         expensesHorizon,
         r2: revenueReg.r2,
       });
+      if (!hasExpectedLanguage(explanation, language)) {
+        explanation = localizedFallbackExplanation(language, currency, {
+          days,
+          horizonDays,
+          dailyGrowthPct,
+          revenueHorizon,
+          expensesHorizon,
+        });
+      }
     } catch (e) {
       console.error("Forecast explanation generation failed:", e);
       // Честный fallback: не роняем весь ответ, просто без AI-текста.
-      explanation = "";
+      explanation = localizedFallbackExplanation(language, currency, {
+        days,
+        horizonDays,
+        dailyGrowthPct,
+        revenueHorizon,
+        expensesHorizon,
+      });
     }
     const cacheRow = {
       business_id: businessId,

@@ -10,7 +10,9 @@ export async function GET(req) {
   if (!email) return Response.json({ error: "email required" }, { status: 400 });
 
   const { data: appUser } = await admin.from("users").select("id").eq("email", email).maybeSingle();
-  if (!appUser) return Response.json({ business: null });
+  if (!appUser) {
+    return Response.json({ error: "Application user was not initialized" }, { status: 404 });
+  }
 
   // Без ORDER BY .limit(1) не гарантує, яку саме строку поверне Postgres,
   // якщо у користувача чомусь опинилось БІЛЬШЕ ОДНІЄЇ строки в businesses
@@ -29,11 +31,15 @@ export async function GET(req) {
 
   // Если бизнеса ещё нет — создаём пустой, чтобы было что редактировать
   if (!business) {
-    const { data: created } = await admin
+    const { data: created, error: createError } = await admin
       .from("businesses")
       .insert({ user_id: appUser.id, name: "My Business" })
       .select("id, name, timezone, rolling_metrics")
       .single();
+    if (createError) {
+      console.error("business-profile create error:", createError);
+      return Response.json({ error: createError.message }, { status: 500 });
+    }
     business = created;
   }
 

@@ -1132,6 +1132,14 @@ useEffect(() => {
       }
       const email = data.session.user.email || "";
       setProfileSettingsLoaded(false);
+      // A Supabase Auth session can exist before the matching application user
+      // row does (for example after an interrupted first login). Ensure it
+      // exists before reading/creating the business profile.
+      await fetch("/api/auth-sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, language }),
+      });
       // ВАЖНО: /api/profile (несёт правильный language аккаунта) раньше
       // фетчился ПОСЛЕДНИМ, после 7-8 других последовательных await —
       // а setProfileEmail(email) ниже вызывался практически сразу. Именно

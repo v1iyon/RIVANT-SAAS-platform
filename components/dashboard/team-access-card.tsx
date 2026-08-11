@@ -125,6 +125,17 @@ function TeamManageModal({
 }) {
   const tr = useTeamTranslations(language);
 
+  useEffect(() => {
+    if (!open) return;
+    const closeOnScroll = () => onOpenChange(false);
+    window.addEventListener("wheel", closeOnScroll, { passive: true });
+    window.addEventListener("touchmove", closeOnScroll, { passive: true });
+    return () => {
+      window.removeEventListener("wheel", closeOnScroll);
+      window.removeEventListener("touchmove", closeOnScroll);
+    };
+  }, [open, onOpenChange]);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
