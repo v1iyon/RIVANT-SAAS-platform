@@ -46,11 +46,25 @@ export async function POST(req) {
 
     const results = await Promise.allSettled(jobs);
     const failures = results.filter((r) => r.status === "rejected");
+    const attemptedProviders = provider ? [provider] : ["stripe", "shopify", "meta_ads", "google_ads"];
+    // Sync-модули не прерывают остальные интеграции при ошибке, поэтому они
+    // фиксируют её в integrations.status. Считываем результат после прогона,
+    // чтобы интерфейс мог показать временное сообщение именно для неудавшейся
+    // ручной синхронизации.
+    const { data: integrations } = await admin
+      .from("integrations")
+      .select("provider, status")
+      .eq("business_id", business.id)
+      .in("provider", attemptedProviders);
+    const failedProviders = (integrations || [])
+      .filter((integration) => integration.status === "error")
+      .map((integration) => integration.provider);
 
     return Response.json({
-      success: true,
+      success: failures.length === 0 && failedProviders.length === 0,
       synced: results.length - failures.length,
-      failed: failures.length,
+      failed: failures.length + failedProviders.length,
+      failedProviders,
     });
   } catch (err) {
     console.error("sync-now error:", err);

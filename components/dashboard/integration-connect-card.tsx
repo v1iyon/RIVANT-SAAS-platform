@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { CheckCircle, AlertCircle, Lock, RefreshCw } from "lucide-react";
+import { CheckCircle, AlertCircle, Lock } from "lucide-react";
 import { useLanguage } from "@/lib/translations";
 
 type LockReason = "expired" | "plan" | "selection" | null;
@@ -41,6 +41,8 @@ interface Props {
   // як дефолтний "replace" (Shopify заміщує Stripe для цієї дати, безпечний
   // дефолт проти задвоєння доходу).
   showRevenueModeCheckbox?: boolean;
+  refreshToken?: number;
+  syncFailed?: boolean;
 }
 
 // Trial навмисно НЕ в цьому списку: під час трайлу доступ повний, як на Scale,
@@ -64,6 +66,8 @@ export function IntegrationConnectCard({
   oauthStartHref,
   oauthButtonLabel,
   showRevenueModeCheckbox = false,
+  refreshToken = 0,
+  syncFailed = false,
 }: Props) {
   const { language } = useLanguage();
   const [revenueModeAdd, setRevenueModeAdd] = useState(false);
@@ -74,14 +78,12 @@ export function IntegrationConnectCard({
   const [extraValues, setExtraValues] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<"checking" | "idle" | "loading" | "connected" | "error">("checking");
   const [errorMsg, setErrorMsg] = useState("");
-  // Ошибка синхронизации — это не разрыв подключения. Храним её отдельно,
-  // чтобы пользователь видел, что произошло, и мог сразу повторить попытку.
   const [syncError, setSyncError] = useState("");
   const [lastSynced, setLastSynced] = useState<string | null>(null);
   const [keyPreview, setKeyPreview] = useState<string | null>(null);
-  const [syncLoading, setSyncLoading] = useState(false);
   const [showLockedToast, setShowLockedToast] = useState(false);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const syncErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const syncErrorMessage = (reason?: string) => {
     const messages = language === "UA"
@@ -116,13 +118,12 @@ export function IntegrationConnectCard({
       if (row?.sync_error) {
         setStatus("connected");
         setErrorMsg("");
-        setSyncError(syncErrorMessage(row.config?.sync_error_reason));
+        // Ошибки прошлых запусков не показываем после обновления страницы.
         setLastSynced(row.last_synced_at);
         setKeyPreview(row.key_preview);
       } else if (row?.connected) {
         setStatus("connected");
         setErrorMsg("");
-        setSyncError("");
         setLastSynced(row.last_synced_at);
         setKeyPreview(row.key_preview);
         if (fields.length && row.config) {
@@ -134,7 +135,6 @@ export function IntegrationConnectCard({
         }
       } else {
         setStatus("idle");
-        setSyncError("");
       }
     } catch {
       setStatus("idle");
@@ -144,13 +144,30 @@ export function IntegrationConnectCard({
   useEffect(() => {
     loadStatus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [email, provider]);
+  }, [email, provider, refreshToken]);
+
+  useEffect(() => {
+    if (!syncFailed) {
+      setSyncError("");
+      return;
+    }
+    setSyncError(syncErrorMessage());
+    const timer = setTimeout(() => setSyncError(""), 60_000);
+    return () => clearTimeout(timer);
+  }, [syncFailed]);
 
   useEffect(() => {
     return () => {
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      if (syncErrorTimerRef.current) clearTimeout(syncErrorTimerRef.current);
     };
   }, []);
+
+  const showTemporarySyncError = (message: string) => {
+    setSyncError(message);
+    if (syncErrorTimerRef.current) clearTimeout(syncErrorTimerRef.current);
+    syncErrorTimerRef.current = setTimeout(() => setSyncError(""), 60_000);
+  };
 
   // Визначаємо причину блокування, за пріоритетом: trial/план закінчився >
   // немає доступу до додаткових інтеграцій на цьому тарифі > вибір уже
@@ -229,7 +246,13 @@ export function IntegrationConnectCard({
       });
       if (!syncResponse.ok) {
         setStatus("connected");
-        setSyncError(syncErrorMessage());
+        showTemporarySyncError(syncErrorMessage());
+        return;
+      }
+      const syncResult = await syncResponse.json().catch(() => ({}));
+      if (syncResult.failedProviders?.includes(provider)) {
+        setStatus("connected");
+        showTemporarySyncError(syncErrorMessage());
         return;
       }
       await loadStatus();
@@ -246,26 +269,6 @@ export function IntegrationConnectCard({
     }
     if (!oauthStartHref) return;
     window.location.href = oauthStartHref;
-  };
-
-  const handleSyncNow = async () => {
-    setSyncLoading(true);
-    try {
-      const response = await fetch("/api/sync-now", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, provider }),
-      });
-      if (!response.ok) {
-        setSyncError(syncErrorMessage());
-        return;
-      }
-      await loadStatus();
-    } catch {
-      setSyncError(syncErrorMessage());
-    } finally {
-      setSyncLoading(false);
-    }
   };
 
   const handleDisconnect = async () => {
@@ -377,9 +380,6 @@ export function IntegrationConnectCard({
             <span className="text-xs px-2 py-1 rounded-full font-semibold bg-green-500/20 text-green-400 flex items-center gap-1 font-mono whitespace-nowrap">
               <CheckCircle className="w-3 h-3 shrink-0" /> {texts.connected}{keyPreview ? ` · ${keyPreview}` : ""}
             </span>
-            <Button size="icon" variant="outline" title={texts.syncNowBtn} aria-label={texts.syncNowBtn} className="border-blue-400/30 text-blue-300 hover:bg-blue-500/10 shrink-0" onClick={handleSyncNow} disabled={syncLoading}>
-              <RefreshCw className={`w-4 h-4 ${syncLoading ? "animate-spin" : ""}`} />
-            </Button>
             <Button size="sm" variant="outline" className="text-red-400 border-red-400/30 hover:bg-red-500/10 shrink-0" onClick={handleDisconnect}>
               {texts.disconnectBtn}
             </Button>
@@ -387,12 +387,12 @@ export function IntegrationConnectCard({
         )}
       </div>
       {status === "connected" && syncError && (
-        <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+        <div className="mt-3 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
           <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <div>
             <p>{syncError}</p>
-            <p className="mt-1 text-amber-200/70">
-              {language === "UA" ? "Спробуйте синхронізацію ще раз. Якщо помилка повторюється — перепідключіть інтеграцію." : language === "DE" ? "Versuchen Sie die Synchronisierung erneut. Bei wiederholtem Fehler verbinden Sie die Integration neu." : "Try syncing again. If the error repeats, reconnect the integration."}
+            <p className="mt-1 text-red-200/70">
+              {language === "UA" ? "Повідомлення зникне за хвилину. Перевірте доступ і спробуйте ще раз." : language === "DE" ? "Diese Meldung verschwindet in einer Minute. Prüfen Sie den Zugriff und versuchen Sie es erneut." : "This message will disappear in a minute. Check access and try again."}
             </p>
           </div>
         </div>

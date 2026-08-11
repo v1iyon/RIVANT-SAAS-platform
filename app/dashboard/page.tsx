@@ -48,6 +48,7 @@ import {
   Zap,
   Truck,
   Download,
+  RefreshCw,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -910,6 +911,9 @@ const [deleteError, setDeleteError] = useState("");
   const [gadsToast, setGadsToast] = useState<{ kind: "success" | "error"; text: string } | null>(null);
   const [profileName, setProfileName] = useState("");
   const [profileEmail, setProfileEmail] = useState("");
+  const [syncingAllIntegrations, setSyncingAllIntegrations] = useState(false);
+  const [integrationRefreshToken, setIntegrationRefreshToken] = useState(0);
+  const [failedSyncProviders, setFailedSyncProviders] = useState<string[]>([]);
   const [profilePhone, setProfilePhone] = useState("");
   const [profileInitials, setProfileInitials] = useState("");
   const [profilePhotoUrl, setProfilePhotoUrl] = useState<string | null>(null);
@@ -2427,6 +2431,33 @@ if (!subInfo) {
 
          {activeView === "integrations" && (
             <div className="space-y-4">
+              <div className="flex justify-end">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="border-blue-400/30 text-blue-300 hover:bg-blue-500/10"
+                  disabled={!profileEmail || syncingAllIntegrations}
+                  onClick={async () => {
+                    setSyncingAllIntegrations(true);
+                    setFailedSyncProviders([]);
+                    try {
+                      const response = await fetch("/api/sync-now", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ email: profileEmail }),
+                      });
+                      const result = await response.json().catch(() => ({}));
+                      setFailedSyncProviders(result.failedProviders || []);
+                      setIntegrationRefreshToken((token) => token + 1);
+                    } finally {
+                      setSyncingAllIntegrations(false);
+                    }
+                  }}
+                >
+                  <RefreshCw className={`mr-2 h-4 w-4 ${syncingAllIntegrations ? "animate-spin" : ""}`} />
+                  {language === "UA" ? "Синхронізувати все" : language === "DE" ? "Alles synchronisieren" : "Sync all"}
+                </Button>
+              </div>
               {subInfo?.plan === "growth" && (
                 <div className="bg-blue-500/5 rounded-lg px-3 py-2 border border-blue-500/20 flex items-center gap-2">
                   <Link2 className="w-3.5 h-3.5 text-blue-400 shrink-0" />
@@ -2466,6 +2497,8 @@ if (!subInfo) {
                       selectedProviders={selectedProviders}
                       onSelected={(p) => setSelectedProviders([p])}
                       onLockedClick={() => router.push("/#pricing")}
+                      refreshToken={integrationRefreshToken}
+                      syncFailed={failedSyncProviders.includes("shopify")}
                       extraFields={[
                         {
                           key: "shop_domain",
@@ -2499,6 +2532,8 @@ if (!subInfo) {
                       selectedProviders={selectedProviders}
                       onSelected={(p) => setSelectedProviders([p])}
                       onLockedClick={() => router.push("/#pricing")}
+                      refreshToken={integrationRefreshToken}
+                      syncFailed={failedSyncProviders.includes("meta_ads")}
                       extraField={{
                         key: "ad_account_id",
                         label: language === "UA" ? "Ad Account ID (без 'act_')" : language === "DE" ? "Ad Account ID (ohne 'act_')" : "Ad Account ID (without 'act_')",
@@ -2525,6 +2560,8 @@ if (!subInfo) {
                       selectedProviders={selectedProviders}
                       onSelected={(p) => setSelectedProviders([p])}
                       onLockedClick={() => router.push("/#pricing")}
+                      refreshToken={integrationRefreshToken}
+                      syncFailed={failedSyncProviders.includes("google_ads")}
                       oauthStartHref={`/api/auth/google-ads/start?email=${encodeURIComponent(profileEmail)}`}
                       oauthButtonLabel={
                         language === "UA" ? "Підключити через Google" : language === "DE" ? "Über Google verbinden" : "Connect with Google"
