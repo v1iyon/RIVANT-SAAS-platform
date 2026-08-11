@@ -79,6 +79,12 @@ export function IntegrationConnectCard({
   const [status, setStatus] = useState<"checking" | "idle" | "loading" | "connected" | "error">("checking");
   const [errorMsg, setErrorMsg] = useState("");
   const [syncError, setSyncError] = useState("");
+  // Персистентний прапорець з БД (integrations.status === "error"): на відміну
+  // від syncError (тимчасовий тост на 60с після ручної дії), він не ховається
+  // самостійно — тримається, доки наступний реальний синк (крон або ручний)
+  // не пройде успішно і не оновить status. Раніше картка завжди показувала
+  // зелений "Підключено" навіть коли останній синк падав, що вводило в оману.
+  const [hasSyncError, setHasSyncError] = useState(false);
   const [lastSynced, setLastSynced] = useState<string | null>(null);
   const [keyPreview, setKeyPreview] = useState<string | null>(null);
   const [showLockedToast, setShowLockedToast] = useState(false);
@@ -116,14 +122,18 @@ export function IntegrationConnectCard({
       const data = await response.json();
       const row = (data.integrations || []).find((i: any) => i.provider === provider);
       if (row?.sync_error) {
+        // Ключі валідні і колись підключення пройшло, але останній синк
+        // (кроном чи вручну) впав — показуємо це одразу, а не мовчки
+        // тримаємо зелений бейдж "Підключено".
         setStatus("connected");
         setErrorMsg("");
-        // Ошибки прошлых запусков не показываем после обновления страницы.
+        setHasSyncError(true);
         setLastSynced(row.last_synced_at);
         setKeyPreview(row.key_preview);
       } else if (row?.connected) {
         setStatus("connected");
         setErrorMsg("");
+        setHasSyncError(false);
         setLastSynced(row.last_synced_at);
         setKeyPreview(row.key_preview);
         if (fields.length && row.config) {
@@ -135,6 +145,7 @@ export function IntegrationConnectCard({
         }
       } else {
         setStatus("idle");
+        setHasSyncError(false);
       }
     } catch {
       setStatus("idle");
@@ -162,12 +173,6 @@ export function IntegrationConnectCard({
       if (syncErrorTimerRef.current) clearTimeout(syncErrorTimerRef.current);
     };
   }, []);
-
-  const showTemporarySyncError = (message: string) => {
-    setSyncError(message);
-    if (syncErrorTimerRef.current) clearTimeout(syncErrorTimerRef.current);
-    syncErrorTimerRef.current = setTimeout(() => setSyncError(""), 60_000);
-  };
 
   // Визначаємо причину блокування, за пріоритетом: trial/план закінчився >
   // немає доступу до додаткових інтеграцій на цьому тарифі > вибір уже
@@ -245,14 +250,15 @@ export function IntegrationConnectCard({
         body: JSON.stringify({ email, provider }),
       });
       if (!syncResponse.ok) {
-        setStatus("connected");
-        showTemporarySyncError(syncErrorMessage());
+        // Не показуємо тимчасовий тост окремо від бейджа — підтягуємо
+        // актуальний статус з БД, щоб бейдж і банер одразу відображали
+        // реальну помилку синхронізації (hasSyncError), а не "Підключено".
+        await loadStatus();
         return;
       }
       const syncResult = await syncResponse.json().catch(() => ({}));
       if (syncResult.failedProviders?.includes(provider)) {
-        setStatus("connected");
-        showTemporarySyncError(syncErrorMessage());
+        await loadStatus();
         return;
       }
       await loadStatus();
@@ -301,6 +307,7 @@ export function IntegrationConnectCard({
     connected: language === "UA" ? "Підключено" : language === "DE" ? "Verbunden" : "Connected",
     connectBtn: language === "UA" ? `Підключити ${displayName}` : language === "DE" ? `${displayName} verbinden` : `Connect ${displayName}`,
     disconnectBtn: language === "UA" ? "Відключити" : language === "DE" ? "Trennen" : "Disconnect",
+    syncErrorBadge: language === "UA" ? "Помилка синхронізації" : language === "DE" ? "Sync-Fehler" : "Sync error",
     syncNowBtn: language === "UA" ? "Синхронізувати зараз" : language === "DE" ? "Jetzt synchronisieren" : "Sync now",
     connecting: language === "UA" ? "Підключення..." : language === "DE" ? "Verbinde..." : "Connecting...",
   };
@@ -377,22 +384,32 @@ export function IntegrationConnectCard({
         </div>
         {status === "connected" && (
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs px-2 py-1 rounded-full font-semibold bg-green-500/20 text-green-400 flex items-center gap-1 font-mono whitespace-nowrap">
-              <CheckCircle className="w-3 h-3 shrink-0" /> {texts.connected}{keyPreview ? ` · ${keyPreview}` : ""}
-            </span>
+            {hasSyncError ? (
+              <span className="text-xs px-2 py-1 rounded-full font-semibold bg-red-500/20 text-red-400 flex items-center gap-1 font-mono whitespace-nowrap">
+                <AlertCircle className="w-3 h-3 shrink-0" /> {texts.syncErrorBadge}{keyPreview ? ` · ${keyPreview}` : ""}
+              </span>
+            ) : (
+              <span className="text-xs px-2 py-1 rounded-full font-semibold bg-green-500/20 text-green-400 flex items-center gap-1 font-mono whitespace-nowrap">
+                <CheckCircle className="w-3 h-3 shrink-0" /> {texts.connected}{keyPreview ? ` · ${keyPreview}` : ""}
+              </span>
+            )}
             <Button size="sm" variant="outline" className="text-red-400 border-red-400/30 hover:bg-red-500/10 shrink-0" onClick={handleDisconnect}>
               {texts.disconnectBtn}
             </Button>
           </div>
         )}
       </div>
-      {status === "connected" && syncError && (
+      {status === "connected" && (hasSyncError || syncError) && (
         <div className="mt-3 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
           <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <div>
-            <p>{syncError}</p>
+            <p>{syncError || syncErrorMessage()}</p>
             <p className="mt-1 text-red-200/70">
-              {language === "UA" ? "Повідомлення зникне за хвилину. Перевірте доступ і спробуйте ще раз." : language === "DE" ? "Diese Meldung verschwindet in einer Minute. Prüfen Sie den Zugriff und versuchen Sie es erneut." : "This message will disappear in a minute. Check access and try again."}
+              {language === "UA"
+                ? "Перевірте доступ і натисніть \"Синхронізувати зараз\" — інакше система спробує сама за розкладом (раз на годину)."
+                : language === "DE"
+                ? "Prüfen Sie den Zugriff und klicken Sie auf \"Jetzt synchronisieren\" — sonst versucht es das System automatisch (stündlich)."
+                : "Check the access and click \"Sync now\" — otherwise the system retries automatically on schedule (hourly)."}
             </p>
           </div>
         </div>
