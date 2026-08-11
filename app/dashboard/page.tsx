@@ -2430,12 +2430,12 @@ if (!subInfo) {
           )}
 
          {activeView === "integrations" && (
-            <div className="relative space-y-4">
+            <div className="relative space-y-4 -mt-3 lg:-mt-4">
               {/* Обгортка з h-0 не займає місця в потоці, тому картки під нею не
                   зсуваються вниз, а sticky top тримає кружок синхронізації на
                   місці під час скролу списку інтеграцій (як шапка/футер). */}
               <div className="sticky top-2 z-30 h-0">
-                <div className="flex justify-end pr-1">
+                <div className="flex justify-end pr-0">
                   <Button
                     size="icon"
                     variant="outline"
