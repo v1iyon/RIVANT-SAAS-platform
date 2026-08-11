@@ -206,14 +206,14 @@ function hasExpectedLanguage(text: string, language: string): boolean {
 function localizedFallbackExplanation(
   language: string,
   currency: Currency,
-  stats: { days: number; horizonDays: number; dailyGrowthPct: number; revenueHorizon: number; expensesHorizon: number }
+  stats: { days: number; horizonDays: number; dailyGrowthPct: number; revenueHorizon: number; expensesHorizon: number; confidence: number }
 ): string {
   const symbol = currency === "EUR" ? "€" : "$";
   const revenue = Math.round(convertAmount(stats.revenueHorizon, currency)).toLocaleString();
   const expenses = Math.round(convertAmount(stats.expensesHorizon, currency)).toLocaleString();
   const trend = Math.abs(stats.dailyGrowthPct).toFixed(1);
   if (language === "UA") {
-    return `Прогноз на наступні ${stats.horizonDays} днів побудований на ${stats.days} днях історичних даних. Очікувана виручка — ${symbol}${revenue}, витрати — ${symbol}${expenses}. Денний тренд виручки ${stats.dailyGrowthPct >= 0 ? "зростає" : "знижується"} приблизно на ${trend}%; прогноз є орієнтовним.`;
+    return `Цей прогноз на наступні ${stats.horizonDays} днів побудований на ${stats.days} днях фактичних даних із підключених джерел, які вже синхронізовані в кабінеті. Система аналізує щоденну виручку та витрати, після чого продовжує поточний тренд методом лінійної екстраполяції. За поточним сценарієм очікувана виручка становить близько ${symbol}${revenue}, а очікувані витрати — близько ${symbol}${expenses}. Денний тренд виручки ${stats.dailyGrowthPct >= 0 ? "зростає" : "знижується"} приблизно на ${trend}%, тому варто перевіряти причини істотних змін у продажах або витратах. Оцінка надійності — ${stats.confidence}%: це орієнтир для планування, а не гарантія, оскільки майбутні замовлення, рекламні витрати, повернення та зміни попиту можуть відхилити фактичний результат від прогнозу.`;
   }
   if (language === "DE") {
     return `Die Prognose für die nächsten ${stats.horizonDays} Tage basiert auf ${stats.days} Tagen mit historischen Daten. Der erwartete Umsatz beträgt ${symbol}${revenue}, die Ausgaben ${symbol}${expenses}. Der tägliche Umsatztrend ${stats.dailyGrowthPct >= 0 ? "steigt" : "sinkt"} um etwa ${trend}%; die Prognose ist eine Schätzung.`;
@@ -427,6 +427,7 @@ if (!stripeConnected) return Response.json({ sufficient: false, days: 0, tier: "
           dailyGrowthPct,
           revenueHorizon,
           expensesHorizon,
+          confidence,
         });
       }
     } catch (e) {
@@ -438,6 +439,7 @@ if (!stripeConnected) return Response.json({ sufficient: false, days: 0, tier: "
         dailyGrowthPct,
         revenueHorizon,
         expensesHorizon,
+        confidence,
       });
     }
     const cacheRow = {

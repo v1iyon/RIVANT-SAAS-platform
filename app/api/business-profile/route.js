@@ -5,6 +5,23 @@ const admin = createClient(
   process.env.SUPABASE_SERVICE_KEY
 );
 
+function normalizeBusiness(row) {
+  if (!row) return null;
+  return {
+    ...row,
+    // Older Supabase projects used company_name/business_name instead of name.
+    // The dashboard always receives one stable `name` field.
+    name: row.name ?? row.company_name ?? row.business_name ?? "",
+  };
+}
+
+function getBusinessNameColumn(row) {
+  if (Object.prototype.hasOwnProperty.call(row || {}, "name")) return "name";
+  if (Object.prototype.hasOwnProperty.call(row || {}, "company_name")) return "company_name";
+  if (Object.prototype.hasOwnProperty.call(row || {}, "business_name")) return "business_name";
+  return "name";
+}
+
 export async function GET(req) {
   const email = new URL(req.url).searchParams.get("email");
   if (!email) return Response.json({ error: "email required" }, { status: 400 });
@@ -21,20 +38,24 @@ export async function GET(req) {
   // Раніше це виглядало як "назва компанії/ID то є, то раптом пропадає" —
   // насправді просто щоразу підтягувалась інша строка. created_at ASC
   // робить вибір детермінованим (завжди найперша створена).
-  let { data: business } = await admin
+  let { data: business, error: businessError } = await admin
     .from("businesses")
-    .select("id, name, timezone, rolling_metrics")
+    .select("*")
     .eq("user_id", appUser.id)
     .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
+  if (businessError) {
+    console.error("business-profile read error:", businessError);
+    return Response.json({ error: businessError.message }, { status: 500 });
+  }
 
   // Если бизнеса ещё нет — создаём пустой, чтобы было что редактировать
   if (!business) {
     const { data: created, error: createError } = await admin
       .from("businesses")
       .insert({ user_id: appUser.id, name: "My Business" })
-      .select("id, name, timezone, rolling_metrics")
+      .select("*")
       .single();
     if (createError) {
       console.error("business-profile create error:", createError);
@@ -43,7 +64,7 @@ export async function GET(req) {
     business = created;
   }
 
-  return Response.json({ business });
+  return Response.json({ business: normalizeBusiness(business) });
 }
 
 export async function PUT(req) {
@@ -53,17 +74,18 @@ export async function PUT(req) {
   const { data: appUser } = await admin.from("users").select("id").eq("email", email).maybeSingle();
   if (!appUser) return Response.json({ error: "user not found" }, { status: 404 });
 
-  const { data: business } = await admin
+  const { data: business, error: businessError } = await admin
     .from("businesses")
-    .select("id")
+    .select("*")
     .eq("user_id", appUser.id)
     .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
+  if (businessError) return Response.json({ error: businessError.message }, { status: 500 });
   if (!business) return Response.json({ error: "business not found" }, { status: 404 });
 
   const updates = {};
-  if (name !== undefined) updates.name = name;
+  if (name !== undefined) updates[getBusinessNameColumn(business)] = name;
   if (timezone !== undefined) updates.timezone = timezone;
 
   const { error } = await admin.from("businesses").update(updates).eq("id", business.id);
