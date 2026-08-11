@@ -246,17 +246,6 @@ async function main(businessId) {
         byDate[date].stripeFee += feeCents / 100;
       }
 
-      // ФИКС ложных "выручка упала до $0": revenue_drop раньше сравнивал
-      // agg.revenue КАЛЕНДАРНОГО "сегодня" (растёт с $0 с полуночи и так
-      // весь день) с ПОЛНОЙ выручкой за вчера из metrics_computed. Синк
-      // гоняется раз в час (.github/workflows/sync-stripe.yml) — то есть
-      // каждую ночь в 00:xx это давало "упало со вчерашних $2392 до $0",
-      // в 01:xx — "до $150", и так по кругу, пока сегодняшний день не
-      // догонит вчерашний. Это не аномалия, это устройство календаря.
-      // Вместо "сегодня vs вчера" считаем СКОЛЬЗЯЩЕЕ окно "последние 24ч"
-      // vs "предыдущие 24ч" прямо по timestamp'ам charges — оба окна
-      // всегда одинаковой длины, поэтому полночь их не сбивает, и сигнал
-      // остаётся live (не ждём конца дня).
       function sumChargesWindow(fromSec, toSec) {
         let revenue = 0, orders = 0, stripeFee = 0;
         for (const c of successful) {
@@ -268,9 +257,10 @@ async function main(businessId) {
         }
         return { revenue: Number(revenue.toFixed(2)), orders, stripeFee: Number(stripeFee.toFixed(2)) };
       }
-      const nowSec = Math.floor(Date.now() / 1000);
-      const last24h = sumChargesWindow(nowSec - 24 * 3600, nowSec + 1);
-      const prev24h = sumChargesWindow(nowSec - 48 * 3600, nowSec - 24 * 3600);
+      // last24h/prev24h тепер рахуються нижче, одразу після того як дізнаємось
+      // business.timezone — див. коментар там (це вже не "останні 24 години",
+      // а "з півночі по місцевому часу бізнесу до зараз" vs "той самий
+      // проміжок вчора").
 
       // ВАЖНО: раньше, если за день не было ни одного успешного списания,
       // дата вообще не попадала в byDate — а значит для неё никогда не
@@ -291,13 +281,53 @@ async function main(businessId) {
 
       const { data: business, error: bizErr } = await admin
         .from("businesses")
-        .select("id, user_id, name, cost_pct")
+        .select("id, user_id, name, cost_pct, timezone")
         .eq("id", integ.business_id)
         .maybeSingle();
       console.log("DEBUG business lookup for", integ.business_id, "-> found:", !!business, "error:", bizErr);
       if (!business) continue;
 
-      if (!business) continue;
+      // ФІКС: раніше "останні 24 години" рахувались просто як ковзне вікно
+      // від поточного моменту — це прибирало хибне "впало до $0" опівночі,
+      // але водночас робило % на дашборді неспівставним із денними
+      // стовпчиками на графіку (стовпчик по календарному дню, а % — по
+      // довільному 24-годинному вікну, яке саму північ ігнорує). Тепер
+      // рахуємо "з півночі по МІСЦЕВОМУ часу бізнесу до зараз" проти "той
+      // самий проміжок часу вчора" — довжина вікон однакова (тому опівночі
+      // все ще нема хибного "-100%": о 00:05 порівнюються перші 5 хвилин
+      // сьогодні з першими 5 хвилинами вчора, а не з ЦІЛИМ вчорашнім днем),
+      // і водночас це той самий "сьогоднішній день", що намальований
+      // останнім стовпчиком на дашборді.
+      function getLocalMidnightUnixSec(timezone, atSec) {
+        const date = new Date(atSec * 1000);
+        try {
+          const parts = new Intl.DateTimeFormat("en-US", {
+            timeZone: timezone,
+            year: "numeric", month: "2-digit", day: "2-digit",
+            hour: "2-digit", minute: "2-digit", second: "2-digit",
+            hour12: false,
+          }).formatToParts(date);
+          const get = (type) => parts.find((p) => p.type === type)?.value;
+          const y = Number(get("year")), mo = Number(get("month")), d = Number(get("day"));
+          const hh = get("hour") === "24" ? 0 : Number(get("hour"));
+          const mm = Number(get("minute")), ss = Number(get("second"));
+          const localAsUTC = Date.UTC(y, mo - 1, d, hh, mm, ss);
+          const offsetMs = localAsUTC - date.getTime(); // фактичний зсув таймзони в цю мить (з урахуванням DST)
+          const localMidnightAsUTC = Date.UTC(y, mo - 1, d, 0, 0, 0);
+          return Math.floor((localMidnightAsUTC - offsetMs) / 1000);
+        } catch {
+          // Невідома/некоректна таймзона в базі — падаємо назад на UTC-північ,
+          // а не ламаємо синк повністю.
+          return Math.floor(date.getTime() / 1000 / 86400) * 86400;
+        }
+      }
+
+      const bizTimezone = business.timezone || "UTC";
+      const nowSec = Math.floor(Date.now() / 1000);
+      const todayMidnightSec = getLocalMidnightUnixSec(bizTimezone, nowSec);
+      const elapsedTodaySec = nowSec - todayMidnightSec;
+      const last24h = sumChargesWindow(todayMidnightSec, nowSec + 1);
+      const prev24h = sumChargesWindow(todayMidnightSec - 24 * 3600, todayMidnightSec - 24 * 3600 + elapsedTodaySec + 1);
 
       // Не обновляем метрики, если подписка не активна (трайл/план закончился)
       const { data: subRow } = await admin

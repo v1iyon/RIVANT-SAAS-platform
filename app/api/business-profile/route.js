@@ -51,6 +51,7 @@ export async function PUT(req) {
     .from("businesses")
     .select("id")
     .eq("user_id", appUser.id)
+    .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
   if (!business) return Response.json({ error: "business not found" }, { status: 404 });

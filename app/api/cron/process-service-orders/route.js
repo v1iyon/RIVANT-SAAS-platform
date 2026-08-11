@@ -5,6 +5,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { buildReport } from "../../../../lib/whatif-report.mjs";
+import { renderServiceReportPdf } from "../../../../lib/service-report-pdf.mjs";
 
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
@@ -17,6 +18,20 @@ async function sendTelegram(chatId, text) {
   });
 }
 
+// sendDocument, на відміну від sendMessage, приймає multipart/form-data —
+// файл треба покласти як Blob у FormData, а не в JSON-тіло.
+async function sendTelegramDocument(chatId, buffer, filename, caption) {
+  if (!chatId) return;
+  const form = new FormData();
+  form.append("chat_id", String(chatId));
+  form.append("caption", caption);
+  form.append("document", new Blob([buffer], { type: "application/pdf" }), filename);
+  await fetch(`https://api.telegram.org/bot${process.env.BOT_TOKEN}/sendDocument`, {
+    method: "POST",
+    body: form,
+  });
+}
+
 async function sendEmail(to, subject, text) {
   if (!to) return;
   await fetch("https://api.resend.com/emails", {
@@ -26,18 +41,33 @@ async function sendEmail(to, subject, text) {
   });
 }
 
-function formatReportText(order, result) {
-  const title = order.service_type === "whatif_analysis" ? "AI-Реконструкція минулого — 12 місяців" : "AI-Дайджест ефективності — 30 днів";
-  const f = result.facts;
-  const stats = [
-    `Період: ${f.periodStart} — ${f.periodEnd}`,
-    `Виручка за період: $${f.totalRevenue}`,
-    `Замовлень: ${f.totalOrders}`,
-    `Середня маржа: ${f.avgMarginPct}% (зміна за період: ${f.marginChangePct > 0 ? "+" : ""}${f.marginChangePct}%)`,
-    f.topChannel ? `Найбільший канал витрат: ${f.topChannel.name} ($${f.topChannel.spend})` : null,
-  ].filter(Boolean);
+async function sendEmailWithAttachment(to, subject, text, buffer, filename) {
+  if (!to) return;
+  await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      from: "RIVANT Reports <onboarding@resend.dev>",
+      to,
+      subject,
+      text,
+      attachments: [{ filename, content: buffer.toString("base64") }],
+    }),
+  });
+}
 
-  return `📊 ${title}\n\n${stats.join("\n")}\n\n${result.narrative || ""}\n\nЦе факти на основі ваших даних, без рекомендацій — рішення за вами.`;
+const CAPTION = {
+  UA: (title) => `📄 ${title} готовий — повний звіт у прикріпленому PDF.`,
+  EN: (title) => `📄 ${title} is ready — full report in the attached PDF.`,
+  DE: (title) => `📄 ${title} ist fertig — vollständiger Bericht im angehängten PDF.`,
+};
+
+function reportTitle(serviceType, language) {
+  const titles = {
+    whatif_analysis: { UA: "AI-Реконструкція минулого", EN: "AI Historical Reconstruction", DE: "KI-Rekonstruktion der Vergangenheit" },
+    monthly_digest: { UA: "AI-Дайджест ефективності", EN: "AI Performance Digest", DE: "KI-Leistungs-Digest" },
+  };
+  return titles[serviceType]?.[language] || titles[serviceType]?.EN || "RIVANT Report";
 }
 
 export async function GET(req) {
@@ -74,15 +104,25 @@ export async function GET(req) {
         continue;
       }
 
-      const reportText = formatReportText(order, result);
+      const reportTitleText = reportTitle(order.service_type, result.language);
       const { data: user } = await admin.from("users").select("email, telegram_id").eq("id", order.user_id).maybeSingle();
+      const { data: business } = await admin.from("businesses").select("name").eq("id", order.business_id).maybeSingle();
 
-      if (user?.telegram_id) await sendTelegram(user.telegram_id, reportText);
-      if (user?.email) await sendEmail(user.email, "Ваш звіт RIVANT готовий", reportText);
+      const { buffer, filename } = await renderServiceReportPdf({
+        businessName: business?.name || "Business",
+        serviceType: order.service_type,
+        facts: result.facts,
+        narrative: result.narrative,
+        language: result.language,
+      });
+      const caption = (CAPTION[result.language] || CAPTION.EN)(reportTitleText);
+
+      if (user?.telegram_id) await sendTelegramDocument(user.telegram_id, buffer, filename, caption);
+      if (user?.email) await sendEmailWithAttachment(user.email, `RIVANT: ${reportTitleText}`, caption, buffer, filename);
 
       await admin
         .from("service_orders")
-        .update({ status: "delivered", delivered_at: new Date().toISOString(), report_summary: reportText.slice(0, 500) })
+        .update({ status: "delivered", delivered_at: new Date().toISOString(), report_summary: caption })
         .eq("id", order.id);
 
       processed++;

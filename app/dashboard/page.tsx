@@ -1380,11 +1380,22 @@ const handleDisconnectTelegram = async () => {
     setTimeout(() => setCompanySaved(false), 2000);
   };
 
+  // РАНІШЕ тут відправлявся ще й `name: businessName` — і саме це стирало
+  // назву компанії в базі. Ця функція викликається одразу після
+  // fetchProfile() у гілці "таймзона ще не встановлена" (рядок ~1160), в
+  // ТОЙ САМИЙ синхронний момент, коли ми щойно викликали setBusinessName(...)
+  // кількома рядками вище. React не оновлює значення businessName одразу —
+  // воно лишається СТАРИМ (порожнім рядком при першому завантаженні) аж до
+  // наступного рендеру. Тобто цей виклик відправляв на бекенд
+  // { name: "" , timezone }, а PUT/api/business-profile безумовно перезаписує
+  // name, якщо воно є в тілі запиту (навіть порожнім) — реальна назва з бази
+  // мовчки стиралась. Ця функція відповідає ТІЛЬКИ за таймзону, тому name
+  // тут взагалі не передаємо — бекенд оновлює лише те поле, яке прийшло.
   const saveBusinessProfileWithTimezone = async (tz: string) => {
   await fetch("/api/business-profile", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email: profileEmail, name: businessName, timezone: tz }),
+    body: JSON.stringify({ email: profileEmail, timezone: tz }),
   });
 };
 
@@ -2418,7 +2429,7 @@ if (!subInfo) {
 />
 
               {(() => {
-                const cardConfigs: Record<string, JSX.Element> = {
+                const cardConfigs: Record<string, ReactElement> = {
                   shopify: (
                     <IntegrationConnectCard
                       key="shopify"
