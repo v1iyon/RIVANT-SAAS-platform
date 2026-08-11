@@ -934,15 +934,27 @@ const [companySaved, setCompanySaved] = useState(false);
   // часовий пояс незалежно від того, де реально знаходиться його бізнес.
   // Це напряму ламало сенс daily-reports.mjs (він вже вміє слати звіт по
   // локальному часу business.timezone) — бо в базу потрапляло невірне
-  // значення ще на етапі створення бізнесу. Intl.DateTimeFormat() не
-  // потребує жодного дозволу від користувача (на відміну від геолокації) і
-  // повертає справжню IANA-таймзону браузера одразу, без попапів.
-  const [timezone, setTimezoneState] = useState(() => {
-    if (typeof window === "undefined") return "America/New_York";
+  // значення ще на етапі створення бізнесу.
+  //
+  // ВАЖЛИВО (виправлення після React error #418, hydration mismatch):
+  // раніше Intl.DateTimeFormat() викликався прямо всередині useState-
+  // ініціалізатора. Він виконується як на сервері (де typeof window ===
+  // "undefined" -> фолбек), так і в браузері під час першого рендеру (де вже
+  // є реальна таймзона) — тобто сервер і клієнт малювали РІЗНИЙ текст в
+  // одному й тому самому місці. React ловив це як hydration mismatch,
+  // відмовлявся від гідратації цього піддерева і тихо ламав обробники
+  // подій нижче по дереву (саме тому "Зберегти" для назви компанії взагалі
+  // не відправляв запит — клік не долітав до onClick). Тепер перший рендер
+  // і на сервері, і в браузері однаковий (статичний дефолт), а реальна
+  // таймзона підставляється ПІСЛЯ монтування через useEffect — це вже
+  // звичайне оновлення стану, не розбіжність гідратації.
+  const [timezone, setTimezoneState] = useState("America/New_York");
+  useEffect(() => {
     try {
-      return Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York";
+      const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (detected) setTimezoneState(detected);
     } catch {
-      return "America/New_York";
+      // Невідома/недоступна таймзона браузера — лишаємо дефолт, не ламаємо рендер.
     }
   });
   // Скользящее окно "последние 24ч vs предыдущие 24ч" — тот же движок, что
