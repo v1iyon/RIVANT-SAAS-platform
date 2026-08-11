@@ -17,12 +17,12 @@
 // telegram_username треба було щось показувати замість імені — раніше це
 // був текст "Без username", який свідомо прибрали (виглядає як помилка,
 // а не як нормальний стан). Тепер: в самій картці настройок — тільки
-// компактний підсумок ("Підключено: X") і кнопка "Керувати", яка
+// компактний підсумок ("Підключено X із N") і кнопка "Керувати", яка
 // відкриває модалку з нормальною таблицею. Учасника без username там
-// підписуємо коротким ID — це завжди осмислена інформація, на відміну
-// від порожнього "Без username".
+// підписуємо датою підключення — це завжди осмислена інформація, на
+// відміну від порожнього "Без username".
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -37,8 +37,7 @@ import { useLanguage } from "@/lib/translations";
 type Member = { id: string; telegram_username: string | null; role: string; created_at: string };
 
 // Тримаємо в одному місці — щоб не розійшлось з бекендом (app/api/team/invite/route.js).
-// На фронті зараз ніде не рендериться (компактний підсумок більше не показує
-// ліміт), лишили як довідкову константу — реальний ліміт перевіряється на сервері.
+// Це лише для тексту "X із N" на фронті; реальний ліміт перевіряється на сервері.
 const TEAM_MEMBER_LIMIT = 10;
 
 function formatJoinedDate(iso: string, language: string): string {
@@ -48,15 +47,6 @@ function formatJoinedDate(iso: string, language: string): string {
   } catch {
     return iso.slice(0, 10);
   }
-}
-
-// Короткий ID замість дати підключення для учасника без telegram_username —
-// раніше тут дублювалась дата (та сама, що й у другій колонці "Приєднався"),
-// що виглядало як помилка копіпасту. ID хоч і не такий людяний, як username,
-// але це принаймні стабільний ідентифікатор самого учасника, а не просто
-// повтор сусідньої колонки.
-function shortMemberId(id: string): string {
-  return `#${id.slice(0, 8).toUpperCase()}`;
 }
 
 function useTeamTranslations(language: string) {
@@ -73,16 +63,12 @@ function useTeamTranslations(language: string) {
     copyLink: language === "UA" ? "Копіювати" : language === "DE" ? "Kopieren" : "Copy",
     copied: language === "UA" ? "Скопійовано" : language === "DE" ? "Kopiert" : "Copied",
     manage: language === "UA" ? "Керувати" : language === "DE" ? "Verwalten" : "Manage",
-    // Раніше тут було "Підключено X із N" — на вузькому мобільному екрані
-    // рядок разом з кнопкою "Керувати" не влазив в один рядок і переносився,
-    // хоча на десктопі виглядав нормально. Прибрали "із N" (ліміт і так видно
-    // в модалці/на бекенді) — коротший текст, менше шансів на перенос.
     connectedCount: (n: number) =>
       language === "UA"
-        ? `Підключено: ${n}`
+        ? `Підключено ${n} із ${TEAM_MEMBER_LIMIT}`
         : language === "DE"
-        ? `${n} verbunden`
-        : `${n} connected`,
+        ? `${n} von ${TEAM_MEMBER_LIMIT} verbunden`
+        : `${n} of ${TEAM_MEMBER_LIMIT} connected`,
     modalTitle: language === "UA" ? "Учасники команди" : language === "DE" ? "Teammitglieder" : "Team members",
     modalDesc:
       language === "UA"
@@ -132,45 +118,6 @@ function TeamManageModal({
   onRevoke: (memberId: string) => void;
 }) {
   const tr = useTeamTranslations(language);
-  const scrollAreaRef = useRef<HTMLDivElement>(null);
-
-  // Radix Dialog блокує скрол фону, поки модалка відкрита — на мобільному
-  // це відчувається так, ніби єдиний спосіб піти з модалки це хрестик.
-  // Тут ловимо саму СПРОБУ проскролити/свайпнути (wheel/touchmove) поза
-  // списком учасників і трактуємо її як намір користувача закрити модалку
-  // й повернутись до сторінки. Скрол ВСЕРЕДИНІ списку (scrollAreaRef) не
-  // чіпаємо — там до 10 учасників, і прокрутка самого списку має лишитись
-  // прокруткою, а не тригером закриття.
-  useEffect(() => {
-    if (!open) return;
-    let touchStartY = 0;
-    const SWIPE_THRESHOLD = 10; // px — щоб випадкове тремтіння пальця не закривало модалку
-
-    const isInsideScrollArea = (target: EventTarget | null) =>
-      target instanceof Node && !!scrollAreaRef.current?.contains(target);
-
-    const handleWheel = (e: WheelEvent) => {
-      if (isInsideScrollArea(e.target)) return;
-      onOpenChange(false);
-    };
-    const handleTouchStart = (e: TouchEvent) => {
-      touchStartY = e.touches[0]?.clientY ?? 0;
-    };
-    const handleTouchMove = (e: TouchEvent) => {
-      if (isInsideScrollArea(e.target)) return;
-      const currentY = e.touches[0]?.clientY ?? touchStartY;
-      if (Math.abs(currentY - touchStartY) > SWIPE_THRESHOLD) onOpenChange(false);
-    };
-
-    window.addEventListener("wheel", handleWheel, { passive: true });
-    window.addEventListener("touchstart", handleTouchStart, { passive: true });
-    window.addEventListener("touchmove", handleTouchMove, { passive: true });
-    return () => {
-      window.removeEventListener("wheel", handleWheel);
-      window.removeEventListener("touchstart", handleTouchStart);
-      window.removeEventListener("touchmove", handleTouchMove);
-    };
-  }, [open, onOpenChange]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -188,7 +135,7 @@ function TeamManageModal({
           // max-h + overflow, а не пагінація: TEAM_MEMBER_LIMIT = 10, список
           // ніколи не виросте настільки, щоб пагінація дала реальну користь —
           // прокрутки в межах модалки достатньо.
-          <div ref={scrollAreaRef} className="max-h-80 overflow-y-auto -mx-1 px-1">
+          <div className="max-h-80 overflow-y-auto -mx-1 px-1">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs text-muted-foreground uppercase tracking-wider border-b border-border">
@@ -201,7 +148,7 @@ function TeamManageModal({
                 {members.map((m) => (
                   <tr key={m.id} className="border-b border-border/50 last:border-0">
                     <td className="py-2.5 pr-2 text-foreground">
-                      {m.telegram_username ? `@${m.telegram_username}` : shortMemberId(m.id)}
+                      {m.telegram_username ? `@${m.telegram_username}` : formatJoinedDate(m.created_at, language)}
                     </td>
                     <td className="py-2.5 pr-2 text-muted-foreground">{formatJoinedDate(m.created_at, language)}</td>
                     <td className="py-2.5">
@@ -316,11 +263,11 @@ export function TeamAccessCard({ email }: { email: string }) {
         {members.length > 0 && (
           <button
             onClick={() => setManageOpen(true)}
-            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground mt-2 transition-colors whitespace-nowrap"
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground mt-2 transition-colors"
           >
-            <Users className="w-3.5 h-3.5 shrink-0" />
-            <span className="truncate">{tr.connectedCount(members.length)}</span>
-            <span className="underline underline-offset-2 shrink-0">{tr.manage}</span>
+            <Users className="w-3.5 h-3.5" />
+            {tr.connectedCount(members.length)}
+            <span className="underline underline-offset-2">{tr.manage}</span>
           </button>
         )}
 
