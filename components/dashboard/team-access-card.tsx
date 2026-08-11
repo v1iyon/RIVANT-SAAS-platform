@@ -57,7 +57,6 @@ export function TeamAccessCard({ email }: { email: string }) {
     invite: language === "UA" ? "Запросити" : language === "DE" ? "Einladen" : "Invite",
     copyLink: language === "UA" ? "Копіювати" : language === "DE" ? "Kopieren" : "Copy",
     copied: language === "UA" ? "Скопійовано" : language === "DE" ? "Kopiert" : "Copied",
-    noUsername: language === "UA" ? "Без username" : language === "DE" ? "Ohne Username" : "No username",
     revoke: language === "UA" ? "Відкликати доступ" : language === "DE" ? "Zugriff widerrufen" : "Revoke access",
     needsSub:
       language === "UA"
