@@ -49,6 +49,7 @@ import {
   Truck,
   Download,
   RefreshCw,
+  Filter,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -108,6 +109,18 @@ function alertTypeToCategory(type: string): Risk["category"] {
   if (type.startsWith("sync_failure_")) return "integration";
   return "integration";
 }
+
+// Категорії для фільтра-воронки на вкладці "Ризики". Порядок тут == порядок
+// у випадаючому списку.
+const RISK_CATEGORIES: { id: Risk["category"]; label: Record<Language, string> }[] = [
+  { id: "finance", label: { UA: "Виручка", EN: "Revenue", DE: "Umsatz" } },
+  { id: "margin", label: { UA: "Маржа", EN: "Margin", DE: "Marge" } },
+  { id: "ads", label: { UA: "Реклама", EN: "Ads", DE: "Werbung" } },
+  { id: "cac", label: { UA: "CAC", EN: "CAC", DE: "CAC" } },
+  { id: "inventory", label: { UA: "Товар", EN: "Product", DE: "Produkt" } },
+  { id: "shipping", label: { UA: "Доставка", EN: "Shipping", DE: "Versand" } },
+  { id: "integration", label: { UA: "Синхронізація", EN: "Sync", DE: "Sync" } },
+];
 
 function formatAlertTime(sentAt: string): string {
   try {
@@ -873,6 +886,42 @@ const [forecastLoaded, setForecastLoaded] = useState(false);
   const [risks, setRisks] = useState<Risk[]>([]);
   const [resolvedRisks, setResolvedRisks] = useState<Risk[]>([]);
   const [risksView, setRisksView] = useState<"active" | "history">("active");
+  // Фільтр-воронка по категоріях алертів (виручка/маржа/реклама/товар/...).
+  // Порожній масив = показуємо всі категорії. Зберігаємо вибір у localStorage,
+  // щоб не збивався при кожному переході на вкладку.
+  const [riskCategoryFilter, setRiskCategoryFilter] = useState<Risk["category"][]>([]);
+  const [riskFilterOpen, setRiskFilterOpen] = useState(false);
+  const riskFilterRef = useRef<HTMLDivElement | null>(null);
+
+  // Підвантажуємо збережений вибір фільтра один раз при монтуванні.
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("rivant_risk_category_filter");
+      if (saved) setRiskCategoryFilter(JSON.parse(saved));
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("rivant_risk_category_filter", JSON.stringify(riskCategoryFilter));
+    } catch {}
+  }, [riskCategoryFilter]);
+
+  // Закриваємо випадаюче вікно фільтра при кліку поза ним.
+  useEffect(() => {
+    if (!riskFilterOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (riskFilterRef.current && !riskFilterRef.current.contains(e.target as Node)) {
+        setRiskFilterOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [riskFilterOpen]);
+
+  const toggleRiskCategory = (cat: Risk["category"]) => {
+    setRiskCategoryFilter((prev) => (prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]));
+  };
   const [alertCount, setAlertCount] = useState(0);
   const [alertsLoaded, setAlertsLoaded] = useState(false);
 
@@ -2093,6 +2142,60 @@ if (!subInfo) {
                       </button>
                     </div>
 
+                    <div className="flex items-center gap-2">
+                      <div className="relative" ref={riskFilterRef}>
+                        <button
+                          onClick={() => setRiskFilterOpen((v) => !v)}
+                          className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${
+                            riskCategoryFilter.length > 0
+                              ? "border-blue-500/40 text-blue-300 bg-blue-500/10"
+                              : "border-gray-800 text-gray-500 hover:text-gray-300 hover:bg-gray-800"
+                          }`}
+                        >
+                          <Filter className="w-3.5 h-3.5" />
+                          {language === "UA" ? "Фільтр" : language === "DE" ? "Filter" : "Filter"}
+                          {riskCategoryFilter.length > 0 && (
+                            <span className="ml-0.5 bg-blue-500/30 rounded-full px-1.5 text-[10px]">{riskCategoryFilter.length}</span>
+                          )}
+                        </button>
+
+                        {riskFilterOpen && (
+                          <div className="absolute right-0 mt-2 w-56 bg-gray-900 border border-gray-800 rounded-xl shadow-xl z-20 p-2">
+                            <div className="flex items-center justify-between px-2 py-1 mb-1">
+                              <span className="text-xs font-semibold text-gray-400">
+                                {language === "UA" ? "Показувати сповіщення про" : language === "DE" ? "Benachrichtigungen anzeigen für" : "Show notifications for"}
+                              </span>
+                              {riskCategoryFilter.length > 0 && (
+                                <button
+                                  onClick={() => setRiskCategoryFilter([])}
+                                  className="text-[11px] text-gray-500 hover:text-red-400"
+                                >
+                                  {language === "UA" ? "Скинути" : language === "DE" ? "Zurücksetzen" : "Reset"}
+                                </button>
+                              )}
+                            </div>
+                            {RISK_CATEGORIES.map((cat) => {
+                              const checked = riskCategoryFilter.includes(cat.id);
+                              return (
+                                <label
+                                  key={cat.id}
+                                  className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-800 cursor-pointer text-sm text-gray-300"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => toggleRiskCategory(cat.id)}
+                                    className="rounded border-gray-700 bg-gray-800 text-blue-600 focus:ring-0 focus:ring-offset-0"
+                                  />
+                                  <span className="text-gray-500">{getCategoryIcon(cat.id)}</span>
+                                  {cat.label[language]}
+                                </label>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+
                     {risksView === "active" && risks.length > 0 && (
                       <button
                         onClick={async () => {
@@ -2135,12 +2238,15 @@ if (!subInfo) {
                         {language === "UA" ? "Очистити історію" : language === "DE" ? "Verlauf löschen" : "Clear history"}
                       </button>
                     )}
+                    </div>
                   </div>
 
                   {risksView === "active" && (
                   <>
                   <div className="space-y-3 pr-1 pb-6">
-                    {risks.map((risk) => (
+                    {risks
+                      .filter((risk) => riskCategoryFilter.length === 0 || riskCategoryFilter.includes(risk.category))
+                      .map((risk) => (
                       <div key={risk.id} className="bg-gray-900/50 rounded-xl p-4 border border-gray-800">
                         <div className="flex items-start gap-3">
                           <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
@@ -2194,13 +2300,26 @@ if (!subInfo) {
                         <p className="text-base">{T.demoNoActiveRisks || "No active risks. All systems normal."}</p>
                       </div>
                     )}
+                    {alertsLoaded && risks.length > 0 && risks.filter((risk) => riskCategoryFilter.length === 0 || riskCategoryFilter.includes(risk.category)).length === 0 && (
+                      <div className="text-center py-12 text-gray-500">
+                        <Filter className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                        <p className="text-base">
+                          {language === "UA" ? "Немає ризиків за обраним фільтром." : language === "DE" ? "Keine Risiken für den gewählten Filter." : "No risks match the selected filter."}
+                        </p>
+                        <button onClick={() => setRiskCategoryFilter([])} className="text-sm text-blue-400 hover:text-blue-300 mt-2">
+                          {language === "UA" ? "Скинути фільтр" : language === "DE" ? "Filter zurücksetzen" : "Reset filter"}
+                        </button>
+                      </div>
+                    )}
                   </div>
                   </>
                   )}
 
                   {risksView === "history" && (
                     <div className="space-y-3 pr-1 pb-6">
-                      {resolvedRisks.map((risk) => (
+                      {resolvedRisks
+                        .filter((risk) => riskCategoryFilter.length === 0 || riskCategoryFilter.includes(risk.category))
+                        .map((risk) => (
                         <div key={risk.id} className="bg-gray-900/30 rounded-xl p-4 border border-gray-800 opacity-80">
                           <div className="flex items-start gap-3">
                             <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-green-500/10">
@@ -2225,6 +2344,17 @@ if (!subInfo) {
                           <p className="text-base">
                             {language === "UA" ? "Історія поки порожня." : language === "DE" ? "Der Verlauf ist noch leer." : "History is empty so far."}
                           </p>
+                        </div>
+                      )}
+                      {alertsLoaded && resolvedRisks.length > 0 && resolvedRisks.filter((risk) => riskCategoryFilter.length === 0 || riskCategoryFilter.includes(risk.category)).length === 0 && (
+                        <div className="text-center py-12 text-gray-500">
+                          <Filter className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                          <p className="text-base">
+                            {language === "UA" ? "Немає записів за обраним фільтром." : language === "DE" ? "Keine Einträge für den gewählten Filter." : "No entries match the selected filter."}
+                          </p>
+                          <button onClick={() => setRiskCategoryFilter([])} className="text-sm text-blue-400 hover:text-blue-300 mt-2">
+                            {language === "UA" ? "Скинути фільтр" : language === "DE" ? "Filter zurücksetzen" : "Reset filter"}
+                          </button>
                         </div>
                       )}
                     </div>

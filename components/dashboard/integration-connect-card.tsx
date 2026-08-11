@@ -78,18 +78,22 @@ export function IntegrationConnectCard({
   const [extraValues, setExtraValues] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<"checking" | "idle" | "loading" | "connected" | "error">("checking");
   const [errorMsg, setErrorMsg] = useState("");
-  const [syncError, setSyncError] = useState("");
-  // Персистентний прапорець з БД (integrations.status === "error"): на відміну
-  // від syncError (тимчасовий тост на 60с після ручної дії), він не ховається
-  // самостійно — тримається, доки наступний реальний синк (крон або ручний)
-  // не пройде успішно і не оновить status. Раніше картка завжди показувала
-  // зелений "Підключено" навіть коли останній синк падав, що вводило в оману.
+  // Персистентний прапорець з БД (integrations.status === "error"): бейдж і
+  // форма переприв'язки орієнтуються саме на нього і тримаються, доки
+  // наступний реальний синк (крон чи ручний) не пройде успішно.
   const [hasSyncError, setHasSyncError] = useState(false);
+  // Конкретна причина з бекенду (лише Shopify пише її в config.sync_error_reason;
+  // інші провайдери — generic-повідомлення за замовчуванням).
+  const [syncErrorReason, setSyncErrorReason] = useState<string | undefined>(undefined);
+  // Текст помилки — на відміну від бейджа (постійний, поки не полагодили) —
+  // показується лише 60с з моменту появи проблеми, щоб не висіти тижнями.
+  // Бейдж лишається головним індикатором стану.
+  const [showErrorBanner, setShowErrorBanner] = useState(false);
   const [lastSynced, setLastSynced] = useState<string | null>(null);
   const [keyPreview, setKeyPreview] = useState<string | null>(null);
   const [showLockedToast, setShowLockedToast] = useState(false);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const syncErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const bannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const syncErrorMessage = (reason?: string) => {
     const messages = language === "UA"
@@ -128,6 +132,7 @@ export function IntegrationConnectCard({
         setStatus("connected");
         setErrorMsg("");
         setHasSyncError(true);
+        setSyncErrorReason(row.config?.sync_error_reason);
         setLastSynced(row.last_synced_at);
         setKeyPreview(row.key_preview);
       } else if (row?.connected) {
@@ -157,20 +162,27 @@ export function IntegrationConnectCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [email, provider, refreshToken]);
 
+  // Банер з описом живе лише 60с з моменту, коли hasSyncError стає true —
+  // це рахується і для першого рендера картки з уже активною помилкою.
+  // Бейдж на кнопці лишається без обмеження за часом, поки статус не
+  // зміниться на успішний.
   useEffect(() => {
-    if (!syncFailed) {
-      setSyncError("");
-      return;
+    if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
+    if (hasSyncError) {
+      setShowErrorBanner(true);
+      bannerTimerRef.current = setTimeout(() => setShowErrorBanner(false), 60_000);
+    } else {
+      setShowErrorBanner(false);
     }
-    setSyncError(syncErrorMessage());
-    const timer = setTimeout(() => setSyncError(""), 60_000);
-    return () => clearTimeout(timer);
-  }, [syncFailed]);
+    return () => {
+      if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
+    };
+  }, [hasSyncError]);
 
   useEffect(() => {
     return () => {
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-      if (syncErrorTimerRef.current) clearTimeout(syncErrorTimerRef.current);
+      if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
     };
   }, []);
 
@@ -303,6 +315,8 @@ export function IntegrationConnectCard({
         : `Connect ${displayName} to pull real data`,
     connectedWaiting:
       language === "UA" ? "Підключено, очікуємо першу синхронізацію" : language === "DE" ? "Verbunden, wartet auf erste Synchronisierung" : "Connected, waiting for first sync",
+    connectedError:
+      language === "UA" ? "Підключено, але останній синк не пройшов" : language === "DE" ? "Verbunden, aber die letzte Synchronisierung ist fehlgeschlagen" : "Connected, but the last sync failed",
     lastSyncedLabel: language === "UA" ? "Остання синхронізація" : language === "DE" ? "Letzte Synchronisierung" : "Last synced",
     connected: language === "UA" ? "Підключено" : language === "DE" ? "Verbunden" : "Connected",
     connectBtn: language === "UA" ? `Підключити ${displayName}` : language === "DE" ? `${displayName} verbinden` : `Connect ${displayName}`,
@@ -383,7 +397,9 @@ export function IntegrationConnectCard({
           <h4 className="font-semibold text-white">{displayName}</h4>
           <p className="text-xs text-gray-500">
             {status === "connected"
-              ? lastSynced
+              ? hasSyncError
+                ? `${texts.connectedError}${fields[0] && extraValues[fields[0].key] ? ` · ${extraValues[fields[0].key]}` : ""}`
+                : lastSynced
                 ? `${texts.lastSyncedLabel}: ${new Date(lastSynced).toLocaleString()}${fields[0] && extraValues[fields[0].key] ? ` · ${extraValues[fields[0].key]}` : ""}`
                 : `${texts.connectedWaiting}${fields[0] && extraValues[fields[0].key] ? ` · ${extraValues[fields[0].key]}` : ""}`
               : texts.connectDesc}
@@ -406,21 +422,6 @@ export function IntegrationConnectCard({
           </div>
         )}
       </div>
-      {status === "connected" && (hasSyncError || syncError) && (
-        <div className="mt-3 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
-          <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          <div>
-            <p>{syncError || syncErrorMessage()}</p>
-            <p className="mt-1 text-red-200/70">
-              {language === "UA"
-                ? "Перевірте доступ і натисніть \"Синхронізувати зараз\" — інакше система спробує сама за розкладом (раз на годину)."
-                : language === "DE"
-                ? "Prüfen Sie den Zugriff und klicken Sie auf \"Jetzt synchronisieren\" — sonst versucht es das System automatisch (stündlich)."
-                : "Check the access and click \"Sync now\" — otherwise the system retries automatically on schedule (hourly)."}
-            </p>
-          </div>
-        </div>
-      )}
 
       {(status !== "connected" || hasSyncError) && oauthStartHref && (
         <div className="space-y-2">
@@ -511,6 +512,26 @@ export function IntegrationConnectCard({
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Банер — під усіма рядками картки, як і просили. Бейдж вище вже
+          показує стан постійно; цей текст — лише пояснення на 60с, а сам
+          факт помилки додатково падає в Ризики (див. lib/alerts.mjs /
+          sync_failure_* — це вже робить бекенд при кожному падінні синку). */}
+      {status === "connected" && hasSyncError && showErrorBanner && (
+        <div className="mt-3 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+          <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <div>
+            <p>{syncErrorMessage(syncErrorReason)}</p>
+            <p className="mt-1 text-red-200/70">
+              {language === "UA"
+                ? "Деталі та наступні спроби — на вкладці «Ризики»."
+                : language === "DE"
+                ? "Details und weitere Versuche — im Tab „Risiken“."
+                : "Details and further attempts — on the Risks tab."}
+            </p>
+          </div>
         </div>
       )}
     </div>
