@@ -2430,8 +2430,8 @@ if (!subInfo) {
           )}
 
          {activeView === "integrations" && (
-            <div className="space-y-4">
-              <div className="flex justify-end">
+            <div className="relative space-y-4">
+              <div className="absolute -top-12 right-0">
                 <Button
                   size="icon"
                   variant="outline"
