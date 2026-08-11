@@ -115,6 +115,8 @@ export async function GET(req) {
         facts: result.facts,
         narrative: result.narrative,
         language: result.language,
+        metrics: result.metrics,
+        expensesBySource: result.expensesBySource,
       });
       const caption = (CAPTION[result.language] || CAPTION.EN)(reportTitleText);
 

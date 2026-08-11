@@ -2433,9 +2433,11 @@ if (!subInfo) {
             <div className="space-y-4">
               <div className="flex justify-end">
                 <Button
-                  size="sm"
+                  size="icon"
                   variant="outline"
-                  className="border-blue-400/30 text-blue-300 hover:bg-blue-500/10"
+                  title={language === "UA" ? "Синхронізувати все" : language === "DE" ? "Alles synchronisieren" : "Sync all"}
+                  aria-label={language === "UA" ? "Синхронізувати все" : language === "DE" ? "Alles synchronisieren" : "Sync all"}
+                  className="h-9 w-9 rounded-full border-blue-400/30 text-blue-300 hover:bg-blue-500/10"
                   disabled={!profileEmail || syncingAllIntegrations}
                   onClick={async () => {
                     setSyncingAllIntegrations(true);
@@ -2454,8 +2456,7 @@ if (!subInfo) {
                     }
                   }}
                 >
-                  <RefreshCw className={`mr-2 h-4 w-4 ${syncingAllIntegrations ? "animate-spin" : ""}`} />
-                  {language === "UA" ? "Синхронізувати все" : language === "DE" ? "Alles synchronisieren" : "Sync all"}
+                  <RefreshCw className={`h-4 w-4 ${syncingAllIntegrations ? "animate-spin" : ""}`} />
                 </Button>
               </div>
               {subInfo?.plan === "growth" && (
