@@ -74,6 +74,9 @@ export function IntegrationConnectCard({
   const [extraValues, setExtraValues] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<"checking" | "idle" | "loading" | "connected" | "error">("checking");
   const [errorMsg, setErrorMsg] = useState("");
+  // Ошибка синхронизации — это не разрыв подключения. Храним её отдельно,
+  // чтобы пользователь видел, что произошло, и мог сразу повторить попытку.
+  const [syncError, setSyncError] = useState("");
   const [lastSynced, setLastSynced] = useState<string | null>(null);
   const [keyPreview, setKeyPreview] = useState<string | null>(null);
   const [syncLoading, setSyncLoading] = useState(false);
@@ -111,13 +114,15 @@ export function IntegrationConnectCard({
       const data = await response.json();
       const row = (data.integrations || []).find((i: any) => i.provider === provider);
       if (row?.sync_error) {
-        setStatus("error");
-        setErrorMsg(syncErrorMessage(row.config?.sync_error_reason));
-        setLastSynced(null);
-        setKeyPreview(null);
+        setStatus("connected");
+        setErrorMsg("");
+        setSyncError(syncErrorMessage(row.config?.sync_error_reason));
+        setLastSynced(row.last_synced_at);
+        setKeyPreview(row.key_preview);
       } else if (row?.connected) {
         setStatus("connected");
         setErrorMsg("");
+        setSyncError("");
         setLastSynced(row.last_synced_at);
         setKeyPreview(row.key_preview);
         if (fields.length && row.config) {
@@ -129,6 +134,7 @@ export function IntegrationConnectCard({
         }
       } else {
         setStatus("idle");
+        setSyncError("");
       }
     } catch {
       setStatus("idle");
@@ -222,8 +228,8 @@ export function IntegrationConnectCard({
         body: JSON.stringify({ email, provider }),
       });
       if (!syncResponse.ok) {
-        setStatus("error");
-        setErrorMsg(syncErrorMessage());
+        setStatus("connected");
+        setSyncError(syncErrorMessage());
         return;
       }
       await loadStatus();
@@ -251,14 +257,12 @@ export function IntegrationConnectCard({
         body: JSON.stringify({ email, provider }),
       });
       if (!response.ok) {
-        setStatus("error");
-        setErrorMsg(syncErrorMessage());
+        setSyncError(syncErrorMessage());
         return;
       }
       await loadStatus();
     } catch {
-      setStatus("error");
-      setErrorMsg(syncErrorMessage());
+      setSyncError(syncErrorMessage());
     } finally {
       setSyncLoading(false);
     }
@@ -382,6 +386,17 @@ export function IntegrationConnectCard({
           </div>
         )}
       </div>
+      {status === "connected" && syncError && (
+        <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+          <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <div>
+            <p>{syncError}</p>
+            <p className="mt-1 text-amber-200/70">
+              {language === "UA" ? "Спробуйте синхронізацію ще раз. Якщо помилка повторюється — перепідключіть інтеграцію." : language === "DE" ? "Versuchen Sie die Synchronisierung erneut. Bei wiederholtem Fehler verbinden Sie die Integration neu." : "Try syncing again. If the error repeats, reconnect the integration."}
+            </p>
+          </div>
+        </div>
+      )}
 
       {status !== "connected" && oauthStartHref && (
         <div className="space-y-2">
