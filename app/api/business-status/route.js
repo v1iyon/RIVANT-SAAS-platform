@@ -12,10 +12,14 @@ export async function GET(req) {
   const { data: appUser } = await admin.from("users").select("id").eq("email", email).maybeSingle();
   if (!appUser) return Response.json({ business: null });
 
+  // order+limit — как в business-profile/route.js: без ORDER BY при дублях
+  // businesses (см. историю race condition) Postgres мог вернуть любую
+  // строку, не обязательно ту же, что видит пользователь в Settings.
   const { data: business } = await admin
     .from("businesses")
     .select("id, name")
     .eq("user_id", appUser.id)
+    .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
 

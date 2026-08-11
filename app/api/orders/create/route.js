@@ -37,7 +37,7 @@ export async function POST(req) {
   if (paymentsEnabled && priceId) {
     const { data: appUser } = await admin.from("users").select("id").eq("email", email).maybeSingle();
     const { data: business } = appUser
-      ? await admin.from("businesses").select("id").eq("user_id", appUser.id).limit(1).maybeSingle()
+      ? await admin.from("businesses").select("id").eq("user_id", appUser.id).order("created_at", { ascending: true }).limit(1).maybeSingle()
       : { data: null };
 
     // Компонент викличе loadPaddle()/openPaddleCheckout() з цими даними

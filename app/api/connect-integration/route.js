@@ -63,10 +63,15 @@ export async function POST(req) {
     const { data: user } = await admin.from("users").select("id").eq("email", email).maybeSingle();
     if (!user) return Response.json({ error: "User not found" }, { status: 404 });
 
+    // order+limit — без ORDER BY при дублях businesses (см. race condition
+    // в business-profile/route.js) .maybeSingle() падает с ошибкой на 2+
+    // строках, и business молча становится undefined.
     const { data: business } = await admin
       .from("businesses")
       .select("id")
       .eq("user_id", user.id)
+      .order("created_at", { ascending: true })
+      .limit(1)
       .maybeSingle();
     if (!business) {
       return Response.json(
@@ -153,6 +158,8 @@ export async function DELETE(req) {
       .from("businesses")
       .select("id")
       .eq("user_id", user.id)
+      .order("created_at", { ascending: true })
+      .limit(1)
       .maybeSingle();
     if (!business) return Response.json({ error: "not found" }, { status: 404 });
 
