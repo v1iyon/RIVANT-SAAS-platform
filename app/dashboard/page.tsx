@@ -2431,7 +2431,7 @@ if (!subInfo) {
 
          {activeView === "integrations" && (
             <div className="relative space-y-4">
-              <div className="absolute -top-12 right-0">
+              <div className="absolute right-3 top-3 z-10">
                 <Button
                   size="icon"
                   variant="outline"
