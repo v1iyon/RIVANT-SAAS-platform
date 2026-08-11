@@ -2431,33 +2431,38 @@ if (!subInfo) {
 
          {activeView === "integrations" && (
             <div className="relative space-y-4">
-              <div className="absolute right-3 top-3 z-10">
-                <Button
-                  size="icon"
-                  variant="outline"
-                  title={language === "UA" ? "Синхронізувати все" : language === "DE" ? "Alles synchronisieren" : "Sync all"}
-                  aria-label={language === "UA" ? "Синхронізувати все" : language === "DE" ? "Alles synchronisieren" : "Sync all"}
-                  className="h-9 w-9 rounded-full border-blue-400/30 text-blue-300 hover:bg-blue-500/10"
-                  disabled={!profileEmail || syncingAllIntegrations}
-                  onClick={async () => {
-                    setSyncingAllIntegrations(true);
-                    setFailedSyncProviders([]);
-                    try {
-                      const response = await fetch("/api/sync-now", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ email: profileEmail }),
-                      });
-                      const result = await response.json().catch(() => ({}));
-                      setFailedSyncProviders(result.failedProviders || []);
-                      setIntegrationRefreshToken((token) => token + 1);
-                    } finally {
-                      setSyncingAllIntegrations(false);
-                    }
-                  }}
-                >
-                  <RefreshCw className={`h-4 w-4 ${syncingAllIntegrations ? "animate-spin" : ""}`} />
-                </Button>
+              {/* Обгортка з h-0 не займає місця в потоці, тому картки під нею не
+                  зсуваються вниз, а sticky top тримає кружок синхронізації на
+                  місці під час скролу списку інтеграцій (як шапка/футер). */}
+              <div className="sticky top-2 z-30 h-0">
+                <div className="flex justify-end pr-1">
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    title={language === "UA" ? "Синхронізувати все" : language === "DE" ? "Alles synchronisieren" : "Sync all"}
+                    aria-label={language === "UA" ? "Синхронізувати все" : language === "DE" ? "Alles synchronisieren" : "Sync all"}
+                    className="h-9 w-9 rounded-full border-blue-400/30 text-blue-300 bg-gray-950/90 backdrop-blur-sm shadow-lg shadow-black/40 hover:bg-blue-500/10"
+                    disabled={!profileEmail || syncingAllIntegrations}
+                    onClick={async () => {
+                      setSyncingAllIntegrations(true);
+                      setFailedSyncProviders([]);
+                      try {
+                        const response = await fetch("/api/sync-now", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ email: profileEmail }),
+                        });
+                        const result = await response.json().catch(() => ({}));
+                        setFailedSyncProviders(result.failedProviders || []);
+                        setIntegrationRefreshToken((token) => token + 1);
+                      } finally {
+                        setSyncingAllIntegrations(false);
+                      }
+                    }}
+                  >
+                    <RefreshCw className={`h-4 w-4 ${syncingAllIntegrations ? "animate-spin" : ""}`} />
+                  </Button>
+                </div>
               </div>
               {subInfo?.plan === "growth" && (
                 <div className="bg-blue-500/5 rounded-lg px-3 py-2 border border-blue-500/20 flex items-center gap-2">
