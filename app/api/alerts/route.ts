@@ -93,3 +93,33 @@ export async function PATCH(req: Request) {
     return Response.json({ error: "Server error" }, { status: 500 });
   }
 }
+
+// Permanently clears resolved alerts (the "Історія" tab). PATCH above only
+// flips status open->resolved, so it can't be reused to empty a tab that's
+// already all-resolved — this actually deletes the rows the user asked to
+// clear from their history.
+export async function DELETE(req: Request) {
+  try {
+    const { email } = await req.json();
+    if (!email) return Response.json({ error: "email required" }, { status: 400 });
+
+    const businessId = await getBusinessId(email);
+    if (!businessId) return Response.json({ error: "Business not found" }, { status: 404 });
+
+    const { error } = await admin
+      .from("alerts_log")
+      .delete()
+      .eq("business_id", businessId)
+      .eq("status", "resolved");
+
+    if (error) {
+      console.error("DELETE /api/alerts error:", error);
+      return Response.json({ error: "Server error" }, { status: 500 });
+    }
+
+    return Response.json({ success: true });
+  } catch (err) {
+    console.error("DELETE /api/alerts error:", err);
+    return Response.json({ error: "Server error" }, { status: 500 });
+  }
+}

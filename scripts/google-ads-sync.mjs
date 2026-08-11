@@ -19,7 +19,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { decrypt } from "../lib/crypto.js";
 import { logError } from "../lib/log-error.js";
-import { sendAlertToBusiness, getUserContact, generateAlertExplanation, detectExpenseAnomaly, detectCacAnomaly, formatTechnicalDetail } from "../lib/alerts.mjs";
+import { sendAlertToBusiness, getUserContact, generateAlertExplanation, detectExpenseAnomaly, detectCacAnomaly } from "../lib/alerts.mjs";
 
 // ВАЖНО: reason (err.message) сюда больше НЕ подставляется — это сырой
 // текст ошибки от Google Ads API, всегда на английском. Раньше он клеился
@@ -284,13 +284,10 @@ async function main(businessId) {
 
       const contact = await getUserContact(await getBusinessUserId(integ.business_id));
       const msg = (SYNC_FAILURE_MESSAGE[contact.userLang] || SYNC_FAILURE_MESSAGE.EN)();
-      let explanation = await generateAlertExplanation(
+      const explanation = await generateAlertExplanation(
         contact.userLang,
         `The Google Ads integration was previously connected and syncing successfully. It just failed with this error: "${err.message}". This usually means the refresh token was revoked or the developer token lost access.`
       );
-      // Сирую причину (всегда на английском) добавляем отдельной подписанной
-      // строкой — а не смешиваем с локализованным текстом объяснения.
-      explanation = `${explanation}${formatTechnicalDetail(contact.userLang, err.message)}`;
       await sendAlertToBusiness(integ.business_id, contact, {
         type: "sync_failure_google_ads",
         severity: "high",

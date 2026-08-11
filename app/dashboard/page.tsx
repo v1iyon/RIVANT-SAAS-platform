@@ -3,7 +3,7 @@
 
 import { StripeConnectCard } from "@/components/dashboard/stripe-connect-card";
 import { IntegrationConnectCard } from "@/components/dashboard/integration-connect-card";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, type ReactElement } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -926,6 +926,7 @@ const [companySaved, setCompanySaved] = useState(false);
   const supabase = createClient();
   const [subInfo, setSubInfo] = useState<{ plan: string | null; access_status: string; is_blocked?: boolean } | null>(null);
   const [selectedProviders, setSelectedProviders] = useState<string[]>([]);
+  const [integrationsOrder, setIntegrationsOrder] = useState<string[]>(["shopify", "meta_ads", "google_ads"]);
   const [telegramConnected, setTelegramConnected] = useState(false);
   const [businessName, setBusinessName] = useState("");
   // Раніше тут був захардкожений дефолт "America/New_York" — будь-хто, хто
@@ -1175,6 +1176,25 @@ if (bizData.business) {
       } catch (e) {
         console.error("Failed to load integrations selection", e);
         setSelectedProviders([]);
+      }
+
+      // Раніше картки Shopify/Meta Ads/Google Ads завжди йшли в одному й тому
+      // ж захардкодженому порядку в JSX, незалежно від того, що реально
+      // підключено — підключена інтеграція губилась серед непідключених.
+      // Тепер підключені спливають наверх списку (integrationsOrder нижче).
+      try {
+        const statusRes = await fetch(`/api/integrations-status?email=${encodeURIComponent(email)}`, { cache: "no-store" });
+        const statusData = await statusRes.json();
+        const rows: { provider: string; connected: boolean }[] = statusData.integrations || [];
+        const defaultOrder = ["shopify", "meta_ads", "google_ads"];
+        const sorted = [...defaultOrder].sort((a, b) => {
+          const aConnected = rows.find((r) => r.provider === a)?.connected ? 1 : 0;
+          const bConnected = rows.find((r) => r.provider === b)?.connected ? 1 : 0;
+          return bConnected - aConnected; // connected (1) перед не-connected (0), інакше стабільний дефолтний порядок
+        });
+        setIntegrationsOrder(sorted);
+      } catch (e) {
+        console.error("Failed to load integrations status for ordering", e);
       }
 
       try {
@@ -2012,32 +2032,29 @@ if (!subInfo) {
   </div>
 ) : (
                 <>
-                  <div className="flex items-center gap-2 mb-1">
-                    <button
-                      onClick={() => setRisksView("active")}
-                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                        risksView === "active" ? "bg-blue-600 text-white" : "text-gray-500 hover:text-gray-300"
-                      }`}
-                    >
-                      {language === "UA" ? "Активні" : language === "DE" ? "Aktiv" : "Active"}
-                      {risks.length > 0 && <span className="ml-1.5 opacity-70">{risks.length}</span>}
-                    </button>
-                    <button
-                      onClick={() => setRisksView("history")}
-                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                        risksView === "history" ? "bg-blue-600 text-white" : "text-gray-500 hover:text-gray-300"
-                      }`}
-                    >
-                      {language === "UA" ? "Історія" : language === "DE" ? "Verlauf" : "History"}
-                      {resolvedRisks.length > 0 && <span className="ml-1.5 opacity-70">{resolvedRisks.length}</span>}
-                    </button>
-                  </div>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setRisksView("active")}
+                        className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                          risksView === "active" ? "bg-blue-600 text-white" : "text-gray-500 hover:text-gray-300"
+                        }`}
+                      >
+                        {language === "UA" ? "Активні" : language === "DE" ? "Aktiv" : "Active"}
+                        {risks.length > 0 && <span className="ml-1.5 opacity-70">{risks.length}</span>}
+                      </button>
+                      <button
+                        onClick={() => setRisksView("history")}
+                        className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                          risksView === "history" ? "bg-blue-600 text-white" : "text-gray-500 hover:text-gray-300"
+                        }`}
+                      >
+                        {language === "UA" ? "Історія" : language === "DE" ? "Verlauf" : "History"}
+                        {resolvedRisks.length > 0 && <span className="ml-1.5 opacity-70">{resolvedRisks.length}</span>}
+                      </button>
+                    </div>
 
-                  {risksView === "active" && (
-                  <>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-500">{risks.length} {language === "UA" ? "сповіщень" : language === "DE" ? "Benachrichtigungen" : "notifications"}</span>
-                    {risks.length > 0 && (
+                    {risksView === "active" && risks.length > 0 && (
                       <button
                         onClick={async () => {
                           setRisks([]);
@@ -2058,8 +2075,31 @@ if (!subInfo) {
                         {language === "UA" ? "Очистити всі" : language === "DE" ? "Alle löschen" : "Clear all"}
                       </button>
                     )}
+
+                    {risksView === "history" && resolvedRisks.length > 0 && (
+                      <button
+                        onClick={async () => {
+                          setResolvedRisks([]);
+                          try {
+                            await fetch("/api/alerts", {
+                              method: "DELETE",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ email: profileEmail }),
+                            });
+                          } catch (e) {
+                            console.error("Failed to clear alert history", e);
+                          }
+                        }}
+                        className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-red-400 transition-colors px-2 py-1 rounded-lg hover:bg-red-500/10"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        {language === "UA" ? "Очистити історію" : language === "DE" ? "Verlauf löschen" : "Clear history"}
+                      </button>
+                    )}
                   </div>
 
+                  {risksView === "active" && (
+                  <>
                   <div className="space-y-3 pr-1 pb-6">
                     {risks.map((risk) => (
                       <div key={risk.id} className="bg-gray-900/50 rounded-xl p-4 border border-gray-800">
@@ -2377,81 +2417,95 @@ if (!subInfo) {
   onLockedClick={() => router.push("/#pricing")}
 />
 
-              <IntegrationConnectCard
-                email={profileEmail}
-                provider="shopify"
-                displayName="Shopify"
-                placeholder="Client Secret"
-                isExpiredTrial={isExpiredTrial}
-                planTier={subInfo?.plan ?? null}
-                selectedProviders={selectedProviders}
-                onSelected={(p) => setSelectedProviders([p])}
-                onLockedClick={() => router.push("/#pricing")}
-                extraFields={[
-                  {
-                    key: "shop_domain",
-                    label: language === "UA" ? "Домен магазину (yourshop.myshopify.com)" : language === "DE" ? "Shop-Domain (yourshop.myshopify.com)" : "Shop domain (yourshop.myshopify.com)",
-                    placeholder: "yourshop.myshopify.com",
-                  },
-                  {
-                    key: "client_id",
-                    label: "Client ID",
-                    placeholder: "Client ID",
-                  },
-                ]}
-                hint={
-                  language === "UA"
-                    ? "Shopify Dev Dashboard → ваш застосунок → Settings → скопіюйте Client ID і Client Secret (з 1 січня 2026 Shopify більше не показує готовий shpat_ токен — тільки ці дані)."
-                    : language === "DE"
-                    ? "Shopify Dev Dashboard → Ihre App → Settings → Client ID und Client Secret kopieren (seit 1. Januar 2026 zeigt Shopify keinen fertigen shpat_-Token mehr an — nur diese Daten)."
-                    : "Shopify Dev Dashboard → your app → Settings → copy the Client ID and Client Secret (since Jan 1, 2026 Shopify no longer shows a ready-made shpat_ token — only these)."
-                }
-              />
-              <IntegrationConnectCard
-                email={profileEmail}
-                provider="meta_ads"
-                displayName="Meta Ads"
-                placeholder="EAAG..."
-                isExpiredTrial={isExpiredTrial}
-                planTier={subInfo?.plan ?? null}
-                selectedProviders={selectedProviders}
-                onSelected={(p) => setSelectedProviders([p])}
-                onLockedClick={() => router.push("/#pricing")}
-                extraField={{
-                  key: "ad_account_id",
-                  label: language === "UA" ? "Ad Account ID (без 'act_')" : language === "DE" ? "Ad Account ID (ohne 'act_')" : "Ad Account ID (without 'act_')",
-                  placeholder: "123456789012345",
-                }}
-                hint={
-                  language === "UA"
-                    ? "Meta Business Suite → System Users → створіть токен з доступом ads_read."
-                    : language === "DE"
-                    ? "Meta Business Suite → System Users → Token mit ads_read-Zugriff erstellen."
-                    : "Meta Business Suite → System Users → create a token with ads_read access."
-                }
-              />
-              <IntegrationConnectCard
-                email={profileEmail}
-                provider="google_ads"
-                displayName="Google Ads"
-                placeholder=""
-                isExpiredTrial={isExpiredTrial}
-                planTier={subInfo?.plan ?? null}
-                selectedProviders={selectedProviders}
-                onSelected={(p) => setSelectedProviders([p])}
-                onLockedClick={() => router.push("/#pricing")}
-                oauthStartHref={`/api/auth/google-ads/start?email=${encodeURIComponent(profileEmail)}`}
-                oauthButtonLabel={
-                  language === "UA" ? "Підключити через Google" : language === "DE" ? "Über Google verbinden" : "Connect with Google"
-                }
-                hint={
-                  language === "UA"
-                    ? "Ви перейдете на сторінку Google, підтвердите доступ до Google Ads і повернетесь сюди — без ручного вводу токенів."
-                    : language === "DE"
-                    ? "Sie werden zu Google weitergeleitet, bestätigen den Zugriff auf Google Ads und kehren hierher zurück — ganz ohne manuelle Token-Eingabe."
-                    : "You'll be redirected to Google, approve access to Google Ads, and land back here — no manual token entry."
-                }
-              />
+              {(() => {
+                const cardConfigs: Record<string, JSX.Element> = {
+                  shopify: (
+                    <IntegrationConnectCard
+                      key="shopify"
+                      email={profileEmail}
+                      provider="shopify"
+                      displayName="Shopify"
+                      placeholder="Client Secret"
+                      isExpiredTrial={isExpiredTrial}
+                      planTier={subInfo?.plan ?? null}
+                      selectedProviders={selectedProviders}
+                      onSelected={(p) => setSelectedProviders([p])}
+                      onLockedClick={() => router.push("/#pricing")}
+                      extraFields={[
+                        {
+                          key: "shop_domain",
+                          label: language === "UA" ? "Домен магазину (yourshop.myshopify.com)" : language === "DE" ? "Shop-Domain (yourshop.myshopify.com)" : "Shop domain (yourshop.myshopify.com)",
+                          placeholder: "yourshop.myshopify.com",
+                        },
+                        {
+                          key: "client_id",
+                          label: "Client ID",
+                          placeholder: "Client ID",
+                        },
+                      ]}
+                      hint={
+                        language === "UA"
+                          ? "Shopify Dev Dashboard → ваш застосунок → Settings → скопіюйте Client ID і Client Secret (з 1 січня 2026 Shopify більше не показує готовий shpat_ токен — тільки ці дані)."
+                          : language === "DE"
+                          ? "Shopify Dev Dashboard → Ihre App → Settings → Client ID und Client Secret kopieren (seit 1. Januar 2026 zeigt Shopify keinen fertigen shpat_-Token mehr an — nur diese Daten)."
+                          : "Shopify Dev Dashboard → your app → Settings → copy the Client ID and Client Secret (since Jan 1, 2026 Shopify no longer shows a ready-made shpat_ token — only these)."
+                      }
+                    />
+                  ),
+                  meta_ads: (
+                    <IntegrationConnectCard
+                      key="meta_ads"
+                      email={profileEmail}
+                      provider="meta_ads"
+                      displayName="Meta Ads"
+                      placeholder="EAAG..."
+                      isExpiredTrial={isExpiredTrial}
+                      planTier={subInfo?.plan ?? null}
+                      selectedProviders={selectedProviders}
+                      onSelected={(p) => setSelectedProviders([p])}
+                      onLockedClick={() => router.push("/#pricing")}
+                      extraField={{
+                        key: "ad_account_id",
+                        label: language === "UA" ? "Ad Account ID (без 'act_')" : language === "DE" ? "Ad Account ID (ohne 'act_')" : "Ad Account ID (without 'act_')",
+                        placeholder: "123456789012345",
+                      }}
+                      hint={
+                        language === "UA"
+                          ? "Meta Business Suite → System Users → створіть токен з доступом ads_read."
+                          : language === "DE"
+                          ? "Meta Business Suite → System Users → Token mit ads_read-Zugriff erstellen."
+                          : "Meta Business Suite → System Users → create a token with ads_read access."
+                      }
+                    />
+                  ),
+                  google_ads: (
+                    <IntegrationConnectCard
+                      key="google_ads"
+                      email={profileEmail}
+                      provider="google_ads"
+                      displayName="Google Ads"
+                      placeholder=""
+                      isExpiredTrial={isExpiredTrial}
+                      planTier={subInfo?.plan ?? null}
+                      selectedProviders={selectedProviders}
+                      onSelected={(p) => setSelectedProviders([p])}
+                      onLockedClick={() => router.push("/#pricing")}
+                      oauthStartHref={`/api/auth/google-ads/start?email=${encodeURIComponent(profileEmail)}`}
+                      oauthButtonLabel={
+                        language === "UA" ? "Підключити через Google" : language === "DE" ? "Über Google verbinden" : "Connect with Google"
+                      }
+                      hint={
+                        language === "UA"
+                          ? "Ви перейдете на сторінку Google, підтвердите доступ до Google Ads і повернетесь сюди — без ручного вводу токенів."
+                          : language === "DE"
+                          ? "Sie werden zu Google weitergeleitet, bestätigen den Zugriff auf Google Ads und kehren hierher zurück — ganz ohne manuelle Token-Eingabe."
+                          : "You'll be redirected to Google, approve access to Google Ads, and land back here — no manual token entry."
+                      }
+                    />
+                  ),
+                };
+                return integrationsOrder.map((provider) => cardConfigs[provider]).filter(Boolean);
+              })()}
 
               <div className="bg-gray-900/20 rounded-xl p-4 border border-gray-800 opacity-50">
                 <div className="flex items-center justify-between">

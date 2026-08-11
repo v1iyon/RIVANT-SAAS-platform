@@ -18,7 +18,7 @@ import { createClient } from "@supabase/supabase-js";
 import { decrypt } from "../lib/crypto.js";
 import { logError } from "../lib/log-error.js";
 import { resolveShopifyToken } from "../lib/shopify-token.mjs";
-import { sendAlertToBusiness, getUserContact, generateAlertExplanation, detectExpenseAnomaly, formatTechnicalDetail } from "../lib/alerts.mjs";
+import { sendAlertToBusiness, getUserContact, generateAlertExplanation, detectExpenseAnomaly } from "../lib/alerts.mjs";
 
 const SYNC_FAILURE_MESSAGE = {
   UA: () => `Не вдалося синхронізувати Shopify`,
@@ -52,7 +52,7 @@ function normalizeShopDomain(raw) {
 }
 
 async function fetchShopifyOrders(shopDomain, token, sinceIso) {
-  const url = `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/orders.json?status=any&created_at_min=${encodeURIComponent(sinceIso)}&limit=250&fields=id,created_at,shipping_lines,total_shipping_price_set,line_items`;
+  const url = `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/orders.json?status=any&created_at_min=${encodeURIComponent(sinceIso)}&limit=250&fields=id,created_at,cancelled_at,current_total_price,total_shipping_price_set,shipping_lines,line_items`;
   const res = await fetch(url, { headers: { "X-Shopify-Access-Token": token } });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
@@ -65,6 +65,21 @@ async function fetchShopifyOrders(shopDomain, token, sinceIso) {
   return data.orders || [];
 }
 
+// current_total_price — це вже фактична сума ПІСЛЯ повернень/часткових
+// рефандів (на відміну від total_price, який лишається "як було виставлено
+// на момент замовлення"). Скасовані замовлення (cancelled_at заповнений)
+// прибираємо повністю — це не дохід.
+function computeRevenueByDate(orders) {
+  const byDate = {};
+  for (const order of orders) {
+    if (order.cancelled_at) continue;
+    const date = new Date(order.created_at).toISOString().slice(0, 10);
+    const amount = Number(order.current_total_price) || 0;
+    byDate[date] = (byDate[date] || 0) + amount;
+  }
+  return byDate;
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -72,6 +87,45 @@ function sleep(ms) {
 async function getBusinessUserId(businessId) {
   const { data } = await admin.from("businesses").select("user_id").eq("id", businessId).maybeSingle();
   return data?.user_id ?? null;
+}
+
+// Записує дохід із Shopify-замовлень у metrics_computed — ту саму таблицю,
+// яку sync-stripe-core.mjs заповнює зі Stripe. Один рядок на business+date,
+// тому робимо read-modify-write, а не сліпий upsert: інакше перезаписали б
+// cost/margin_pct/orders, які вже там могли лежати. revenue_mode:
+//   "replace" (дефолт) — Shopify стає єдиним джерелом revenue за цю дату,
+//     бо в переважній більшості випадків це ті самі гроші, що вже пройшли
+//     через Stripe як платіжний процесор всередині Shopify Checkout —
+//     складання дало б задвоєний дохід.
+//   "add" — користувач явно позначив магазин як окремий, незалежний потік
+//     грошей (чекбокс при підключенні) — тоді додаємо суму до того, що вже
+//     є в рядку, а не заміщуємо.
+async function upsertShopifyRevenue({ businessId, date, revenue, orders, revenueMode }) {
+  const { data: existing } = await admin
+    .from("metrics_computed")
+    .select("revenue, cost, orders")
+    .eq("business_id", businessId)
+    .eq("date", date)
+    .maybeSingle();
+
+  const finalRevenue =
+    revenueMode === "add" ? Number((revenue + (existing?.revenue || 0)).toFixed(2)) : Number(revenue.toFixed(2));
+  const cost = existing?.cost || 0;
+  const finalOrders = revenueMode === "add" ? orders + (existing?.orders || 0) : orders;
+  const marginPct = finalRevenue > 0 ? Number((((finalRevenue - cost) / finalRevenue) * 100).toFixed(1)) : 0;
+
+  const { error } = await admin.from("metrics_computed").upsert(
+    {
+      business_id: businessId,
+      date,
+      revenue: finalRevenue,
+      cost,
+      margin_pct: marginPct,
+      orders: finalOrders,
+    },
+    { onConflict: "business_id,date" }
+  );
+  if (error) console.error(`Failed to write Shopify revenue for ${businessId} ${date}:`, error.message);
 }
 
 // cost of goods для одного variant_id: variant → inventory_item_id → inventory_item.cost.
@@ -224,6 +278,27 @@ async function main(businessId) {
         });
       }
 
+      // revenue_mode: "replace" (дефолт, чекбокс не відмічений при
+      // підключенні) чи "add" (окремий потік грошей) — див. коментар біля
+      // upsertShopifyRevenue вище.
+      const revenueMode = integ.config?.revenue_mode === "add" ? "add" : "replace";
+      const revenueByDate = computeRevenueByDate(orders);
+      const ordersCountByDate = {};
+      for (const order of orders) {
+        if (order.cancelled_at) continue;
+        const date = new Date(order.created_at).toISOString().slice(0, 10);
+        ordersCountByDate[date] = (ordersCountByDate[date] || 0) + 1;
+      }
+      for (const [date, revenue] of Object.entries(revenueByDate)) {
+        await upsertShopifyRevenue({
+          businessId: integ.business_id,
+          date,
+          revenue,
+          orders: ordersCountByDate[date] || 0,
+          revenueMode,
+        });
+      }
+
       // Перевіряємо аномалії тільки за останню (найсвіжішу) дату з вікна синку —
       // старіші дні вже перевірялись на попередніх прогонах. Умисно НЕ додаємо
       // окремий "order_volume_drop" — падіння продажів вже ловить revenue_drop
@@ -303,11 +378,16 @@ async function main(businessId) {
 
       const contact = await getUserContact(await getBusinessUserId(integ.business_id));
       const msg = (SYNC_FAILURE_MESSAGE[contact.userLang] || SYNC_FAILURE_MESSAGE.EN)();
-      let explanation = await generateAlertExplanation(
+      const explanation = await generateAlertExplanation(
         contact.userLang,
         `The Shopify integration was previously connected and syncing successfully. It just failed with this error: "${err.message}". This usually means the Admin API access token was revoked, the Client ID/Secret were rotated, or the store URL changed.`
       );
-      explanation = `${explanation}${formatTechnicalDetail(contact.userLang, err.message)}`;
+      // Раніше сюди ще доклеювався formatTechnicalDetail(contact.userLang,
+      // err.message) — тобто ВЕСЬ сирий текст помилки (аж до HTML-сторінки
+      // 400 Oauth error від Shopify) летів прямо власнику бізнесу в Telegram.
+      // Йому ця деталь не потрібна і не безпечна показувати назовні — повний
+      // err.message і так вже пишеться в error_logs через logError() вище,
+      // адмін бачить це в /admin. Клієнт бачить лише людське пояснення.
       await sendAlertToBusiness(integ.business_id, contact, {
         type: "sync_failure_shopify",
         severity: "high",

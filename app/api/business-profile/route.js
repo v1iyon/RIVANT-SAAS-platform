@@ -12,10 +12,18 @@ export async function GET(req) {
   const { data: appUser } = await admin.from("users").select("id").eq("email", email).maybeSingle();
   if (!appUser) return Response.json({ business: null });
 
+  // Без ORDER BY .limit(1) не гарантує, яку саме строку поверне Postgres,
+  // якщо у користувача чомусь опинилось БІЛЬШЕ ОДНІЄЇ строки в businesses
+  // (наприклад, з гонки двох паралельних перших завантажень дашборду, які
+  // одночасно побачили "бізнесу нема" і обидва встигли створити свій).
+  // Раніше це виглядало як "назва компанії/ID то є, то раптом пропадає" —
+  // насправді просто щоразу підтягувалась інша строка. created_at ASC
+  // робить вибір детермінованим (завжди найперша створена).
   let { data: business } = await admin
     .from("businesses")
     .select("id, name, timezone, rolling_metrics")
     .eq("user_id", appUser.id)
+    .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
 
@@ -23,7 +31,7 @@ export async function GET(req) {
   if (!business) {
     const { data: created } = await admin
       .from("businesses")
-      .insert({ user_id: appUser.id, name: "My Business", timezone: "America/New_York" })
+      .insert({ user_id: appUser.id, name: "My Business" })
       .select("id, name, timezone, rolling_metrics")
       .single();
     business = created;

@@ -8,7 +8,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { decrypt } from "../lib/crypto.js";
 import { logError } from "../lib/log-error.js";
-import { sendAlertToBusiness, getUserContact, generateAlertExplanation, detectExpenseAnomaly, detectCacAnomaly, formatTechnicalDetail } from "../lib/alerts.mjs";
+import { sendAlertToBusiness, getUserContact, generateAlertExplanation, detectExpenseAnomaly, detectCacAnomaly } from "../lib/alerts.mjs";
 
 const SYNC_FAILURE_MESSAGE = {
   UA: () => `Не вдалося синхронізувати Meta Ads`,
@@ -198,11 +198,10 @@ async function main(businessId) {
 
       const contact = await getUserContact(await getBusinessUserId(integ.business_id));
       const msg = (SYNC_FAILURE_MESSAGE[contact.userLang] || SYNC_FAILURE_MESSAGE.EN)();
-      let explanation = await generateAlertExplanation(
+      const explanation = await generateAlertExplanation(
         contact.userLang,
         `The Meta Ads integration was previously connected and syncing successfully. It just failed with this error: "${err.message}". This usually means the access token expired or lost the ads_read permission.`
       );
-      explanation = `${explanation}${formatTechnicalDetail(contact.userLang, err.message)}`;
       await sendAlertToBusiness(integ.business_id, contact, {
         type: "sync_failure_meta_ads",
         severity: "high",

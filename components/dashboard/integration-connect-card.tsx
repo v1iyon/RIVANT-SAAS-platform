@@ -36,6 +36,11 @@ interface Props {
   // app-wide на сервері, користувач лише проходить Google consent screen.
   oauthStartHref?: string;
   oauthButtonLabel?: string;
+  // Тільки для Shopify: чекбокс "це окремий потік грошей" -> config.revenue_mode.
+  // Не показаний -> revenue_mode взагалі не передається -> бекенд трактує це
+  // як дефолтний "replace" (Shopify заміщує Stripe для цієї дати, безпечний
+  // дефолт проти задвоєння доходу).
+  showRevenueModeCheckbox?: boolean;
 }
 
 // Trial навмисно НЕ в цьому списку: під час трайлу доступ повний, як на Scale,
@@ -58,8 +63,10 @@ export function IntegrationConnectCard({
   extraFields,
   oauthStartHref,
   oauthButtonLabel,
+  showRevenueModeCheckbox = false,
 }: Props) {
   const { language } = useLanguage();
+  const [revenueModeAdd, setRevenueModeAdd] = useState(false);
   // Нормалізуємо обидва варіанти (одне поле / кілька полів) в один масив,
   // щоб решта компонента не знала про різницю.
   const fields = extraFields ?? (extraField ? [extraField] : []);
@@ -69,9 +76,6 @@ export function IntegrationConnectCard({
   const [errorMsg, setErrorMsg] = useState("");
   const [lastSynced, setLastSynced] = useState<string | null>(null);
   const [keyPreview, setKeyPreview] = useState<string | null>(null);
-  // Останній синк не пройшов, але ключі досі збережені й дійсні для UI —
-  // показуємо попередження, а не порожню форму підключення (див. loadStatus).
-  const [syncError, setSyncError] = useState(false);
   const [showLockedToast, setShowLockedToast] = useState(false);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -152,7 +156,10 @@ export function IntegrationConnectCard({
           email,
           provider,
           apiKey: apiKey.trim(),
-          config: Object.fromEntries(fields.map((f) => [f.key, extraValues[f.key]?.trim() || ""])),
+          config: {
+            ...Object.fromEntries(fields.map((f) => [f.key, extraValues[f.key]?.trim() || ""])),
+            ...(showRevenueModeCheckbox ? { revenue_mode: revenueModeAdd ? "add" : "replace" } : {}),
+          },
         }),
       });
       const data = await res.json();
