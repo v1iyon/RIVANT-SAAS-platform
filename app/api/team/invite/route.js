@@ -18,10 +18,14 @@ export async function POST(req) {
   const { data: appUser } = await admin.from("users").select("id").eq("email", email).maybeSingle();
   if (!appUser) return Response.json({ error: "user not found" }, { status: 404 });
 
+  // Той самий детермінований фікс, що і в /api/business-profile та
+  // /api/team/members — без order() при кількох рядках businesses вибір
+  // непередбачуваний.
   const { data: business } = await admin
     .from("businesses")
     .select("id")
     .eq("user_id", appUser.id)
+    .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
   if (!business) return Response.json({ error: "business not found" }, { status: 404 });
@@ -64,4 +68,3 @@ export async function POST(req) {
 
   return Response.json({ url: `https://t.me/rivant_os_bot?start=${token}` });
 }
-

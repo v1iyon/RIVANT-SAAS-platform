@@ -791,7 +791,7 @@ function getCategoryIcon(category: string) {
 
 
 
-export default function DashboardPage() {
+export default function DashboardClient() {
   const router = useRouter();
   const { t, language, setLanguage } = useLanguage();
   const { currency, setCurrency, symbol, convert } = useCurrency();

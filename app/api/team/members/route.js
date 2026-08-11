@@ -9,10 +9,15 @@ const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUP
 async function getBusinessId(email) {
   const { data: appUser } = await admin.from("users").select("id").eq("email", email).maybeSingle();
   if (!appUser) return null;
+  // .order("created_at", { ascending: true }) — той самий фікс, що і в
+  // /api/business-profile: без нього при кількох рядках businesses на
+  // одного user_id (гонка паралельних перших завантажень) вибиралась
+  // випадкова строка, і команда бачила не той business_id, що на дашборді.
   const { data: business } = await admin
     .from("businesses")
     .select("id")
     .eq("user_id", appUser.id)
+    .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
   return business?.id || null;

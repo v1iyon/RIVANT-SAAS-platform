@@ -13,6 +13,7 @@ function mainMenu(lang) {
     .text(d.menu.problems, "problems").row()
     .text(d.menu.subscription, "subscription").row()
     .text(d.menu.integrations, "integrations").row()
+    .text(d.menu.team, "team").row()
     .url(d.menu.support || "💬 Support", "https://t.me/official_rivant");
 }
 
@@ -296,6 +297,50 @@ bot.callbackQuery("integrations", async (ctx) => {
   const ids = (businesses || []).map((b) => b.id);
 
   await ctx.reply(ids.length ? d.integrationsConnected(ids.length, SITE_URL) : d.integrationsNone(SITE_URL));
+});
+
+// ---------------------------------------------------------------------------
+// 👥 Учасники команди — тільки перегляд (той самий список, що в модалці
+// "Керувати" в кабінеті). Відкликати доступ навмисно можна тільки з сайту:
+// там дія прив'язана до авторизованої сесії, а тут — просто зручний
+// перегляд для власника прямо в тому ж чаті, де приходять сповіщення.
+// ---------------------------------------------------------------------------
+bot.callbackQuery("team", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  if (!(await requireAccess(ctx))) return;
+  const { lang, d, user } = ctx.rivant;
+
+  // .order("created_at", { ascending: true }) — той самий фікс детермінізму
+  // вибору business_id, що і в /api/business-profile, /api/team/members.
+  const { data: business } = await supabase
+    .from("businesses")
+    .select("id")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (!business) return ctx.reply(d.noBusiness(SITE_URL));
+
+  const { data: members } = await supabase
+    .from("team_members")
+    .select("telegram_username, created_at")
+    .eq("business_id", business.id)
+    .eq("status", "active")
+    .order("created_at", { ascending: true });
+
+  if (!members?.length) return ctx.reply(d.teamNone(SITE_URL));
+
+  const locale = getDict(lang).locale;
+  const lines = members
+    .map((m) => {
+      const joined = new Date(m.created_at).toLocaleDateString(locale);
+      const name = m.telegram_username ? `@${m.telegram_username}` : d.teamMemberWord;
+      return `• ${name} (${d.teamJoinedWord} ${joined})`;
+    })
+    .join("\n");
+
+  await ctx.reply(`${d.teamTitle}\n\n${lines}`, { parse_mode: "Markdown" });
 });
 
 // ---------------------------------------------------------------------------
