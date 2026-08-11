@@ -2611,7 +2611,9 @@ if (!subInfo) {
                   </div>
                   <div>
                     <label className="text-xs text-muted-foreground uppercase tracking-wider">{T.settingsBusinessId || "Business ID"}</label>
-                    <p className="mt-1 w-full bg-secondary/50 border border-border rounded-lg px-3 py-2 text-foreground text-sm cursor-not-allowed">{businessId || "—"}</p>
+                    <p className="mt-1 w-full bg-secondary/50 border border-border rounded-lg px-3 py-2 text-foreground text-sm cursor-not-allowed">
+                      {businessId ? businessId.slice(0, 8) : "—"}
+                    </p>
                   </div>
                   <div>
                     <label className="text-xs text-muted-foreground uppercase tracking-wider">{T.settingsPhone || "Phone"}</label>
