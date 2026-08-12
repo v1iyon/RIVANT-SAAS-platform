@@ -2034,7 +2034,14 @@ if (!subInfo) {
   </div>
 )}
 
-       <div className="flex-1 p-4 lg:p-6 overflow-auto">
+       <div
+          className="flex-1 p-4 lg:p-6 overflow-auto"
+          onScroll={() => {
+            // Закриваємо дропдаун фільтра ризиків при скролі — так само,
+            // як і по свайпу вниз, щоб він не "висів" поверх контенту.
+            if (riskFilterOpen) setRiskFilterOpen(false);
+          }}
+        >
 
           {activeView === "overview" && (
             <div className="space-y-5">
