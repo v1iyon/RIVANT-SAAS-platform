@@ -8,6 +8,20 @@ const admin = createClient(
   process.env.SUPABASE_SERVICE_KEY!
 );
 
+// Сколько дней истории отдаём по тарифу — держим синхронно с текстом на
+// лендинге ("Зберігання історії за 30/90 днів", "Необмежена історія").
+// Единственное место в коде, где это должно быть определено — раньше было
+// продублировано (и не совпадало) в app/api/metrics_computed/route.js,
+// который дашборд вообще не вызывал; тот файл убран, чтобы не разъезжалось
+// снова.
+const HISTORY_DAYS_BY_PLAN: Record<string, number> = {
+  trial: 90,
+  starter: 30,
+  growth: 90,
+  scale: 3650, // "неограниченно" на практике = не режем вообще
+};
+const DEFAULT_HISTORY_DAYS = 30;
+
 export async function GET(req: Request) {
   const email = new URL(req.url).searchParams.get("email");
   if (!email) return Response.json({ error: "email required" }, { status: 400 });
@@ -36,12 +50,29 @@ export async function GET(req: Request) {
     return Response.json({ hasData: false, rows: [] });
   }
 
+  // Скользящее окно "последние N дней по тарифу" — фильтр по дате, а НЕ
+  // limit() после сортировки. С limit(90) после 90+ дней накопленной
+  // истории запрос отдавал бы САМЫЕ СТАРЫЕ 90 дней вместо последних —
+  // дашборд навсегда залипал бы на старом окне для аккаунтов старше
+  // ~3 месяцев. Фильтр по дате сам "едет" вперёд каждый день вместе с
+  // "сегодня": самый старый день просто перестаёт попадать в выборку
+  // (в базе он остаётся), новый день добавляется — без скачков к нулю.
+  const { data: sub } = await admin
+    .from("subscriptions")
+    .select("plan")
+    .eq("user_id", appUser.id)
+    .maybeSingle();
+  const historyDays = HISTORY_DAYS_BY_PLAN[sub?.plan || ""] ?? DEFAULT_HISTORY_DAYS;
+  const sinceDate = new Date();
+  sinceDate.setDate(sinceDate.getDate() - historyDays);
+  const sinceStr = sinceDate.toISOString().slice(0, 10);
+
   const { data: rawRows, error } = await admin
     .from("metrics_computed")
     .select("date, revenue, cost, margin_pct, orders")
     .eq("business_id", business.id)
-    .order("date", { ascending: true })
-    .limit(90);
+    .gte("date", sinceStr)
+    .order("date", { ascending: true });
 
   if (error || !rawRows || rawRows.length === 0) {
     return Response.json({ hasData: false, rows: [] });

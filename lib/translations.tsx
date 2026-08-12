@@ -110,7 +110,7 @@ export const translations = {
     orderService: "Order Service",
     starterFeatures: [
     "Stripe integration",
-    "Daily data sync",
+    "Hourly data sync",
     "COGS tracking & margin analytics",
     "Weekly email digest",
     "30-day data history"
@@ -397,7 +397,7 @@ registerSubtitle: "Start your 14-day free trial"
     orderService: "Замовити послугу",
    starterFeatures: [
     "Інтеграція зі Stripe",
-    "Оновлення даних раз на день",
+    "Щогодинна синхронізація даних",
     "Облік витрат і розрахунок маржинальності",
     "Щотижневі email-звіти",
     "Зберігання історії за 30 днів"
@@ -687,7 +687,7 @@ minutes: "Minuten",
     orderService: "Service bestellen",
    starterFeatures: [
     "Stripe-Integration",
-    "Tägliche Datensynchronisation",
+    "Stündliche Datensynchronisation",
     "Selbstkosten- und Margenanalyse",
     "Wöchentlicher E-Mail-Bericht",
     "30 Tage Datenhistorie"
