@@ -5,6 +5,44 @@ const { getDict, formatMoney } = require("./i18n");
 const bot = new Bot(process.env.BOT_TOKEN);
 const SITE_URL = process.env.SITE_URL || "https://rivant-os.vercel.app";
 
+// Локальна дата бізнесу (не UTC) — той самий підхід, що й у
+// scripts/daily-reports.mjs (localDateStr). Продубльовано тут навмисно:
+// bot.js — CommonJS (require), daily-reports.mjs — ESM (.mjs), змішувати
+// їх в один спільний модуль зараз не варте ризику. Якщо колись міняєш
+// логіку тут — онови так само і в daily-reports.mjs.
+//
+// РАНІШЕ бот рахував "сьогодні" як new Date().toISOString().slice(0,10)
+// (UTC-дата) — для бізнесу поза UTC (майже всі) це могло не збігатися з
+// тим днем, який щойно записав у metrics_computed синк (там теж тепер
+// локальна дата бізнесу, див. scripts/sync-stripe-core.mjs), і /summary
+// в боті міг показати "немає даних за сьогодні" або дані не того дня,
+// що на сайті.
+const FALLBACK_TZ = "Europe/Kyiv";
+function localDateStr(tz) {
+  try {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: tz || FALLBACK_TZ }).format(new Date());
+  } catch {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: FALLBACK_TZ }).format(new Date());
+  }
+}
+
+// Доливає в margin_pct/cost реальні витрати (Shopify shipping, Meta/Google
+// Ads) за конкретний день — той самий крок, що вже робить /api/metrics для
+// кабінету (getFullMargin у sync-stripe-core.mjs для Telegram-алертів).
+// РАНІШЕ бот читав margin_pct напряму з metrics_computed (лише
+// Stripe-комісія/COGS-оцінка), тому показував іншу маржу, ніж кабінет.
+async function getFullMarginForDay(businessId, date, revenue, baseCost) {
+  const { data: expenseRows } = await supabase
+    .from("expenses")
+    .select("amount")
+    .eq("business_id", businessId)
+    .eq("date", date);
+  const extraTotal = (expenseRows || []).reduce((s, r) => s + Number(r.amount || 0), 0);
+  const fullCost = Number((Number(baseCost || 0) + extraTotal).toFixed(2));
+  const marginPct = revenue > 0 ? Number((((revenue - fullCost) / revenue) * 100).toFixed(1)) : 0;
+  return { fullCost, marginPct };
+}
+
 function mainMenu(lang) {
   const d = getDict(lang);
   return new InlineKeyboard()
@@ -178,14 +216,14 @@ bot.callbackQuery("summary", async (ctx) => {
 
   const { data: business } = await supabase
     .from("businesses")
-    .select("id, name")
+    .select("id, name, timezone")
     .eq("user_id", user.id)
     .limit(1)
     .maybeSingle();
 
   if (!business) return ctx.reply(d.noBusiness(SITE_URL));
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateStr(business.timezone);
   const { data: metric } = await supabase
     .from("metrics_computed")
     .select("revenue, cost, margin_pct, orders")
@@ -195,11 +233,13 @@ bot.callbackQuery("summary", async (ctx) => {
 
   if (!metric) return ctx.reply(d.noMetricsToday(business.name));
 
+  const { marginPct } = await getFullMarginForDay(business.id, today, metric.revenue, metric.cost);
+
   await ctx.reply(
     `${d.summaryTitle(business.name)}\n\n` +
       `${d.revenueLabel}: *${formatMoney(metric.revenue, lang)}*\n` +
       `${d.costLabel}: *${formatMoney(metric.cost, lang)}*\n` +
-      `${d.marginLabel}: *${metric.margin_pct}%*\n` +
+      `${d.marginLabel}: *${marginPct}%*\n` +
       `${d.ordersLabel}: *${metric.orders}*`,
     { parse_mode: "Markdown" }
   );
@@ -215,25 +255,38 @@ bot.callbackQuery("metrics", async (ctx) => {
 
   const { data: business } = await supabase
     .from("businesses")
-    .select("id, name")
+    .select("id, name, timezone")
     .eq("user_id", user.id)
     .limit(1)
     .maybeSingle();
 
   if (!business) return ctx.reply(d.noBusiness(SITE_URL));
 
-  const weekAgo = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+  const todayLocal = localDateStr(business.timezone);
+  const weekAgo = (() => {
+    const d = new Date(`${todayLocal}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - 7);
+    return d.toISOString().slice(0, 10);
+  })();
   const { data: rows } = await supabase
     .from("metrics_computed")
-    .select("date, revenue, margin_pct")
+    .select("date, revenue, cost, margin_pct")
     .eq("business_id", business.id)
     .gte("date", weekAgo)
     .order("date", { ascending: true });
 
   if (!rows?.length) return ctx.reply(d.noWeekData);
 
-  const lines = rows
-    .map((r) => `${r.date}: ${formatMoney(r.revenue, lang)} (${d.marginWord} ${r.margin_pct}%)`)
+  const rowsWithFullMargin = await Promise.all(
+    rows.map(async (r) => ({
+      date: r.date,
+      revenue: r.revenue,
+      marginPct: (await getFullMarginForDay(business.id, r.date, r.revenue, r.cost)).marginPct,
+    }))
+  );
+
+  const lines = rowsWithFullMargin
+    .map((r) => `${r.date}: ${formatMoney(r.revenue, lang)} (${d.marginWord} ${r.marginPct}%)`)
     .join("\n");
 
   await ctx.reply(`${d.metricsTitle(business.name)}\n\n${lines}`, { parse_mode: "Markdown" });

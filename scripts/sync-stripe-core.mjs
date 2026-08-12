@@ -32,6 +32,23 @@ async function sendEmail(to, subject, text) {
   });
 }
 
+// ЄДИНЕ джерело правди для "якому календарному дню бізнесу належить ця
+// мить" — той самий підхід, що вже був у daily-reports.mjs (localDateStr)
+// і в bot.js. РАНІШЕ byDate тут групувався по UTC-даті
+// (new Date(c.created*1000).toISOString().slice(0,10)), а daily-reports.mjs
+// і bot.js читають "сьогодні"/"вчора" по ЛОКАЛЬНІЙ даті бізнесу — для будь-
+// якого не-UTC часового поясу (тобто майже всіх клієнтів) ці дві дати
+// періодично розходились, і ранковий/вечірній дайджест чи бот могли
+// підхопити не той рядок metrics_computed, що очікувалось.
+function localDateStr(tz, atSec) {
+  const d = atSec != null ? new Date(atSec * 1000) : new Date();
+  try {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: tz || "UTC" }).format(d);
+  } catch {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: "UTC" }).format(d);
+  }
+}
+
 const PROMPTS = {
   UA: (b, t, y, changePct) => `Дані бізнесу "${b.name}":
 За останні 24 години: виручка $${t.revenue}, витрати $${t.cost}, маржа ${t.margin_pct}%
@@ -198,6 +215,19 @@ async function main(businessId) {
       const apiKey = decrypt(integ.api_key_encrypted);
       console.log("DEBUG decrypt OK, key prefix:", apiKey?.slice(0, 8));
 
+      // Тепер тягнемо business (і його timezone) ОДРАЗУ — раніше цей запит
+      // стояв нижче, ПІСЛЯ gap-detection і групування charges по датах, тому
+      // обидва кроки змушено рахували дату по UTC. Локальна дата бізнеса
+      // потрібна вже тут.
+      const { data: business, error: bizErr } = await admin
+        .from("businesses")
+        .select("id, user_id, name, cost_pct, timezone")
+        .eq("id", integ.business_id)
+        .maybeSingle();
+      console.log("DEBUG business lookup for", integ.business_id, "-> found:", !!business, "error:", bizErr);
+      if (!business) continue;
+      const bizTimezone = business.timezone || "UTC";
+
       // Самолечение пропущенных дней: крон гоняется раз в сутки (vercel.json),
       // и если конкретный прогон падает (таймаут Stripe, сбой decrypt и т.п.),
       // try/catch внизу это ловит и логирует в error_logs — но строка за тот
@@ -209,22 +239,24 @@ async function main(businessId) {
       // известной даты — это просто означает "аккаунту меньше N дней", а не
       // пропуск) и, если они есть, расширяем окно синка к Stripe так, чтобы
       // захватить самый ранний пропущенный день.
+      // Дати тут — локальні дати бізнеса (так само пишуться в metrics_computed
+      // нижче), не UTC.
       let sinceUnix = Math.floor(Date.now() / 1000) - 48 * 3600;
       const { data: existingDatesRows } = await admin
         .from("metrics_computed")
         .select("date")
         .eq("business_id", integ.business_id)
-        .gte("date", new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString().slice(0, 10))
+        .gte("date", localDateStr(bizTimezone, Math.floor(Date.now() / 1000) - 30 * 24 * 3600))
         .order("date", { ascending: true });
       const existingDateSet = new Set((existingDatesRows || []).map((r) => r.date));
       if (existingDateSet.size > 0) {
         const earliestKnown = [...existingDateSet][0];
         for (let i = 2; i < 30; i++) {
-          const d = new Date(Date.now() - i * 24 * 3600 * 1000).toISOString().slice(0, 10);
+          const atSec = Math.floor(Date.now() / 1000) - i * 24 * 3600;
+          const d = localDateStr(bizTimezone, atSec);
           if (d < earliestKnown) break;
           if (!existingDateSet.has(d)) {
-            const gapUnix = Math.floor(new Date(`${d}T00:00:00Z`).getTime() / 1000);
-            sinceUnix = Math.min(sinceUnix, gapUnix);
+            sinceUnix = Math.min(sinceUnix, atSec - 12 * 3600); // запас у пів доби, щоб точно захопити весь локальний день
             console.log("DEBUG gap day detected, widening sync window to backfill:", d);
           }
         }
@@ -237,7 +269,7 @@ async function main(businessId) {
 
       const byDate = {};
       for (const c of successful) {
-        const date = new Date(c.created * 1000).toISOString().slice(0, 10);
+        const date = localDateStr(bizTimezone, c.created);
         if (!byDate[date]) byDate[date] = { revenue: 0, orders: 0, stripeFee: 0 };
         byDate[date].revenue += c.amount / 100;
         byDate[date].orders += 1;
@@ -272,20 +304,15 @@ async function main(businessId) {
       // пропущенных дней выше) с нулевой выручкой, если её там ещё нет —
       // реальный $0-день теперь тоже пишется в базу и попадает в
       // график/прогноз/бота.
-      const todayStr = new Date().toISOString().slice(0, 10);
+      const todayStr = localDateStr(bizTimezone);
       for (let t = sinceUnix; t <= Math.floor(Date.now() / 1000); t += 24 * 3600) {
-        const d = new Date(t * 1000).toISOString().slice(0, 10);
+        const d = localDateStr(bizTimezone, t);
         if (!byDate[d]) byDate[d] = { revenue: 0, orders: 0, stripeFee: 0 };
       }
       if (!byDate[todayStr]) byDate[todayStr] = { revenue: 0, orders: 0, stripeFee: 0 };
 
-      const { data: business, error: bizErr } = await admin
-        .from("businesses")
-        .select("id, user_id, name, cost_pct, timezone")
-        .eq("id", integ.business_id)
-        .maybeSingle();
-      console.log("DEBUG business lookup for", integ.business_id, "-> found:", !!business, "error:", bizErr);
-      if (!business) continue;
+      // business (і bizTimezone) вже отримано на початку ітерації — другий
+      // запит тут прибрано, він лише дублював перший.
 
       // ФІКС: раніше "останні 24 години" рахувались просто як ковзне вікно
       // від поточного моменту — це прибирало хибне "впало до $0" опівночі,
@@ -322,7 +349,6 @@ async function main(businessId) {
         }
       }
 
-      const bizTimezone = business.timezone || "UTC";
       const nowSec = Math.floor(Date.now() / 1000);
       const todayMidnightSec = getLocalMidnightUnixSec(bizTimezone, nowSec);
       const elapsedTodaySec = nowSec - todayMidnightSec;
