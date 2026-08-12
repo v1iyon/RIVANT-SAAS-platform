@@ -82,7 +82,7 @@ function normalizeShopDomain(raw) {
 }
 
 async function fetchShopifyOrders(shopDomain, token, sinceIso) {
-  const url = `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/orders.json?status=any&created_at_min=${encodeURIComponent(sinceIso)}&limit=250&fields=id,created_at,cancelled_at,current_total_price,total_shipping_price_set,shipping_lines,line_items`;
+  const url = `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/orders.json?status=any&created_at_min=${encodeURIComponent(sinceIso)}&limit=250&fields=id,created_at,cancelled_at,current_total_price,total_shipping_price_set,line_items`;
   const res = await fetch(url, { headers: { "X-Shopify-Access-Token": token } });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
