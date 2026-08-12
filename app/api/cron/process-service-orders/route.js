@@ -117,6 +117,7 @@ export async function GET(req) {
         language: result.language,
         metrics: result.metrics,
         expensesBySource: result.expensesBySource,
+        monthOverMonth: result.monthOverMonth,
       });
       const caption = (CAPTION[result.language] || CAPTION.EN)(reportTitleText);
 
