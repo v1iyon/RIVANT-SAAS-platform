@@ -892,6 +892,7 @@ const [forecastLoaded, setForecastLoaded] = useState(false);
   const [riskCategoryFilter, setRiskCategoryFilter] = useState<Risk["category"][]>([]);
   const [riskFilterOpen, setRiskFilterOpen] = useState(false);
   const riskFilterRef = useRef<HTMLDivElement | null>(null);
+  const riskFilterTouchStartYRef = useRef<number | null>(null);
 
   // Підвантажуємо збережений вибір фільтра один раз при монтуванні.
   useEffect(() => {
@@ -2146,6 +2147,7 @@ if (!subInfo) {
                       <div className="relative" ref={riskFilterRef}>
                         <button
                           onClick={() => setRiskFilterOpen((v) => !v)}
+                          title={language === "UA" ? "Фільтр" : language === "DE" ? "Filter" : "Filter"}
                           className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${
                             riskCategoryFilter.length > 0
                               ? "border-blue-500/40 text-blue-300 bg-blue-500/10"
@@ -2153,14 +2155,30 @@ if (!subInfo) {
                           }`}
                         >
                           <Filter className="w-3.5 h-3.5" />
-                          {language === "UA" ? "Фільтр" : language === "DE" ? "Filter" : "Filter"}
+                          <span className="hidden sm:inline">{language === "UA" ? "Фільтр" : language === "DE" ? "Filter" : "Filter"}</span>
                           {riskCategoryFilter.length > 0 && (
                             <span className="ml-0.5 bg-blue-500/30 rounded-full px-1.5 text-[10px]">{riskCategoryFilter.length}</span>
                           )}
                         </button>
 
                         {riskFilterOpen && (
-                          <div className="absolute right-0 mt-2 w-56 bg-gray-900 border border-gray-800 rounded-xl shadow-xl z-20 p-2">
+                          <div
+                            className="absolute right-0 mt-2 w-56 bg-gray-900 border border-gray-800 rounded-xl shadow-xl z-20 p-2 touch-pan-y"
+                            onTouchStart={(e) => {
+                              riskFilterTouchStartYRef.current = e.touches[0].clientY;
+                            }}
+                            onTouchEnd={(e) => {
+                              const startY = riskFilterTouchStartYRef.current;
+                              if (startY == null) return;
+                              const deltaY = e.changedTouches[0].clientY - startY;
+                              // Свайп вниз більш ніж на 40px закриває панель —
+                              // звичний мобільний жест для випадаючих вікон.
+                              if (deltaY > 40) setRiskFilterOpen(false);
+                              riskFilterTouchStartYRef.current = null;
+                            }}
+                          >
+                            {/* Індикатор-"хендл" — сигналізує, що панель можна змахнути вниз (мобільний патерн). */}
+                            <div className="sm:hidden w-9 h-1 rounded-full bg-gray-700 mx-auto mb-2" />
                             <div className="flex items-center justify-between px-2 py-1 mb-1">
                               <span className="text-xs font-semibold text-gray-400">
                                 {language === "UA" ? "Показувати сповіщення про" : language === "DE" ? "Benachrichtigungen anzeigen für" : "Show notifications for"}
@@ -2211,10 +2229,11 @@ if (!subInfo) {
                             console.error("Failed to resolve all alerts", e);
                           }
                         }}
+                        title={language === "UA" ? "Очистити всі" : language === "DE" ? "Alle löschen" : "Clear all"}
                         className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-red-400 transition-colors px-2 py-1 rounded-lg hover:bg-red-500/10"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
-                        {language === "UA" ? "Очистити всі" : language === "DE" ? "Alle löschen" : "Clear all"}
+                        <span className="hidden sm:inline">{language === "UA" ? "Очистити всі" : language === "DE" ? "Alle löschen" : "Clear all"}</span>
                       </button>
                     )}
 
@@ -2232,10 +2251,11 @@ if (!subInfo) {
                             console.error("Failed to clear alert history", e);
                           }
                         }}
+                        title={language === "UA" ? "Очистити історію" : language === "DE" ? "Verlauf löschen" : "Clear history"}
                         className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-red-400 transition-colors px-2 py-1 rounded-lg hover:bg-red-500/10"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
-                        {language === "UA" ? "Очистити історію" : language === "DE" ? "Verlauf löschen" : "Clear history"}
+                        <span className="hidden sm:inline">{language === "UA" ? "Очистити історію" : language === "DE" ? "Verlauf löschen" : "Clear history"}</span>
                       </button>
                     )}
                     </div>

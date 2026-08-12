@@ -324,7 +324,7 @@ bot.callbackQuery("team", async (ctx) => {
 
   const { data: members } = await supabase
     .from("team_members")
-    .select("telegram_username, created_at")
+    .select("telegram_username, telegram_id, created_at")
     .eq("business_id", business.id)
     .eq("status", "active")
     .order("created_at", { ascending: true });
@@ -335,7 +335,14 @@ bot.callbackQuery("team", async (ctx) => {
   const lines = members
     .map((m) => {
       const joined = new Date(m.created_at).toLocaleDateString(locale);
-      const name = m.telegram_username ? `@${m.telegram_username}` : d.teamMemberWord;
+      // Пріоритет @username (клікабельний сам по собі в Markdown) — а якщо
+      // юзернейма нема, робимо клікабельним сам ID через tg://user?id=,
+      // це відкриває профіль людини напряму в Telegram-клієнті.
+      const name = m.telegram_username
+        ? `@${m.telegram_username}`
+        : m.telegram_id
+        ? `[${m.telegram_id}](tg://user?id=${m.telegram_id})`
+        : d.teamMemberWord;
       return `• ${name} (${d.teamJoinedWord} ${joined})`;
     })
     .join("\n");

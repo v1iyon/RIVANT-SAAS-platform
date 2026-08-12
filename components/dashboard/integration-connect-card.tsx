@@ -406,14 +406,16 @@ export function IntegrationConnectCard({
           </p>
         </div>
         {status === "connected" && (
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 min-w-0 w-full sm:w-auto">
             {hasSyncError ? (
-              <span className="text-xs px-2 py-1 rounded-full font-semibold bg-red-500/20 text-red-400 flex items-center gap-1 font-mono whitespace-nowrap">
-                <AlertCircle className="w-3 h-3 shrink-0" /> {texts.syncErrorBadge}{keyPreview ? ` · ${keyPreview}` : ""}
+              <span className="text-xs px-2 py-1 rounded-full font-semibold bg-red-500/20 text-red-400 flex items-center gap-1 font-mono min-w-0 max-w-full">
+                <AlertCircle className="w-3 h-3 shrink-0" />
+                <span className="truncate">{texts.syncErrorBadge}{keyPreview ? ` · ${keyPreview}` : ""}</span>
               </span>
             ) : (
-              <span className="text-xs px-2 py-1 rounded-full font-semibold bg-green-500/20 text-green-400 flex items-center gap-1 font-mono whitespace-nowrap">
-                <CheckCircle className="w-3 h-3 shrink-0" /> {texts.connected}{keyPreview ? ` · ${keyPreview}` : ""}
+              <span className="text-xs px-2 py-1 rounded-full font-semibold bg-green-500/20 text-green-400 flex items-center gap-1 font-mono min-w-0 max-w-full">
+                <CheckCircle className="w-3 h-3 shrink-0" />
+                <span className="truncate">{texts.connected}{keyPreview ? ` · ${keyPreview}` : ""}</span>
               </span>
             )}
             <Button size="sm" variant="outline" className="text-red-400 border-red-400/30 hover:bg-red-500/10 shrink-0" onClick={handleDisconnect}>
