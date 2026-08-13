@@ -1,24 +1,22 @@
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
-import { createClient } from '@supabase/supabase-js'; // Якщо використовуєш Supabase
 
-// Ініціалізація Stripe з твоїм секретним ключем
-
-
-// Ініціалізація Supabase (якщо використовуєш)
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY! // Використовуй Service Role Key для запису!
-);
-
+// ВАЖНО: реальная запись Stripe-данных в metrics_computed происходит в
+// scripts/sync-stripe-core.mjs (запускается через /api/sync-now и по крону) —
+// именно там правильно резолвится business_id/user_id, считаются метрики,
+// COGS-оценка и т.д. Этот вебхук раньше дублировал попытку писать данные
+// напрямую, но: 1) в неправильную таблицу ('metric_computer' вместо
+// 'metrics_computed' — опечатка), 2) с захардкоженным тестовым user_id.
+// Из-за (1) каждый charge.succeeded от Stripe валился с 500, и Stripe
+// бесконечно ретраил один и тот же вебхук.
+//
+// Теперь этот роут только подтверждает получение (200 OK), чтобы Stripe не
+// ретраил вебхуки, и ничего не пишет в БД напрямую — единственный источник
+// правды для метрик остаётся sync-stripe-core.mjs.
 export async function POST(req: Request) {
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
     apiVersion: '2025-02-24.acacia',
   });
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_KEY!
-  );
 
   const body = await req.text();
   const sig = req.headers.get('stripe-signature')!;
@@ -34,39 +32,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Invalid signature' }, { status: 400 });
   }
 
-  // 2. Обробляємо подію
+  // 2. Просто логуємо — фактичний синк даних робить sync-stripe-core.mjs
+  // (через /api/sync-now і крон), щоб уникнути дублювання/розсинхрону логіки
+  // резолву business_id та підрахунку метрик.
   console.log(`🔔 Webhook received: ${event.type}`);
 
-  switch (event.type) {
-    case 'charge.succeeded':
-      const charge = event.data.object as Stripe.Charge;
-      console.log(`💰 Charge succeeded: ${charge.amount} ${charge.currency}`);
-
-      // ТУТ ТИ ЗБЕРІГАЄШ ДАНІ В БАЗУ
-      const { error } = await supabase.from('metric_computer').insert({
-        user_id: 'ТВІЙ_TEСТОВИЙ_USER_ID', // Поки що хардкод, потім буде динамічно
-        amount: charge.amount / 100,
-        currency: charge.currency,
-        status: charge.status,
-        payment_method: charge.payment_method_details?.type || 'unknown',
-        created_at: new Date(charge.created * 1000).toISOString(),
-        // Додай інші поля, які тобі потрібні
-      });
-
-      if (error) {
-        console.error('❌ Error saving to DB:', error);
-        return NextResponse.json({ error: 'DB error' }, { status: 500 });
-      }
-      console.log('✅ Data saved to metric_computer');
-      break;
-
-    // Додай інші типи подій, якщо потрібно
-    // case 'invoice.payment_succeeded': ...
-
-    default:
-      console.log(`ℹ️ Unhandled event type: ${event.type}`);
-  }
-
-  // 3. Відповідаємо Stripe, що все добре
+  // 3. Відповідаємо Stripe, що все добре — завжди 200, щоб Stripe не ретраїв
+  // цей вебхук нескінченно через помилки в непотрібному нам записі в БД.
   return NextResponse.json({ received: true });
 }
