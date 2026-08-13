@@ -923,6 +923,17 @@ const [forecastLoaded, setForecastLoaded] = useState(false);
   const toggleRiskCategory = (cat: Risk["category"]) => {
     setRiskCategoryFilter((prev) => (prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]));
   };
+
+  // Лічильники біля вкладок "Активні"/"Історія": якщо фільтр не обрано (порожній
+  // масив) — показуємо загальну кількість, якщо обрано категорії — кількість
+  // рівно у вибраних категоріях. Раніше тут завжди стояло risks.length /
+  // resolvedRisks.length, ігноруючи riskCategoryFilter.
+  const filteredActiveRisksCount = risks.filter(
+    (risk) => riskCategoryFilter.length === 0 || riskCategoryFilter.includes(risk.category)
+  ).length;
+  const filteredResolvedRisksCount = resolvedRisks.filter(
+    (risk) => riskCategoryFilter.length === 0 || riskCategoryFilter.includes(risk.category)
+  ).length;
   const [alertCount, setAlertCount] = useState(0);
   const [alertsLoaded, setAlertsLoaded] = useState(false);
 
@@ -2137,7 +2148,7 @@ if (!subInfo) {
                         }`}
                       >
                         {language === "UA" ? "Активні" : language === "DE" ? "Aktiv" : "Active"}
-                        {risks.length > 0 && <span className="ml-1.5 opacity-70">{risks.length}</span>}
+                        {filteredActiveRisksCount > 0 && <span className="ml-1.5 opacity-70">{filteredActiveRisksCount}</span>}
                       </button>
                       <button
                         onClick={() => setRisksView("history")}
@@ -2146,7 +2157,7 @@ if (!subInfo) {
                         }`}
                       >
                         {language === "UA" ? "Історія" : language === "DE" ? "Verlauf" : "History"}
-                        {resolvedRisks.length > 0 && <span className="ml-1.5 opacity-70">{resolvedRisks.length}</span>}
+                        {filteredResolvedRisksCount > 0 && <span className="ml-1.5 opacity-70">{filteredResolvedRisksCount}</span>}
                       </button>
                     </div>
 
