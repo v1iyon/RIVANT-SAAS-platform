@@ -1,9 +1,12 @@
 // app/api/auth/google-ads/finish/route.js
 //
-// Крок 3 (тільки коли акаунтів кілька): користувач обрав Customer ID у
-// picker-модалці на дашборді (див. IntegrationConnectCard / dashboard/page.tsx).
-// Дочитуємо refresh_token з httpOnly cookie gads_pending, зберігаємо
-// інтеграцію тим самим шляхом, що й /callback для одного акаунта, і чистимо cookie.
+// Крок 3 (тільки коли акаунтів кілька): користувач обрав customerId у
+// picker-модалці на дашборді (див. app/dashboard/page.tsx). Дочитуємо
+// refresh_token і повний список акаунтів (з їхніми login-customer-id) з
+// httpOnly cookie gads_pending, знаходимо ОБРАНИЙ акаунт САМЕ на сервері
+// (клієнту довіряти не можна — інакше можна було б підмінити
+// login-customer-id прямо в тілі запиту), зберігаємо інтеграцію тим самим
+// шляхом, що й /callback для одного акаунта, і чистимо cookie.
 import { NextResponse } from "next/server";
 import { decrypt } from "@/lib/crypto";
 import { finalizeGoogleAdsConnection } from "@/lib/google-ads-connect";
@@ -29,13 +32,16 @@ export async function POST(req) {
     if (Date.now() - data.ts > MAX_AGE_MS) {
       return Response.json({ error: "Expired — try connecting again" }, { status: 410 });
     }
-    if (!data.customerIds.includes(customerId)) {
+
+    const chosen = (data.accounts || []).find((a) => a.customerId === customerId);
+    if (!chosen) {
       return Response.json({ error: "That account isn't in your accessible accounts" }, { status: 400 });
     }
 
     await finalizeGoogleAdsConnection({
       email: data.email,
-      customerId,
+      customerId: chosen.customerId,
+      loginCustomerId: chosen.loginCustomerId,
       refreshToken: data.refreshToken,
     });
 

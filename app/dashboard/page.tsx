@@ -966,7 +966,8 @@ const [deleteError, setDeleteError] = useState("");
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
   // Google Ads OAuth: після редіректу з /api/auth/google-ads/callback
   // (?google_ads=connected|pick|error) — див. useEffect нижче.
-  const [gadsPickerCustomers, setGadsPickerCustomers] = useState<string[] | null>(null);
+ type GadsAccount = { customerId: string; name: string };
+const [gadsPickerCustomers, setGadsPickerCustomers] = useState<GadsAccount[] | null>(null);
   const [gadsPickerLoading, setGadsPickerLoading] = useState(false);
   const [gadsPickerError, setGadsPickerError] = useState("");
   const [gadsToast, setGadsToast] = useState<{ kind: "success" | "error"; text: string } | null>(null);
@@ -1101,8 +1102,8 @@ const [companySaved, setCompanySaved] = useState(false);
       fetch("/api/auth/google-ads/pending")
         .then((r) => r.json())
         .then((d) => {
-          if (d.customerIds?.length) {
-            setGadsPickerCustomers(d.customerIds);
+          if (d.accounts?.length) {
+            setGadsPickerCustomers(d.accounts);
           } else {
             setGadsPickerError(
               language === "UA" ? "Час вибору вичерпано, спробуйте підключити знову." : language === "DE" ? "Auswahlzeit abgelaufen, bitte erneut verbinden." : "Selection window expired, please connect again."
@@ -3140,14 +3141,17 @@ if (!subInfo) {
 
             {gadsPickerCustomers && (
               <div className="space-y-2 mb-4 max-h-[240px] overflow-y-auto">
-                {gadsPickerCustomers.map((cid) => (
+                {gadsPickerCustomers.map((acc) => (
                   <button
-                    key={cid}
+                    key={acc.customerId}
                     disabled={gadsPickerLoading}
-                    onClick={() => handlePickGoogleAdsCustomer(cid)}
-                    className="w-full text-left px-3 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-white text-sm font-mono transition-colors disabled:opacity-50"
+                    onClick={() => handlePickGoogleAdsCustomer(acc.customerId)}
+                    className="w-full text-left px-3 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-white text-sm transition-colors disabled:opacity-50"
                   >
-                    {cid}
+                    <div className="font-medium">{acc.name}</div>
+                    {acc.name !== acc.customerId && (
+                      <div className="text-xs text-gray-500 font-mono">{acc.customerId}</div>
+                    )}
                   </button>
                 ))}
               </div>

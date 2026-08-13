@@ -7,15 +7,25 @@
 // В отличие от Meta Ads (долгоживущий System User токен), Google Ads требует
 // полноценный OAuth2: refresh_token нужно обменивать на access_token перед
 // каждым запросом (access_token живёт ~1 час). Пользователь один раз получает
-// refresh_token через Google OAuth Playground (используя свой developer_token
-// и свой OAuth-клиент — client_id/client_secret, созданный в Google Cloud
-// Console), а дальше всё обновляется автоматически.
+// refresh_token через Google OAuth (см. lib/google-ads-oauth.js), а дальше
+// всё обновляется автоматически.
+//
+// ВАЖНО: если аккаунт находится под менеджерским (MCC), Google Ads API
+// требует заголовок login-customer-id — без него запросы падают с
+// "Request contains an invalid argument" (если customer_id — это сам MCC,
+// у него физически нет кампаний) либо с "The caller does not have
+// permission" (если customer_id — клиентский аккаунт, но API не знает,
+// через какого менеджера вы к нему обращаетесь). Значение сохраняется
+// ОТДЕЛЬНО ДЛЯ КАЖДОЙ интеграции в config.login_customer_id (см.
+// lib/google-ads-connect.js) — оно у каждого пользователя своё, поэтому
+// НЕ хардкодится и не берётся из общей env-переменной.
 //
 // api_key_encrypted хранит НЕ просто refresh_token, а зашифрованный JSON:
 // { refresh_token, client_secret, developer_token } — client_secret и
 // developer_token достаточно чувствительны, чтобы не держать их в открытом
 // config (см. /api/connect-integration/route.js, SENSITIVE_CONFIG_FIELDS).
-// customer_id и client_id остаются в config как есть — они не секретны.
+// customer_id, client_id и login_customer_id остаются в config как есть —
+// они не секретны.
 import { createClient } from "@supabase/supabase-js";
 import { decrypt } from "../lib/crypto.js";
 import { logError } from "../lib/log-error.js";
@@ -88,7 +98,12 @@ async function refreshAccessToken(clientId, clientSecret, refreshToken) {
 // GAQL-запрос по расходам на уровне кампаний за окно синка, с пагинацией —
 // у крупного аккаунта за 48ч вместе с разбивкой по кампаниям и дням легко
 // может быть >10000 строк (дефолтный page size), одной страницей не обойтись.
-async function fetchGoogleAdsCost(customerId, accessToken, developerToken, sinceDate, untilDate) {
+//
+// loginCustomerId передаётся ИНДИВИДУАЛЬНО для каждой интеграции (см. main()
+// ниже) — если customer_id висит под менеджерским аккаунтом (MCC), сюда
+// приходит id этого MCC; если это самостоятельный аккаунт без менеджера —
+// приходит null, и заголовок просто не добавляется.
+async function fetchGoogleAdsCost(customerId, loginCustomerId, accessToken, developerToken, sinceDate, untilDate) {
   const query = `
     SELECT segments.date, metrics.cost_micros
     FROM campaign
@@ -107,6 +122,7 @@ async function fetchGoogleAdsCost(customerId, accessToken, developerToken, since
           Authorization: `Bearer ${accessToken}`,
           "developer-token": developerToken,
           "Content-Type": "application/json",
+          ...(loginCustomerId ? { "login-customer-id": loginCustomerId } : {}),
         },
         body: JSON.stringify(pageToken ? { query, pageToken } : { query }),
       }
@@ -171,6 +187,8 @@ async function main(businessId) {
     try {
       const customerId = integ.config?.customer_id?.trim();
       const clientId = integ.config?.client_id?.trim();
+      // Необязателен: аккаунт может не находиться под менеджером вовсе.
+      const loginCustomerId = integ.config?.login_customer_id?.trim() || null;
       if (!customerId) throw new Error("Missing customer_id in integration config");
       if (!clientId) throw new Error("Missing client_id in integration config");
 
@@ -186,7 +204,7 @@ async function main(businessId) {
       }
 
       const accessToken = await refreshAccessToken(clientId, clientSecret, refreshToken);
-      const rows = await fetchGoogleAdsCost(customerId, accessToken, developerToken, toDateStr(since), toDateStr(until));
+      const rows = await fetchGoogleAdsCost(customerId, loginCustomerId, accessToken, developerToken, toDateStr(since), toDateStr(until));
 
       const byDate = {};
       for (const row of rows) {

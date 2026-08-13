@@ -1,13 +1,15 @@
 // app/api/auth/google-ads/callback/route.js
 //
 // Крок 2: Google повертає сюди після згоди користувача. Обмінюємо code на
-// refresh_token і дізнаємось, до яких Google Ads акаунтів є доступ
-// (listAccessibleCustomers) — так не треба просити Customer ID вручну.
+// refresh_token і розгортаємо ПОВНУ ієрархію доступних рекламних акаунтів
+// (listAdAccounts) — так не треба просити Customer ID вручну, і кожен акаунт
+// вже приходить з правильним login-customer-id (працює для будь-якого
+// користувача: своя ієрархія, чужий MCC, кілька MCC — без різниці).
 // Якщо акаунт один — одразу підключаємо. Якщо кілька — кладемо тимчасові
 // дані в httpOnly cookie (10 хв) і просимо обрати на дашборді
 // (див. /api/auth/google-ads/pending і /finish).
 import { NextResponse } from "next/server";
-import { readState, exchangeCodeForTokens, listAccessibleCustomers } from "@/lib/google-ads-oauth";
+import { readState, exchangeCodeForTokens, listAdAccounts } from "@/lib/google-ads-oauth";
 import { finalizeGoogleAdsConnection } from "@/lib/google-ads-connect";
 import { encrypt } from "@/lib/crypto";
 
@@ -46,20 +48,22 @@ export async function GET(req) {
 
   try {
     const { accessToken, refreshToken } = await exchangeCodeForTokens({ origin, code });
-    const customerIds = await listAccessibleCustomers(accessToken);
+    // accounts: [{ customerId, loginCustomerId, name }] — вже тільки кінцеві
+    // рекламні акаунти, без менеджерських вузлів (їх обрати взагалі не можна).
+    const accounts = await listAdAccounts(accessToken);
 
-    if (customerIds.length === 0) {
+    if (accounts.length === 0) {
       return NextResponse.redirect(dashboardUrl(origin, { google_ads: "error", google_ads_error: "no_accounts" }));
     }
 
-    if (customerIds.length === 1) {
-      await finalizeGoogleAdsConnection({ email, customerId: customerIds[0], refreshToken });
+    if (accounts.length === 1) {
+      await finalizeGoogleAdsConnection({ email, ...accounts[0], refreshToken });
       return NextResponse.redirect(dashboardUrl(origin, { google_ads: "connected" }));
     }
 
     // Кілька акаунтів під одним Google-логіном — секрети тимчасово в httpOnly
     // cookie, а не у відкритому query-параметрі, доки користувач не обере.
-    const pending = encrypt(JSON.stringify({ email, refreshToken, customerIds, ts: Date.now() }));
+    const pending = encrypt(JSON.stringify({ email, refreshToken, accounts, ts: Date.now() }));
     const res = NextResponse.redirect(dashboardUrl(origin, { google_ads: "pick" }));
     res.cookies.set(PENDING_COOKIE, pending, {
       httpOnly: true,
