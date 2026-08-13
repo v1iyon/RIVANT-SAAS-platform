@@ -81,18 +81,118 @@ function normalizeShopDomain(raw) {
   return domain;
 }
 
-async function fetchShopifyOrders(shopDomain, token, sinceIso) {
-  const url = `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/orders.json?status=any&created_at_min=${encodeURIComponent(sinceIso)}&limit=250&fields=id,created_at,cancelled_at,current_total_price,total_shipping_price_set,line_items`;
-  const res = await fetch(url, { headers: { "X-Shopify-Access-Token": token } });
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`Shopify API error: ${res.status} — ${body.slice(0, 300)}`);
+// Извлекает числовой ID из Shopify GraphQL GID вида "gid://shopify/Order/123456".
+// Нужен, чтобы line_items[].variant_id остался числом — на него завязан REST-запрос
+// в fetchVariantCost() ниже, который мы намеренно не трогаем.
+function extractNumericId(gid) {
+  if (!gid) return null;
+  const match = String(gid).match(/(\d+)$/);
+  return match ? Number(match[1]) : null;
+}
+
+const ORDERS_GRAPHQL_QUERY = `
+  query GetOrders($cursor: String, $searchQuery: String!) {
+    orders(first: 100, after: $cursor, query: $searchQuery, sortKey: CREATED_AT) {
+      pageInfo { hasNextPage endCursor }
+      edges {
+        node {
+          id
+          createdAt
+          cancelledAt
+          currentTotalPriceSet { shopMoney { amount } }
+          totalShippingPriceSet { shopMoney { amount } }
+          shippingLines(first: 10) { edges { node { originalPriceSet { shopMoney { amount } } } } }
+          lineItems(first: 100) {
+            edges { node { quantity variant { id } } }
+          }
+        }
+      }
+    }
   }
-  const data = await res.json();
-  // Известное ограничение: если заказов >250 за окно синка, остальные не попадут
-  // в этот прогон (нет пагинации). Для большинства маленьких магазинов это не
-  // проблема при синке раз в час, но стоит иметь в виду при росте объёма.
-  return data.orders || [];
+`;
+
+// ВАЖНО: этот запрос намеренно не трогает customer, email, shippingAddress,
+// billingAddress и другие protected-поля. Shopify гейтит Protected Customer
+// Data на уровне ПОЛЕЙ в GraphQL (в отличие от REST /orders.json, который
+// блокирует весь endpoint целиком, даже если фильтровать fields= в запросе —
+// см. https://shopify.dev/docs/apps/launch/protected-customer-data). Поэтому
+// этот запрос работает без всякого approval — ни для нас, ни для клиентов,
+// и так будет для любого нового клиента, которого подключат в будущем.
+// Если когда-нибудь понадобится email/адрес клиента — тогда и только тогда
+// нужен будет Protected Customer Data approval, и только на эти поля.
+async function fetchShopifyOrders(shopDomain, token, sinceIso) {
+  const searchQuery = `created_at:>='${sinceIso}'`;
+  const endpoint = `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`;
+
+  const allOrders = [];
+  let cursor = null;
+  let hasNextPage = true;
+  let pageGuard = 0; // защита от бесконечного цикла, если Shopify начнёт врать про hasNextPage
+
+  while (hasNextPage && pageGuard < 50) {
+    pageGuard += 1;
+
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "X-Shopify-Access-Token": token,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        query: ORDERS_GRAPHQL_QUERY,
+        variables: { cursor, searchQuery },
+      }),
+    });
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(`Shopify API error: ${res.status} — ${body.slice(0, 300)}`);
+    }
+
+    const data = await res.json();
+
+    if (data.errors) {
+      // THROTTLED — GraphQL cost-based rate limit, не то же самое что REST leaky
+      // bucket. Ждём и повторяем один раз ту же страницу вместо падения синка.
+      const throttled = data.errors.some((e) => e.extensions?.code === "THROTTLED");
+      if (throttled) {
+        await sleep(2000);
+        continue;
+      }
+      throw new Error(`Shopify GraphQL error: ${JSON.stringify(data.errors).slice(0, 300)}`);
+    }
+
+    const ordersPage = data.data?.orders;
+    if (!ordersPage) break;
+
+    for (const edge of ordersPage.edges) {
+      const node = edge.node;
+      // Реshape под REST-совместимую форму, которую уже ожидает остальной файл
+      // (computeRevenueByDate, computeCogsByDate, main) — так их не пришлось
+      // переписывать вообще.
+      allOrders.push({
+        id: extractNumericId(node.id),
+        created_at: node.createdAt,
+        cancelled_at: node.cancelledAt,
+        current_total_price: node.currentTotalPriceSet?.shopMoney?.amount ?? "0",
+        total_shipping_price_set: {
+          shop_money: { amount: node.totalShippingPriceSet?.shopMoney?.amount ?? "0" },
+        },
+        shipping_lines: (node.shippingLines?.edges || []).map((e) => ({
+          price: e.node.originalPriceSet?.shopMoney?.amount ?? "0",
+        })),
+        line_items: (node.lineItems?.edges || []).map((e) => ({
+          quantity: e.node.quantity,
+          variant_id: extractNumericId(e.node.variant?.id),
+        })),
+      });
+    }
+
+    hasNextPage = ordersPage.pageInfo?.hasNextPage ?? false;
+    cursor = ordersPage.pageInfo?.endCursor ?? null;
+  }
+
+  return allOrders;
 }
 
 async function fetchLowStockVariants(shopDomain, token) {
