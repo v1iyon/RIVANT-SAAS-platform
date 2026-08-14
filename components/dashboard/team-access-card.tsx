@@ -386,56 +386,58 @@ export function TeamAccessCard({ email }: { email: string }) {
   };
 
   return (
-    <div className="flex items-center justify-between gap-3 py-2">
-      <div className="flex-1 min-w-0">
-        <p className="font-medium text-foreground">{tr.title}</p>
-        <p className="text-xs text-muted-foreground">{tr.desc}</p>
+    <div className="py-2">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          <p className="font-medium text-foreground">{tr.title}</p>
+          <p className="text-xs text-muted-foreground">{tr.desc}</p>
+        </div>
 
-        {errorCode && (
-          <p className="text-xs text-red-400 mt-1.5">
-            {errorCode === "no_active_subscription" ? tr.needsSub : tr.genericError}
-          </p>
-        )}
-
-        {!inviteUrl && (
-          <div className="mt-2">
-            <p className="text-[11px] text-muted-foreground mb-1">{tr.inviteCategoriesHint}</p>
-            <CategoryToggles
-              selected={inviteCategories}
-              onToggle={toggleInviteCategory}
-              categoryNames={tr.categoryNames}
-            />
-          </div>
-        )}
-
-        {members.length > 0 && (
-          <button
-            onClick={() => setManageOpen(true)}
-            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground mt-2 transition-colors"
-          >
-            <Users className="w-3.5 h-3.5" />
-            <span className="underline underline-offset-2">{tr.manage}</span>
-          </button>
-        )}
-
-        {inviteUrl && (
-          <p className="text-[11px] text-muted-foreground/70 mt-1.5 font-mono truncate">
-            {truncateUrl(inviteUrl)}
-          </p>
-        )}
+        <div className="shrink-0">
+          {inviteUrl ? (
+            <Button variant="outline" size="sm" onClick={handleCopy}>
+              {copied ? tr.copied : tr.copyLink}
+            </Button>
+          ) : (
+            <Button variant="outline" size="sm" onClick={handleInvite} disabled={loading}>
+              {loading ? "..." : tr.invite}
+            </Button>
+          )}
+        </div>
       </div>
 
-      <div className="shrink-0">
-        {inviteUrl ? (
-          <Button variant="outline" size="sm" onClick={handleCopy}>
-            {copied ? tr.copied : tr.copyLink}
-          </Button>
-        ) : (
-          <Button variant="outline" size="sm" onClick={handleInvite} disabled={loading}>
-            {loading ? "..." : tr.invite}
-          </Button>
-        )}
-      </div>
+      {errorCode && (
+        <p className="text-xs text-red-400 mt-1.5">
+          {errorCode === "no_active_subscription" ? tr.needsSub : tr.genericError}
+        </p>
+      )}
+
+      {!inviteUrl && (
+        <div className="mt-2 w-full">
+          <p className="text-[11px] text-muted-foreground mb-1.5">{tr.inviteCategoriesHint}</p>
+          <CategoryToggles
+            selected={inviteCategories}
+            onToggle={toggleInviteCategory}
+            categoryNames={tr.categoryNames}
+          />
+        </div>
+      )}
+
+      {inviteUrl && (
+        <p className="text-[11px] text-muted-foreground/70 mt-1.5 font-mono truncate">
+          {truncateUrl(inviteUrl)}
+        </p>
+      )}
+
+      {members.length > 0 && (
+        <button
+          onClick={() => setManageOpen(true)}
+          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground mt-2 transition-colors"
+        >
+          <Users className="w-3.5 h-3.5" />
+          <span className="underline underline-offset-2">{tr.manage}</span>
+        </button>
+      )}
 
       <TeamManageModal
         open={manageOpen}
@@ -448,6 +450,3 @@ export function TeamAccessCard({ email }: { email: string }) {
     </div>
   );
 }
-
-
-
