@@ -1,624 +1,588 @@
-"use client";
+// scripts/shopify-sync.mjs
+//
+// Этап 3 плана — sync-модуль для Shopify. Паттерн 1:1 с sync-stripe-core.mjs:
+// расшифровать ключ -> запрос к API провайдера -> запись в expenses -> логирование ошибок.
+//
+// Пишем в expenses и СТОИМОСТЬ ДОСТАВКИ (shipping, есть прямо в заказе), и
+// СЕБЕСТОИМОСТЬ ТОВАРА (cost of goods). Себестоимость лежит на уровне
+// inventory_item.cost, а не в заказе — поэтому на каждый УНИКАЛЬНЫЙ variant
+// в окне синка уходит 2 доп. запроса к Shopify (variant → inventory_item_id,
+// потом inventory_item → cost). Кэшируем в рамках одного прогона, чтобы один
+// и тот же товар не запрашивался повторно, если его купили несколько раз.
+// Важно: Shopify REST ограничивает ~2 запроса/сек (leaky bucket), поэтому
+// запросы идут последовательно с небольшой паузой — при большом ассортименте
+// синк может занять заметное время (сотни SKU = пара минут). Если вариант
+// не имеет cost, выставленного в Shopify (поле пустое), он просто
+// пропускается — его нельзя посчитать, это не баг.
+import { createClient } from "@supabase/supabase-js";
+import { decrypt } from "../lib/crypto.js";
+import { logError } from "../lib/log-error.js";
+import { resolveShopifyToken } from "../lib/shopify-token.mjs";
+import { sendAlertToBusiness, getUserContact, generateAlertExplanation, detectExpenseAnomaly } from "../lib/alerts.mjs";
 
-import { useState, useEffect, useRef } from "react";
-import { Button } from "@/components/ui/button";
-import { CheckCircle, AlertCircle, Lock } from "lucide-react";
-import { useLanguage } from "@/lib/translations";
+const SYNC_FAILURE_MESSAGE = {
+  UA: () => `Не вдалося синхронізувати Shopify`,
+  EN: () => `Failed to sync Shopify`,
+  DE: () => `Shopify Synchronisierung fehlgeschlagen`,
+};
 
-type LockReason = "expired" | "plan" | "selection" | null;
-
-interface Props {
-  email: string;
-  provider: string;
-  displayName: string;
-  placeholder: string;
-  hint: string;
-  isExpiredTrial?: boolean;
-  // "trial" даёт доступ як Growth (одна додаткова інтеграція), "growth" — одна,
-  // "scale" — без обмежень, "starter"/null — додаткові інтеграції недоступні.
-  planTier?: string | null;
-  // Поточний зафіксований вибір на billing-період (з subscriptions.integrations_selected).
-  selectedProviders?: string[];
-  onLockedClick?: () => void;
-  // Викликається після успішного підключення на Growth/Trial — щоб батьківський
-  // компонент одразу оновив selectedProviders і заблокував інші картки без релоаду.
-  onSelected?: (provider: string) => void;
-  // Деяким провайдерам (Shopify — домен магазину, Meta Ads — Ad Account ID) мало
-  // самого ключа. Якщо задано — рендериться друге поле, обов'язкове для підключення.
-  extraField?: { key: string; label: string; placeholder: string };
-  // Google Ads потребує одразу кількох полів (Customer ID, OAuth Client ID/Secret,
-  // Developer Token) на додачу до refresh token в основному полі — використовуємо
-  // це замість extraField, коли треба більше одного додаткового поля.
-  extraFields?: { key: string; label: string; placeholder: string }[];
-  // Якщо задано — картка показує кнопку "Підключити через Google" (редірект на
-  // /api/auth/google-ads/start), а не ручні поля. Ручний ввід Client ID/Secret/
-  // Developer Token/refresh token більше не потрібен — все це налаштоване
-  // app-wide на сервері, користувач лише проходить Google consent screen.
-  oauthStartHref?: string;
-  oauthButtonLabel?: string;
-  // Тільки для Shopify: чекбокс "це окремий потік грошей" -> config.revenue_mode.
-  // Не показаний -> revenue_mode взагалі не передається -> бекенд трактує це
-  // як дефолтний "replace" (Shopify заміщує Stripe для цієї дати, безпечний
-  // дефолт проти задвоєння доходу).
-  showRevenueModeCheckbox?: boolean;
-  refreshToken?: number;
-  syncFailed?: boolean;
+function getSyncFailureReason(error) {
+  const message = String(error?.message || "").toLowerCase();
+  if (message.includes("app_not_installed")) return "app_not_installed";
+  if (message.includes("401") || message.includes("403") || message.includes("token")) return "access_denied";
+  if (message.includes("404") || message.includes("not found")) return "store_not_found";
+  return "connection_failed";
 }
 
-// Trial навмисно НЕ в цьому списку: під час трайлу доступ повний, як на Scale,
-// щоб людина побачила всю цінність продукту до оплати. Обмеження на 1 інтеграцію
-// діє тільки для платного тарифу Growth.
-const SINGLE_PICK_TIERS = ["growth"];
+const SYNC_FAILURE_EXPLANATION = {
+  UA: {
+    app_not_installed: "Застосунок RIVANT не встановлено в Shopify.",
+    access_denied: "Перевірте доступ застосунку та токен Shopify.",
+    store_not_found: "Перевірте адресу магазину Shopify.",
+    connection_failed: "Перевірте доступ застосунку Shopify.",
+  },
+  EN: {
+    app_not_installed: "The RIVANT app is not installed in Shopify.",
+    access_denied: "Check the Shopify app access and token.",
+    store_not_found: "Check the Shopify store address.",
+    connection_failed: "Check the Shopify app access.",
+  },
+  DE: {
+    app_not_installed: "Die RIVANT-App ist nicht in Shopify installiert.",
+    access_denied: "Prüfen Sie App-Zugriff und Shopify-Token.",
+    store_not_found: "Prüfen Sie die Shopify-Shop-Adresse.",
+    connection_failed: "Prüfen Sie den Zugriff der Shopify-App.",
+  },
+};
 
-export function IntegrationConnectCard({
-  email,
-  provider,
-  displayName,
-  placeholder,
-  hint,
-  isExpiredTrial = false,
-  planTier = null,
-  selectedProviders = [],
-  onLockedClick,
-  onSelected,
-  extraField,
-  extraFields,
-  oauthStartHref,
-  oauthButtonLabel,
-  showRevenueModeCheckbox = false,
-  refreshToken = 0,
-  syncFailed = false,
-}: Props) {
-  const { language } = useLanguage();
-  const [revenueModeAdd, setRevenueModeAdd] = useState(false);
-  const [revenueModeSaving, setRevenueModeSaving] = useState(false);
-  // Нормалізуємо обидва варіанти (одне поле / кілька полів) в один масив,
-  // щоб решта компонента не знала про різницю.
-  const fields = extraFields ?? (extraField ? [extraField] : []);
-  const [apiKey, setApiKey] = useState("");
-  const [extraValues, setExtraValues] = useState<Record<string, string>>({});
-  const [status, setStatus] = useState<"checking" | "idle" | "loading" | "connected" | "error">("checking");
-  const [errorMsg, setErrorMsg] = useState("");
-  // Персистентний прапорець з БД (integrations.status === "error"): бейдж і
-  // форма переприв'язки орієнтуються саме на нього і тримаються, доки
-  // наступний реальний синк (крон чи ручний) не пройде успішно.
-  const [hasSyncError, setHasSyncError] = useState(false);
-  // Конкретна причина з бекенду (лише Shopify пише її в config.sync_error_reason;
-  // інші провайдери — generic-повідомлення за замовчуванням).
-  const [syncErrorReason, setSyncErrorReason] = useState<string | undefined>(undefined);
-  // Текст помилки — на відміну від бейджа (постійний, поки не полагодили) —
-  // показується лише 60с з моменту появи проблеми, щоб не висіти тижнями.
-  // Бейдж лишається головним індикатором стану.
-  const [showErrorBanner, setShowErrorBanner] = useState(false);
-  const [lastSynced, setLastSynced] = useState<string | null>(null);
-  const [keyPreview, setKeyPreview] = useState<string | null>(null);
-  const [showLockedToast, setShowLockedToast] = useState(false);
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const bannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+const COGS_SPIKE_MESSAGE = {
+  UA: (pct, avg, today, date) => `Собівартість товарів зросла на ${pct}% (з $${Math.round(avg)} до $${Math.round(today)}) ${date}`,
+  EN: (pct, avg, today, date) => `Cost of goods jumped ${pct}% (from $${Math.round(avg)} to $${Math.round(today)}) on ${date}`,
+  DE: (pct, avg, today, date) => `Wareneinsatz ist am ${date} um ${pct}% gestiegen (von $${Math.round(avg)} auf $${Math.round(today)})`,
+};
 
-  const syncErrorMessage = (reason?: string) => {
-    const messages = language === "UA"
-      ? {
-          app_not_installed: "Застосунок RIVANT не встановлено в Shopify.",
-          access_denied: "Перевірте доступ застосунку та токен Shopify.",
-          store_not_found: "Перевірте адресу магазину Shopify.",
-          connection_failed: `Не вдалося синхронізувати ${displayName}. Перевірте доступ.`,
-        }
-      : language === "DE"
-      ? {
-          app_not_installed: "Die RIVANT-App ist nicht in Shopify installiert.",
-          access_denied: "Prüfen Sie App-Zugriff und Shopify-Token.",
-          store_not_found: "Prüfen Sie die Shopify-Shop-Adresse.",
-          connection_failed: `${displayName} konnte nicht synchronisiert werden. Prüfen Sie den Zugriff.`,
-        }
-      : {
-          app_not_installed: "The RIVANT app is not installed in Shopify.",
-          access_denied: "Check the Shopify app access and token.",
-          store_not_found: "Check the Shopify store address.",
-          connection_failed: `Couldn't sync ${displayName}. Check the access.`,
-        };
-    return messages[reason as keyof typeof messages] || messages.connection_failed;
-  };
+const SHIPPING_SPIKE_MESSAGE = {
+  UA: (pct, avg, today, date) => `Витрати на доставку зросли на ${pct}% (з $${Math.round(avg)} до $${Math.round(today)}) ${date}`,
+  EN: (pct, avg, today, date) => `Shipping costs jumped ${pct}% (from $${Math.round(avg)} to $${Math.round(today)}) on ${date}`,
+  DE: (pct, avg, today, date) => `Versandkosten sind am ${date} um ${pct}% gestiegen (von $${Math.round(avg)} auf $${Math.round(today)})`,
+};
 
-  const loadStatus = async () => {
-    if (!email) return;
-    try {
-      const response = await fetch(`/api/integrations-status?email=${encodeURIComponent(email)}`, { cache: "no-store" });
-      const data = await response.json();
-      const row = (data.integrations || []).find((i: any) => i.provider === provider);
-      if (row?.sync_error) {
-        // Ключі валідні і колись підключення пройшло, але останній синк
-        // (кроном чи вручну) впав — показуємо це одразу, а не мовчки
-        // тримаємо зелений бейдж "Підключено".
-        setStatus("connected");
-        setErrorMsg("");
-        setHasSyncError(true);
-        setSyncErrorReason(row.config?.sync_error_reason);
-        setLastSynced(row.last_synced_at);
-        setKeyPreview(row.key_preview);
-        if (showRevenueModeCheckbox) {
-          setRevenueModeAdd(row.config?.revenue_mode === "add");
-        }
-      } else if (row?.connected) {
-        setStatus("connected");
-        setErrorMsg("");
-        setHasSyncError(false);
-        setLastSynced(row.last_synced_at);
-        setKeyPreview(row.key_preview);
-        if (fields.length && row.config) {
-          const prefill: Record<string, string> = {};
-          for (const f of fields) {
-            if (row.config[f.key]) prefill[f.key] = row.config[f.key];
+const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+
+const SHOPIFY_API_VERSION = "2024-01";
+const LOW_STOCK_THRESHOLD = 20;
+
+function normalizeShopDomain(raw) {
+  let domain = (raw || "").trim().replace(/^https?:\/\//, "").replace(/\/$/, "");
+  if (!domain) return null;
+  if (!domain.endsWith(".myshopify.com") && !domain.includes(".")) {
+    domain = `${domain}.myshopify.com`;
+  }
+  return domain;
+}
+
+// Извлекает числовой ID из Shopify GraphQL GID вида "gid://shopify/Order/123456".
+// Нужен, чтобы line_items[].variant_id остался числом — на него завязан REST-запрос
+// в fetchVariantCost() ниже, который мы намеренно не трогаем.
+function extractNumericId(gid) {
+  if (!gid) return null;
+  const match = String(gid).match(/(\d+)$/);
+  return match ? Number(match[1]) : null;
+}
+
+const ORDERS_GRAPHQL_QUERY = `
+  query GetOrders($cursor: String, $searchQuery: String!) {
+    orders(first: 100, after: $cursor, query: $searchQuery, sortKey: CREATED_AT) {
+      pageInfo { hasNextPage endCursor }
+      edges {
+        node {
+          id
+          createdAt
+          cancelledAt
+          currentTotalPriceSet { shopMoney { amount } }
+          totalShippingPriceSet { shopMoney { amount } }
+          shippingLines(first: 10) { edges { node { originalPriceSet { shopMoney { amount } } } } }
+          lineItems(first: 100) {
+            edges { node { quantity variant { id } } }
           }
-          setExtraValues(prefill);
-        }
-        if (showRevenueModeCheckbox) {
-          setRevenueModeAdd(row.config?.revenue_mode === "add");
-        }
-      } else {
-        setStatus("idle");
-        setHasSyncError(false);
-      }
-    } catch {
-      setStatus("idle");
-    }
-  };
-
-  useEffect(() => {
-    loadStatus();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [email, provider, refreshToken]);
-
-  // Банер з описом живе лише 60с з моменту, коли hasSyncError стає true —
-  // це рахується і для першого рендера картки з уже активною помилкою.
-  // Бейдж на кнопці лишається без обмеження за часом, поки статус не
-  // зміниться на успішний.
-  useEffect(() => {
-    if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
-    if (hasSyncError) {
-      setShowErrorBanner(true);
-      bannerTimerRef.current = setTimeout(() => setShowErrorBanner(false), 60_000);
-    } else {
-      setShowErrorBanner(false);
-    }
-    return () => {
-      if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
-    };
-  }, [hasSyncError]);
-
-  useEffect(() => {
-    return () => {
-      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-      if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
-    };
-  }, []);
-
-  // Визначаємо причину блокування, за пріоритетом: trial/план закінчився >
-  // немає доступу до додаткових інтеграцій на цьому тарифі > вибір уже
-  // зафіксований на іншому провайдері цього billing-періоду.
-  const lockReason: LockReason = isExpiredTrial
-    ? "expired"
-    : !planTier || planTier === "starter"
-    ? "plan"
-    : SINGLE_PICK_TIERS.includes(planTier) && selectedProviders.length > 0 && !selectedProviders.includes(provider)
-    ? "selection"
-    : null;
-
-  const locked = lockReason !== null;
-
-  const triggerLockedToast = () => {
-    setShowLockedToast(true);
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    toastTimerRef.current = setTimeout(() => setShowLockedToast(false), 6000);
-  };
-
-  const handleConnect = async () => {
-    if (locked) {
-      triggerLockedToast();
-      return;
-    }
-    if (!apiKey.trim()) return;
-    for (const f of fields) {
-      if (!extraValues[f.key]?.trim()) {
-        setStatus("error");
-        setErrorMsg(`${f.label} is required`);
-        return;
-      }
-    }
-    setStatus("loading");
-    setErrorMsg("");
-    try {
-      const res = await fetch("/api/connect-integration", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email,
-          provider,
-          apiKey: apiKey.trim(),
-          config: {
-            ...Object.fromEntries(fields.map((f) => [f.key, extraValues[f.key]?.trim() || ""])),
-            ...(showRevenueModeCheckbox ? { revenue_mode: revenueModeAdd ? "add" : "replace" } : {}),
-          },
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setStatus("error");
-        setErrorMsg(data.error || "Connection failed");
-        return;
-      }
-
-      // Тариф з обмеженням в 1 додаткову інтеграцію — одразу фіксуємо вибір.
-      if (planTier && SINGLE_PICK_TIERS.includes(planTier) && selectedProviders.length === 0) {
-        try {
-          const selRes = await fetch("/api/integrations-select", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email, providers: [provider] }),
-          });
-          if (selRes.ok) onSelected?.(provider);
-        } catch (e) {
-          console.error("Failed to lock integration selection", e);
         }
       }
-
-      setApiKey("");
-      const syncResponse = await fetch("/api/sync-now", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, provider }),
-      });
-      if (!syncResponse.ok) {
-        // Не показуємо тимчасовий тост окремо від бейджа — підтягуємо
-        // актуальний статус з БД, щоб бейдж і банер одразу відображали
-        // реальну помилку синхронізації (hasSyncError), а не "Підключено".
-        await loadStatus();
-        return;
-      }
-      const syncResult = await syncResponse.json().catch(() => ({}));
-      if (syncResult.failedProviders?.includes(provider)) {
-        await loadStatus();
-        return;
-      }
-      await loadStatus();
-    } catch {
-      setStatus("error");
-      setErrorMsg("Network error");
     }
-  };
+  }
+`;
 
-  const handleToggleRevenueMode = async () => {
-    const nextMode = revenueModeAdd ? "replace" : "add";
-    setRevenueModeSaving(true);
-    try {
-      const res = await fetch("/api/integration-revenue-mode", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, provider, revenueMode: nextMode }),
-      });
-      if (res.ok) setRevenueModeAdd(nextMode === "add");
-    } catch (e) {
-      console.error("Failed to update revenue_mode", e);
-    } finally {
-      setRevenueModeSaving(false);
-    }
-  };
+// ВАЖНО: этот запрос намеренно не трогает customer, email, shippingAddress,
+// billingAddress и другие protected-поля. Shopify гейтит Protected Customer
+// Data на уровне ПОЛЕЙ в GraphQL (в отличие от REST /orders.json, который
+// блокирует весь endpoint целиком, даже если фильтровать fields= в запросе —
+// см. https://shopify.dev/docs/apps/launch/protected-customer-data). Поэтому
+// этот запрос работает без всякого approval — ни для нас, ни для клиентов,
+// и так будет для любого нового клиента, которого подключат в будущем.
+// Если когда-нибудь понадобится email/адрес клиента — тогда и только тогда
+// нужен будет Protected Customer Data approval, и только на эти поля.
+async function fetchShopifyOrders(shopDomain, token, sinceIso) {
+  const searchQuery = `created_at:>='${sinceIso}'`;
+  const endpoint = `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`;
 
-  const handleOAuthConnect = () => {
-    if (locked) {
-      triggerLockedToast();
-      return;
-    }
-    if (!oauthStartHref) return;
-    window.location.href = oauthStartHref;
-  };
+  const allOrders = [];
+  let cursor = null;
+  let hasNextPage = true;
+  let pageGuard = 0; // защита от бесконечного цикла, если Shopify начнёт врать про hasNextPage
 
-  const handleDisconnect = async () => {
-    if (isExpiredTrial) {
-      triggerLockedToast();
-      return;
-    }
-    await fetch("/api/connect-integration", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, provider }),
+  while (hasNextPage && pageGuard < 50) {
+    pageGuard += 1;
+
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "X-Shopify-Access-Token": token,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        query: ORDERS_GRAPHQL_QUERY,
+        variables: { cursor, searchQuery },
+      }),
     });
-    setStatus("idle");
-    setLastSynced(null);
-    setKeyPreview(null);
-    // Навмисно НЕ звільняємо selectedProviders тут — вибір лишається
-    // зафіксованим до кінця billing-періоду навіть після відключення.
-  };
 
-  const texts = {
-    connectDesc:
-      language === "UA"
-        ? `Підключіть ${displayName}, щоб отримувати реальні дані`
-        : language === "DE"
-        ? `Verbinden Sie ${displayName}, um echte Daten abzurufen`
-        : `Connect ${displayName} to pull real data`,
-    connectedWaiting:
-      language === "UA" ? "Підключено, очікуємо першу синхронізацію" : language === "DE" ? "Verbunden, wartet auf erste Synchronisierung" : "Connected, waiting for first sync",
-    connectedError:
-      language === "UA" ? "Підключено, але останній синк не пройшов" : language === "DE" ? "Verbunden, aber die letzte Synchronisierung ist fehlgeschlagen" : "Connected, but the last sync failed",
-    lastSyncedLabel: language === "UA" ? "Остання синхронізація" : language === "DE" ? "Letzte Synchronisierung" : "Last synced",
-    connected: language === "UA" ? "Підключено" : language === "DE" ? "Verbunden" : "Connected",
-    connectBtn: language === "UA" ? `Підключити ${displayName}` : language === "DE" ? `${displayName} verbinden` : `Connect ${displayName}`,
-    reconnectBtn: language === "UA" ? "Оновити підключення" : language === "DE" ? "Verbindung aktualisieren" : "Update connection",
-    reconnectHint:
-      language === "UA"
-        ? "Введіть оновлені дані нижче й підключіть ще раз — не потрібно спершу відключати."
-        : language === "DE"
-        ? "Geben Sie unten aktualisierte Daten ein und verbinden Sie erneut — kein vorheriges Trennen nötig."
-        : "Enter updated details below and connect again — no need to disconnect first.",
-    disconnectBtn: language === "UA" ? "Відключити" : language === "DE" ? "Trennen" : "Disconnect",
-    syncErrorBadge: language === "UA" ? "Помилка синхронізації" : language === "DE" ? "Sync-Fehler" : "Sync error",
-    syncNowBtn: language === "UA" ? "Синхронізувати зараз" : language === "DE" ? "Jetzt synchronisieren" : "Sync now",
-    connecting: language === "UA" ? "Підключення..." : language === "DE" ? "Verbinde..." : "Connecting...",
-    revenueModeAddLabel:
-      language === "UA"
-        ? "У мене Stripe і Shopify — це різні продажі (не той самий магазин). Порахувати виручку з обох, а не тільки з Shopify"
-        : language === "DE"
-        ? "Ich habe Stripe und Shopify — unterschiedliche Verkäufe (nicht derselbe Shop). Umsatz aus beiden zählen, nicht nur aus Shopify"
-        : "I have Stripe and Shopify — different sales (not the same store). Count revenue from both, not just Shopify",
-    revenueModeCurrentReplace:
-      language === "UA"
-        ? "Дохід беремо зі Shopify (щоб не порахувати ту саму продажу двічі — і в Stripe, і в Shopify)"
-        : language === "DE"
-        ? "Umsatz kommt aus Shopify (damit derselbe Verkauf nicht doppelt gezählt wird — in Stripe und in Shopify)"
-        : "Revenue comes from Shopify (so the same sale isn't counted twice — in both Stripe and Shopify)",
-    revenueModeCurrentAdd:
-      language === "UA"
-        ? "Дохід беремо і зі Stripe, і зі Shopify — сумуємо (бо це два різні джерела продажів)"
-        : language === "DE"
-        ? "Umsatz kommt aus Stripe UND Shopify — beides wird addiert (zwei getrennte Verkaufsquellen)"
-        : "Revenue comes from both Stripe and Shopify — added together (two separate sales sources)",
-    revenueModeSwitchToAdd:
-      language === "UA"
-        ? "У мене Stripe і Shopify — це різні продажі, порахувати обидва"
-        : language === "DE"
-        ? "Ich habe Stripe und Shopify — das sind unterschiedliche Verkäufe, beide zählen"
-        : "I have Stripe and Shopify — these are different sales, count both",
-    revenueModeSwitchToReplace:
-      language === "UA"
-        ? "Ні, Shopify — це і є мій Stripe (той самий магазин)"
-        : language === "DE"
-        ? "Nein, Shopify ist mein Stripe (derselbe Shop)"
-        : "No, Shopify is my Stripe (same store)",
-    revenueModeSaving: language === "UA" ? "Зберігаємо..." : language === "DE" ? "Speichere..." : "Saving...",
-  };
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(`Shopify API error: ${res.status} — ${body.slice(0, 300)}`);
+    }
 
-  const lockedTexts: Record<Exclude<LockReason, null>, { title: string; body: string; cta: string }> = {
-    expired: {
-      title: language === "UA" ? "Тариф не активний" : language === "DE" ? "Kein aktiver Tarif" : "No active plan",
-      body:
-        language === "UA"
-          ? "Щоб підключити інтеграцію, потрібно оформити тариф."
-          : language === "DE"
-          ? "Um eine Integration zu verbinden, benötigen Sie einen aktiven Tarif."
-          : "You need an active plan to connect this integration.",
-      cta: language === "UA" ? "Переглянути тарифи" : language === "DE" ? "Tarife ansehen" : "View plans",
-    },
-    plan: {
-      title: language === "UA" ? "Доступно на тарифі Growth" : language === "DE" ? "Verfügbar im Growth-Tarif" : "Available on Growth plan",
-      body:
-        language === "UA"
-          ? `${displayName} доступний на тарифі Growth (1 інтеграція на вибір) або Scale (усі інтеграції).`
-          : language === "DE"
-          ? `${displayName} ist im Growth-Tarif (1 Integration nach Wahl) oder Scale-Tarif (alle Integrationen) verfügbar.`
-          : `${displayName} is available on the Growth plan (pick 1) or the Scale plan (all integrations).`,
-      cta: language === "UA" ? "Оновити тариф" : language === "DE" ? "Upgraden" : "Upgrade",
-    },
-    selection: {
-      title:
-        language === "UA"
-          ? "Вибір зафіксовано"
-          : language === "DE"
-          ? "Auswahl fixiert"
-          : "Selection locked",
-      body:
-        language === "UA"
-          ? `На тарифі Growth доступна 1 додаткова інтеграція. Ви вже обрали ${selectedProviders[0] || "іншу"} на цей billing-період — змінити можна після продовження підписки або переходу на Scale.`
-          : language === "DE"
-          ? `Der Growth-Tarif erlaubt 1 zusätzliche Integration. Sie haben bereits ${selectedProviders[0] || "eine andere"} für diesen Abrechnungszeitraum gewählt — Änderung ist erst nach Verlängerung oder Upgrade auf Scale möglich.`
-          : `Growth plan allows 1 additional integration. You've already picked ${selectedProviders[0] || "another one"} for this billing period — change it after renewal or by upgrading to Scale.`,
-      cta: language === "UA" ? "Перейти на Scale" : language === "DE" ? "Auf Scale upgraden" : "Upgrade to Scale",
-    },
-  };
+    const data = await res.json();
 
-  const lockedOkText = language === "UA" ? "Гаразд" : language === "DE" ? "OK" : "OK";
+    if (data.errors) {
+      // THROTTLED — GraphQL cost-based rate limit, не то же самое что REST leaky
+      // bucket. Ждём и повторяем один раз ту же страницу вместо падения синка.
+      const throttled = data.errors.some((e) => e.extensions?.code === "THROTTLED");
+      if (throttled) {
+        await sleep(2000);
+        continue;
+      }
+      throw new Error(`Shopify GraphQL error: ${JSON.stringify(data.errors).slice(0, 300)}`);
+    }
 
-  if (status === "checking") {
-    return (
-      <div className="bg-gray-900/30 rounded-xl p-5 border border-gray-800">
-        <div className="flex items-center justify-between mb-1">
-          <h4 className="font-semibold text-white">{displayName}</h4>
-        </div>
-        <div className="h-4 w-40 bg-gray-800 rounded animate-pulse" />
-      </div>
-    );
+    const ordersPage = data.data?.orders;
+    if (!ordersPage) break;
+
+    for (const edge of ordersPage.edges) {
+      const node = edge.node;
+      // Реshape под REST-совместимую форму, которую уже ожидает остальной файл
+      // (computeRevenueByDate, computeCogsByDate, main) — так их не пришлось
+      // переписывать вообще.
+      allOrders.push({
+        id: extractNumericId(node.id),
+        created_at: node.createdAt,
+        cancelled_at: node.cancelledAt,
+        current_total_price: node.currentTotalPriceSet?.shopMoney?.amount ?? "0",
+        total_shipping_price_set: {
+          shop_money: { amount: node.totalShippingPriceSet?.shopMoney?.amount ?? "0" },
+        },
+        shipping_lines: (node.shippingLines?.edges || []).map((e) => ({
+          price: e.node.originalPriceSet?.shopMoney?.amount ?? "0",
+        })),
+        line_items: (node.lineItems?.edges || []).map((e) => ({
+          quantity: e.node.quantity,
+          variant_id: extractNumericId(e.node.variant?.id),
+        })),
+      });
+    }
+
+    hasNextPage = ordersPage.pageInfo?.hasNextPage ?? false;
+    cursor = ordersPage.pageInfo?.endCursor ?? null;
   }
 
-  return (
-    <div className="bg-gray-900/30 rounded-xl p-5 border border-gray-800 relative">
-      {locked && (
-        <div className="absolute top-4 right-4 text-red-400" title={lockedTexts[lockReason!].title}>
-          <Lock className="w-4 h-4" />
-        </div>
-      )}
+  return allOrders;
+}
 
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
-        <div className="min-w-0">
-          <h4 className="font-semibold text-white">{displayName}</h4>
-          <p className="text-xs text-gray-500">
-            {status === "connected"
-              ? hasSyncError
-                ? `${texts.connectedError}${fields[0] && extraValues[fields[0].key] ? ` · ${extraValues[fields[0].key]}` : ""}`
-                : lastSynced
-                ? `${texts.lastSyncedLabel}: ${new Date(lastSynced).toLocaleString()}${fields[0] && extraValues[fields[0].key] ? ` · ${extraValues[fields[0].key]}` : ""}`
-                : `${texts.connectedWaiting}${fields[0] && extraValues[fields[0].key] ? ` · ${extraValues[fields[0].key]}` : ""}`
-              : texts.connectDesc}
-          </p>
-        </div>
-        {status === "connected" && (
-          <div className="flex flex-wrap items-center gap-2 min-w-0 w-full sm:w-auto">
-            {hasSyncError ? (
-              <span className="text-xs px-2 py-1 rounded-full font-semibold bg-red-500/20 text-red-400 flex items-center gap-1 font-mono min-w-0 max-w-full">
-                <AlertCircle className="w-3 h-3 shrink-0" />
-                <span className="truncate">{texts.syncErrorBadge}{keyPreview ? ` · ${keyPreview}` : ""}</span>
-              </span>
-            ) : (
-              <span className="text-xs px-2 py-1 rounded-full font-semibold bg-green-500/20 text-green-400 flex items-center gap-1 font-mono min-w-0 max-w-full">
-                <CheckCircle className="w-3 h-3 shrink-0" />
-                <span className="truncate">{texts.connected}{keyPreview ? ` · ${keyPreview}` : ""}</span>
-              </span>
-            )}
-            <Button size="sm" variant="outline" className="text-red-400 border-red-400/30 hover:bg-red-500/10 shrink-0" onClick={handleDisconnect}>
-              {texts.disconnectBtn}
-            </Button>
-          </div>
-        )}
-      </div>
+async function fetchLowStockVariants(shopDomain, token) {
+  const lowStock = [];
+  let url = `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/products.json?status=active&limit=250&fields=id,title,variants`;
 
-      {(status !== "connected" || hasSyncError) && oauthStartHref && (
-        <div className="space-y-2">
-          {hasSyncError && <p className="text-xs text-gray-400">{texts.reconnectHint}</p>}
-          <p className="text-xs text-gray-500">{hint}</p>
-          <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={handleOAuthConnect}>
-            {hasSyncError ? texts.reconnectBtn : oauthButtonLabel || texts.connectBtn}
-          </Button>
+  while (url) {
+    const res = await fetch(url, { headers: { "X-Shopify-Access-Token": token } });
+    if (!res.ok) throw new Error(`Shopify inventory request failed: ${res.status}`);
+    const data = await res.json();
+    for (const product of data.products || []) {
+      for (const variant of product.variants || []) {
+        const quantity = Number(variant.inventory_quantity);
+        if (variant.inventory_management === "shopify" && Number.isFinite(quantity) && quantity < LOW_STOCK_THRESHOLD) {
+          lowStock.push({ id: variant.id, productTitle: product.title, variantTitle: variant.title, quantity });
+        }
+      }
+    }
+    const links = res.headers.get("link") || "";
+    const next = links.match(/<([^>]+)>;\s*rel="next"/);
+    url = next?.[1] || null;
+  }
+  return lowStock;
+}
 
-          {showLockedToast && lockReason && (
-            <div className="mt-2 bg-gray-950 border border-red-500/30 rounded-lg p-3 flex flex-col gap-2 animate-in fade-in slide-in-from-top-1">
-              <div className="flex items-start gap-2">
-                <Lock className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
-                <div>
-                  <p className="text-sm font-medium text-white">{lockedTexts[lockReason].title}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{lockedTexts[lockReason].body}</p>
-                </div>
-              </div>
-              <div className="flex gap-2 justify-end">
-                <Button size="sm" variant="ghost" className="text-gray-400 hover:text-white" onClick={() => setShowLockedToast(false)}>
-                  {lockedOkText}
-                </Button>
-                <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={() => onLockedClick?.()}>
-                  {lockedTexts[lockReason].cta}
-                </Button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+const LOW_STOCK_MESSAGE = {
+  UA: (name, quantity) => `Низький залишок: «${name}» — ${quantity} шт.`,
+  EN: (name, quantity) => `Low stock: “${name}” — ${quantity} units.`,
+  DE: (name, quantity) => `Niedriger Bestand: „${name}“ — ${quantity} Stück.`,
+};
 
-      {(status !== "connected" || hasSyncError) && !oauthStartHref && (
-        <div className="space-y-2">
-          {hasSyncError && <p className="text-xs text-gray-400">{texts.reconnectHint}</p>}
-          {fields.map((f) => (
-            <div key={f.key}>
-              <input
-                type="text"
-                value={extraValues[f.key] || ""}
-                onChange={(e) => setExtraValues((prev) => ({ ...prev, [f.key]: e.target.value }))}
-                placeholder={f.placeholder}
-                autoComplete="off"
-                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-600"
-              />
-              <p className="text-xs text-gray-500 mt-1">{f.label}</p>
-            </div>
-          ))}
-          <input
-            type="text"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder={placeholder}
-            autoComplete="off"
-            autoCorrect="off"
-            autoCapitalize="off"
-            spellCheck={false}
-            data-lpignore="true"
-            data-1p-ignore="true"
-            name={`rivant-${provider}-key-field`}
-            className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-600"
-          />
-          <p className="text-xs text-gray-500">{hint}</p>
-          {showRevenueModeCheckbox && (
-            <label className="flex items-start gap-2 text-xs text-gray-400 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={revenueModeAdd}
-                onChange={(e) => setRevenueModeAdd(e.target.checked)}
-                className="mt-0.5"
-              />
-              <span>{texts.revenueModeAddLabel}</span>
-            </label>
-          )}
-          {status === "error" && (
-            <p className="text-xs text-red-400 flex items-center gap-1">
-              <AlertCircle className="w-3 h-3" /> {errorMsg}
-            </p>
-          )}
-          <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={handleConnect} disabled={status === "loading"}>
-            {status === "loading" ? texts.connecting : hasSyncError ? texts.reconnectBtn : texts.connectBtn}
-          </Button>
+// current_total_price — це вже фактична сума ПІСЛЯ повернень/часткових
+// рефандів (на відміну від total_price, який лишається "як було виставлено
+// на момент замовлення"). Скасовані замовлення (cancelled_at заповнений)
+// прибираємо повністю — це не дохід.
+function computeRevenueByDate(orders) {
+  const byDate = {};
+  for (const order of orders) {
+    if (order.cancelled_at) continue;
+    const date = new Date(order.created_at).toISOString().slice(0, 10);
+    const amount = Number(order.current_total_price) || 0;
+    byDate[date] = (byDate[date] || 0) + amount;
+  }
+  return byDate;
+}
 
-          {showLockedToast && lockReason && (
-            <div className="mt-2 bg-gray-950 border border-red-500/30 rounded-lg p-3 flex flex-col gap-2 animate-in fade-in slide-in-from-top-1">
-              <div className="flex items-start gap-2">
-                <Lock className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
-                <div>
-                  <p className="text-sm font-medium text-white">{lockedTexts[lockReason].title}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{lockedTexts[lockReason].body}</p>
-                </div>
-              </div>
-              <div className="flex gap-2 justify-end">
-                <Button size="sm" variant="ghost" className="text-gray-400 hover:text-white" onClick={() => setShowLockedToast(false)}>
-                  {lockedOkText}
-                </Button>
-                <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={() => onLockedClick?.()}>
-                  {lockedTexts[lockReason].cta}
-                </Button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
-      {status === "connected" && showRevenueModeCheckbox && (
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-800 bg-gray-950/50 px-3 py-2">
-          <p className="text-xs text-gray-400">
-            {revenueModeAdd ? texts.revenueModeCurrentAdd : texts.revenueModeCurrentReplace}
-          </p>
-          <Button
-            size="sm"
-            variant="outline"
-            className="text-xs h-7 shrink-0"
-            onClick={handleToggleRevenueMode}
-            disabled={revenueModeSaving}
-          >
-            {revenueModeSaving ? texts.revenueModeSaving : revenueModeAdd ? texts.revenueModeSwitchToReplace : texts.revenueModeSwitchToAdd}
-          </Button>
-        </div>
-      )}
+async function getBusinessUserId(businessId) {
+  const { data } = await admin.from("businesses").select("user_id").eq("id", businessId).maybeSingle();
+  return data?.user_id ?? null;
+}
 
-      {/* Банер — під усіма рядками картки, як і просили. Бейдж вище вже
-          показує стан постійно; цей текст — лише пояснення на 60с, а сам
-          факт помилки додатково падає в Ризики (див. lib/alerts.mjs /
-          sync_failure_* — це вже робить бекенд при кожному падінні синку). */}
-      {status === "connected" && hasSyncError && showErrorBanner && (
-        <div className="mt-3 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
-          <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          <div>
-            <p>{syncErrorMessage(syncErrorReason)}</p>
-            <p className="mt-1 text-red-200/70">
-              {language === "UA"
-                ? "Деталі та наступні спроби — на вкладці «Ризики»."
-                : language === "DE"
-                ? "Details und weitere Versuche — im Tab „Risiken“."
-                : "Details and further attempts — on the Risks tab."}
-            </p>
-          </div>
-        </div>
-      )}
-    </div>
+// Записує дохід із Shopify-замовлень у metrics_computed — ту саму таблицю,
+// яку sync-stripe-core.mjs заповнює зі Stripe. Один рядок на business+date,
+// тому робимо read-modify-write, а не сліпий upsert: інакше перезаписали б
+// cost/margin_pct/orders, які вже там могли лежати. revenue_mode:
+//   "replace" (дефолт) — Shopify стає єдиним джерелом revenue за цю дату,
+//     бо в переважній більшості випадків це ті самі гроші, що вже пройшли
+//     через Stripe як платіжний процесор всередині Shopify Checkout —
+//     складання дало б задвоєний дохід.
+//   "add" — користувач явно позначив магазин як окремий, незалежний потік
+//     грошей (чекбокс при підключенні) — тоді додаємо суму до того, що вже
+//     є в рядку, а не заміщуємо.
+async function upsertShopifyRevenue({ businessId, date, revenue, orders, revenueMode }) {
+  const { data: existing } = await admin
+    .from("metrics_computed")
+    .select("revenue, cost, orders")
+    .eq("business_id", businessId)
+    .eq("date", date)
+    .maybeSingle();
+
+  const finalRevenue =
+    revenueMode === "add" ? Number((revenue + (existing?.revenue || 0)).toFixed(2)) : Number(revenue.toFixed(2));
+  const cost = existing?.cost || 0;
+  const finalOrders = revenueMode === "add" ? orders + (existing?.orders || 0) : orders;
+  const marginPct = finalRevenue > 0 ? Number((((finalRevenue - cost) / finalRevenue) * 100).toFixed(1)) : 0;
+
+  const { error } = await admin.from("metrics_computed").upsert(
+    {
+      business_id: businessId,
+      date,
+      revenue: finalRevenue,
+      cost,
+      margin_pct: marginPct,
+      orders: finalOrders,
+    },
+    { onConflict: "business_id,date" }
   );
+  if (error) console.error(`Failed to write Shopify revenue for ${businessId} ${date}:`, error.message);
+}
+
+// cost of goods для одного variant_id: variant → inventory_item_id → inventory_item.cost.
+// Возвращает число (юнит-себестоимость в валюте магазина) или null, если Shopify
+// не отдал cost (поле не заполнено продавцом) либо variant/inventory_item недоступны.
+async function fetchVariantCost(shopDomain, token, variantId) {
+  try {
+    const variantRes = await fetch(
+      `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/variants/${variantId}.json?fields=id,inventory_item_id`,
+      { headers: { "X-Shopify-Access-Token": token } }
+    );
+    if (!variantRes.ok) return null;
+    const variantData = await variantRes.json();
+    const inventoryItemId = variantData?.variant?.inventory_item_id;
+    if (!inventoryItemId) return null;
+
+    await sleep(550); // грубый троттлинг под лимит Shopify REST (~2 req/sec)
+
+    const itemRes = await fetch(
+      `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/inventory_items/${inventoryItemId}.json?fields=id,cost`,
+      { headers: { "X-Shopify-Access-Token": token } }
+    );
+    if (!itemRes.ok) return null;
+    const itemData = await itemRes.json();
+    const cost = Number(itemData?.inventory_item?.cost);
+    return Number.isFinite(cost) ? cost : null;
+  } catch {
+    return null;
+  }
+}
+
+// Себестоимость по всем заказам окна синка. Каждый уникальный variant_id
+// запрашивается у Shopify максимум один раз за прогон (кэш в variantCostCache),
+// даже если товар встречается в нескольких заказах.
+async function computeCogsByDate(shopDomain, token, orders) {
+  const uniqueVariantIds = [
+    ...new Set(
+      orders.flatMap((o) => (o.line_items || []).map((li) => li.variant_id).filter(Boolean))
+    ),
+  ];
+
+  const variantCostCache = new Map();
+  for (const variantId of uniqueVariantIds) {
+    const cost = await fetchVariantCost(shopDomain, token, variantId);
+    variantCostCache.set(variantId, cost);
+    await sleep(550);
+  }
+
+  const byDate = {};
+  for (const order of orders) {
+    const date = new Date(order.created_at).toISOString().slice(0, 10);
+    let orderCogs = 0;
+    for (const li of order.line_items || []) {
+      const unitCost = li.variant_id ? variantCostCache.get(li.variant_id) : null;
+      if (unitCost == null) continue; // нет данных о себестоимости — пропускаем, не выдумываем
+      orderCogs += unitCost * (Number(li.quantity) || 0);
+    }
+    if (orderCogs > 0) byDate[date] = (byDate[date] || 0) + orderCogs;
+  }
+  return byDate;
+}
+
+// Пишем в expenses идемпотентно: сначала удаляем старую запись за этот
+// business+date+source+category, потом вставляем свежую — иначе каждый
+// часовой прогон будет плодить дубли (в expenses нет unique-констрейнта).
+async function upsertExpense({ businessId, date, amount, category, source, description }) {
+  await admin
+    .from("expenses")
+    .delete()
+    .eq("business_id", businessId)
+    .eq("date", date)
+    .eq("source", source)
+    .eq("category", category);
+
+  if (amount > 0) {
+    await admin.from("expenses").insert({
+      business_id: businessId,
+      amount,
+      category,
+      description,
+      date,
+      source,
+    });
+  }
+}
+
+async function main(businessId) {
+  let query = admin
+    .from("integrations")
+    .select("id, business_id, api_key_encrypted, config")
+    .eq("provider", "shopify")
+    .eq("status", "connected");
+  if (businessId) query = query.eq("business_id", businessId);
+  const { data: integrations, error: fetchErr } = await query;
+
+  if (fetchErr) {
+    console.error("Failed to fetch shopify integrations:", fetchErr.message);
+    return;
+  }
+  if (!integrations?.length) {
+    console.log("No connected Shopify integrations, nothing to sync.");
+    return;
+  }
+
+  const sinceIso = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
+
+  for (const integ of integrations) {
+    try {
+      const shopDomain = normalizeShopDomain(integ.config?.shop_domain);
+      if (!shopDomain) {
+        throw new Error("Missing shop_domain in integration config");
+      }
+      const secretPayload = decrypt(integ.api_key_encrypted);
+      const token = await resolveShopifyToken({
+        shopDomain,
+        secretPayload,
+        clientId: integ.config?.client_id || null,
+      });
+      const orders = await fetchShopifyOrders(shopDomain, token, sinceIso);
+
+      const byDate = {};
+      for (const order of orders) {
+        const date = new Date(order.created_at).toISOString().slice(0, 10);
+        const shipping =
+          Number(order.total_shipping_price_set?.shop_money?.amount) ||
+          (order.shipping_lines || []).reduce((sum, l) => sum + (Number(l.price) || 0), 0);
+        byDate[date] = (byDate[date] || 0) + shipping;
+      }
+
+      for (const [date, amount] of Object.entries(byDate)) {
+        await upsertExpense({
+          businessId: integ.business_id,
+          date,
+          amount: Number(amount.toFixed(2)),
+          category: "shipping",
+          source: "shopify",
+          description: "Shopify shipping cost (auto-synced)",
+        });
+      }
+
+      const cogsByDate = await computeCogsByDate(shopDomain, token, orders);
+      for (const [date, amount] of Object.entries(cogsByDate)) {
+        await upsertExpense({
+          businessId: integ.business_id,
+          date,
+          amount: Number(amount.toFixed(2)),
+          category: "cogs",
+          source: "shopify",
+          description: "Shopify cost of goods (auto-synced)",
+        });
+      }
+
+      // revenue_mode: "replace" (дефолт, чекбокс не відмічений при
+      // підключенні) чи "add" (окремий потік грошей) — див. коментар біля
+      // upsertShopifyRevenue вище.
+      const revenueMode = integ.config?.revenue_mode === "add" ? "add" : "replace";
+      const revenueByDate = computeRevenueByDate(orders);
+      const ordersCountByDate = {};
+      for (const order of orders) {
+        if (order.cancelled_at) continue;
+        const date = new Date(order.created_at).toISOString().slice(0, 10);
+        ordersCountByDate[date] = (ordersCountByDate[date] || 0) + 1;
+      }
+      for (const [date, revenue] of Object.entries(revenueByDate)) {
+        await upsertShopifyRevenue({
+          businessId: integ.business_id,
+          date,
+          revenue,
+          orders: ordersCountByDate[date] || 0,
+          revenueMode,
+        });
+      }
+
+      // Перевіряємо аномалії тільки за останню (найсвіжішу) дату з вікна синку —
+      // старіші дні вже перевірялись на попередніх прогонах. Умисно НЕ додаємо
+      // окремий "order_volume_drop" — падіння продажів вже ловить revenue_drop
+      // зі Stripe-синку, дублювати той самий сигнал іншими словами тільки додасть
+      // зайвих сповіщень, а не користі.
+      // Товарні залишки перевіряються лише для операційних сповіщень: вони не
+      // впливають на фінансові метрики, графіки чи текст прогнозу. Відсутність
+      // дозволу read_products не повинна зупиняти синхронізацію продажів.
+      try {
+        const lowStockVariants = await fetchLowStockVariants(shopDomain, token);
+        if (lowStockVariants.length) {
+          const contact = await getUserContact(await getBusinessUserId(integ.business_id));
+          for (const item of lowStockVariants) {
+            const displayName = item.variantTitle && item.variantTitle !== "Default Title"
+              ? `${item.productTitle} — ${item.variantTitle}`
+              : item.productTitle;
+            const message = (LOW_STOCK_MESSAGE[contact.userLang] || LOW_STOCK_MESSAGE.EN)(displayName, item.quantity);
+            await sendAlertToBusiness(integ.business_id, contact, {
+              type: `low_stock_shopify_${item.id}`,
+              severity: item.quantity === 0 ? "critical" : item.quantity <= 5 ? "medium" : "low",
+              message,
+              // На відміну від фінансових алертів (24h), тут довший cooldown:
+              // власник вже побачив сповіщення, зв'язався з постачальником,
+              // і поки товар їде — щоденне повторення того самого "закінчується"
+              // тільки дратує, нової інформації воно не несе. Раз на тиждень
+              // достатньо, щоб нагадати, якщо товар досі не поповнили.
+              cooldownHours: 24 * 7,
+            });
+          }
+        }
+      } catch (inventoryError) {
+        console.warn(`Shopify inventory check skipped for ${integ.id}:`, inventoryError.message);
+      }
+
+      const allDates = [...new Set([...Object.keys(byDate), ...Object.keys(cogsByDate)])].sort();
+      if (allDates.length) {
+        const latestDate = allDates[allDates.length - 1];
+        const contact = await getUserContact(await getBusinessUserId(integ.business_id));
+
+        if (byDate[latestDate] != null) {
+          const anomaly = await detectExpenseAnomaly({
+            businessId: integ.business_id,
+            source: "shopify",
+            category: "shipping",
+            date: latestDate,
+            todayAmount: byDate[latestDate],
+          });
+          if (anomaly?.kind === "spike") {
+            const msg = (SHIPPING_SPIKE_MESSAGE[contact.userLang] || SHIPPING_SPIKE_MESSAGE.EN)(anomaly.pct, anomaly.avg, anomaly.today, latestDate);
+            const explanation = await generateAlertExplanation(
+              contact.userLang,
+              `Shopify shipping costs jumped ${anomaly.pct}% versus the 7-day average (from $${Math.round(anomaly.avg)} to $${Math.round(anomaly.today)}) on ${latestDate}.`
+            );
+            await sendAlertToBusiness(integ.business_id, contact, {
+              type: "shipping_spike_shopify",
+              severity: anomaly.pct >= 100 ? "high" : "medium",
+              message: msg,
+              aiExplanation: explanation,
+            });
+          }
+        }
+
+        if (cogsByDate[latestDate] != null) {
+          const anomaly = await detectExpenseAnomaly({
+            businessId: integ.business_id,
+            source: "shopify",
+            category: "cogs",
+            date: latestDate,
+            todayAmount: cogsByDate[latestDate],
+          });
+          if (anomaly?.kind === "spike") {
+            const msg = (COGS_SPIKE_MESSAGE[contact.userLang] || COGS_SPIKE_MESSAGE.EN)(anomaly.pct, anomaly.avg, anomaly.today, latestDate);
+            const explanation = await generateAlertExplanation(
+              contact.userLang,
+              `Shopify cost of goods jumped ${anomaly.pct}% versus the 7-day average (from $${Math.round(anomaly.avg)} to $${Math.round(anomaly.today)}) on ${latestDate}. This directly compresses margin.`
+            );
+            await sendAlertToBusiness(integ.business_id, contact, {
+              type: "cogs_spike_shopify",
+              severity: anomaly.pct >= 100 ? "high" : "medium",
+              message: msg,
+              aiExplanation: explanation,
+            });
+          }
+        }
+      }
+
+      const { sync_error_reason: _previousError, ...cleanConfig } = integ.config || {};
+      await admin
+        .from("integrations")
+        .update({ last_synced_at: new Date().toISOString(), status: "connected", config: cleanConfig })
+        .eq("id", integ.id);
+
+      console.log(
+        `Shopify synced business ${integ.business_id}: ${Object.keys(byDate).length} day(s) shipping, ${Object.keys(cogsByDate).length} day(s) cogs`
+      );
+    } catch (err) {
+      console.error(`Failed to sync Shopify integration ${integ.id}:`, err.message);
+      await logError({
+        source: "shopify",
+        message: `Sync failed for integration ${integ.id}`,
+        details: err.message,
+        businessId: integ.business_id,
+      });
+      // Помечаем интеграцию как проблемную (видно в /admin), но не отключаем —
+      // синк для остальных интеграций продолжается благодаря try/catch на каждой.
+      const reason = getSyncFailureReason(err);
+      await admin
+        .from("integrations")
+        .update({ status: "error", config: { ...(integ.config || {}), sync_error_reason: reason } })
+        .eq("id", integ.id);
+
+      const contact = await getUserContact(await getBusinessUserId(integ.business_id));
+      const msg = (SYNC_FAILURE_MESSAGE[contact.userLang] || SYNC_FAILURE_MESSAGE.EN)();
+      const explanation = (SYNC_FAILURE_EXPLANATION[contact.userLang] || SYNC_FAILURE_EXPLANATION.EN)[reason];
+      await sendAlertToBusiness(integ.business_id, contact, {
+        type: "sync_failure_shopify",
+        severity: "high",
+        message: msg,
+        aiExplanation: explanation,
+      });
+    }
+  }
+}
+
+export async function runSync(businessId) {
+  await main(businessId);
+  return { synced: true, timestamp: new Date().toISOString() };
 }
