@@ -1,8 +1,10 @@
 // app/api/team/members/route.js
-// GET  ?email=owner@x.com          -> список активних учасників команди
-// DELETE { email, memberId }        -> відкликати доступ конкретного учасника
+// GET   ?email=owner@x.com                 -> список активних учасників команди (з categories)
+// PATCH { email, memberId, categories }    -> змінити категорії сповіщень учасника в будь-який момент
+// DELETE { email, memberId }               -> відкликати доступ конкретного учасника
 
 import { createClient } from "@supabase/supabase-js";
+import { ALERT_CATEGORIES } from "@/lib/alerts.mjs";
 
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
@@ -32,12 +34,39 @@ export async function GET(req) {
 
   const { data: members } = await admin
     .from("team_members")
-    .select("id, telegram_id, telegram_username, role, status, created_at")
+    .select("id, telegram_id, telegram_username, role, status, categories, created_at")
     .eq("business_id", businessId)
     .eq("status", "active")
     .order("created_at", { ascending: true });
 
   return Response.json({ members: members || [] });
+}
+
+// Дозволяє власнику будь-коли розширити або звузити доступ конкретному
+// учаснику (наприклад, дати бухгалтеру ще й "inventory" пізніше), а не лише
+// один раз зафіксувати категорії в момент видачі запрошення.
+export async function PATCH(req) {
+  const { email, memberId, categories } = await req.json();
+  if (!email || !memberId) return Response.json({ error: "missing fields" }, { status: 400 });
+  if (!Array.isArray(categories) || categories.length === 0) {
+    return Response.json({ error: "categories must be a non-empty array" }, { status: 400 });
+  }
+  const safeCategories = categories.filter((c) => ALERT_CATEGORIES.includes(c));
+  if (!safeCategories.length) {
+    return Response.json({ error: "no valid categories provided" }, { status: 400 });
+  }
+
+  const businessId = await getBusinessId(email);
+  if (!businessId) return Response.json({ error: "not found" }, { status: 404 });
+
+  const { error } = await admin
+    .from("team_members")
+    .update({ categories: safeCategories })
+    .eq("id", memberId)
+    .eq("business_id", businessId); // не даём изменить чужого участника подменой id
+
+  if (error) return Response.json({ error: error.message }, { status: 500 });
+  return Response.json({ ok: true, categories: safeCategories });
 }
 
 export async function DELETE(req) {

@@ -102,6 +102,11 @@ bot.command("start", async (ctx) => {
         telegram_username: ctx.from.username || null,
         invited_by: invite.created_by,
         status: "active",
+        // Категорії задає власник під час генерації посилання
+        // (app/api/team/invite) — переносимо їх на нового учасника.
+        // Фолбек на всі категорії лишень на випадок старих запрошень,
+        // створених до появи цього поля (invite.categories буде null).
+        categories: invite.categories || ["revenue", "marketing", "inventory", "technical"],
       },
       { onConflict: "business_id,telegram_id" }
     );

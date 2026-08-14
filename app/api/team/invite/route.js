@@ -6,14 +6,25 @@
 // и вставляет запись в team_members вместо users.telegram_id.
 
 import { createClient } from "@supabase/supabase-js";
+import { ALERT_CATEGORIES } from "@/lib/alerts.mjs";
 
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
 const TEAM_MEMBER_LIMIT = 10; // защита от злоупотребления одной ссылкой
 
+// Владелец выбирает категории ПРИ создании ссылки (например, "только
+// inventory" для логиста). Если фронт ничего не передал — оставляем
+// поведение как раньше (человек видит всё), а не молча режем доступ.
+function sanitizeCategories(input) {
+  if (!Array.isArray(input) || input.length === 0) return ALERT_CATEGORIES;
+  const valid = input.filter((c) => ALERT_CATEGORIES.includes(c));
+  return valid.length ? valid : ALERT_CATEGORIES;
+}
+
 export async function POST(req) {
-  const { email } = await req.json();
+  const { email, categories } = await req.json();
   if (!email) return Response.json({ error: "email required" }, { status: 400 });
+  const safeCategories = sanitizeCategories(categories);
 
   const { data: appUser } = await admin.from("users").select("id").eq("email", email).maybeSingle();
   if (!appUser) return Response.json({ error: "user not found" }, { status: 404 });
@@ -63,6 +74,7 @@ export async function POST(req) {
     token,
     business_id: business.id,
     created_by: appUser.id,
+    categories: safeCategories,
   });
   if (error) return Response.json({ error: error.message }, { status: 500 });
 
