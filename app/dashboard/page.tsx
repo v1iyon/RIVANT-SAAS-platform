@@ -1092,7 +1092,17 @@ const [companySaved, setCompanySaved] = useState(false);
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email: profileEmail, provider: "google_ads" }),
-        }).catch((e) => console.error("sync-now after google_ads oauth failed", e));
+        })
+          .catch((e) => console.error("sync-now after google_ads oauth failed", e))
+          // Раніше цей fetch був "fire-and-forget" — картка вже встигала
+          // один раз показати "Підключено" (одразу після OAuth, до першого
+          // реального синку) і більше НІКОЛИ не перепитувала статус, доки
+          // користувач сам не перезавантажить сторінку. Якщо синк падав
+          // (як з правами Google Ads), бейдж так і лишався зеленим. Тепер
+          // після завершення синку примусово піднімаємо integrationRefreshToken —
+          // картка перечитає /api/integrations-status і одразу покаже
+          // реальний статус (зелений або "останній синк не пройшов").
+          .finally(() => setIntegrationRefreshToken((token) => token + 1));
       }
       cleanUrl();
       setTimeout(() => setGadsToast(null), 6000);
@@ -1150,7 +1160,9 @@ const [companySaved, setCompanySaved] = useState(false);
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email: profileEmail, provider: "google_ads" }),
-        }).catch((e) => console.error("sync-now after google_ads oauth failed", e));
+        })
+          .catch((e) => console.error("sync-now after google_ads oauth failed", e))
+          .finally(() => setIntegrationRefreshToken((token) => token + 1));
       }
       setTimeout(() => setGadsToast(null), 6000);
     } catch {
@@ -2674,6 +2686,7 @@ if (!subInfo) {
                       onLockedClick={() => router.push("/#pricing")}
                       refreshToken={integrationRefreshToken}
                       syncFailed={failedSyncProviders.includes("shopify")}
+                      showRevenueModeCheckbox={true}
                       extraFields={[
                         {
                           key: "shop_domain",

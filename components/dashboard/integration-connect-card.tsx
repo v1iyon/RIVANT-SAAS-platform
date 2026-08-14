@@ -71,6 +71,7 @@ export function IntegrationConnectCard({
 }: Props) {
   const { language } = useLanguage();
   const [revenueModeAdd, setRevenueModeAdd] = useState(false);
+  const [revenueModeSaving, setRevenueModeSaving] = useState(false);
   // Нормалізуємо обидва варіанти (одне поле / кілька полів) в один масив,
   // щоб решта компонента не знала про різницю.
   const fields = extraFields ?? (extraField ? [extraField] : []);
@@ -135,6 +136,9 @@ export function IntegrationConnectCard({
         setSyncErrorReason(row.config?.sync_error_reason);
         setLastSynced(row.last_synced_at);
         setKeyPreview(row.key_preview);
+        if (showRevenueModeCheckbox) {
+          setRevenueModeAdd(row.config?.revenue_mode === "add");
+        }
       } else if (row?.connected) {
         setStatus("connected");
         setErrorMsg("");
@@ -147,6 +151,9 @@ export function IntegrationConnectCard({
             if (row.config[f.key]) prefill[f.key] = row.config[f.key];
           }
           setExtraValues(prefill);
+        }
+        if (showRevenueModeCheckbox) {
+          setRevenueModeAdd(row.config?.revenue_mode === "add");
         }
       } else {
         setStatus("idle");
@@ -280,6 +287,23 @@ export function IntegrationConnectCard({
     }
   };
 
+  const handleToggleRevenueMode = async () => {
+    const nextMode = revenueModeAdd ? "replace" : "add";
+    setRevenueModeSaving(true);
+    try {
+      const res = await fetch("/api/integration-revenue-mode", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, provider, revenueMode: nextMode }),
+      });
+      if (res.ok) setRevenueModeAdd(nextMode === "add");
+    } catch (e) {
+      console.error("Failed to update revenue_mode", e);
+    } finally {
+      setRevenueModeSaving(false);
+    }
+  };
+
   const handleOAuthConnect = () => {
     if (locked) {
       triggerLockedToast();
@@ -331,6 +355,27 @@ export function IntegrationConnectCard({
     syncErrorBadge: language === "UA" ? "Помилка синхронізації" : language === "DE" ? "Sync-Fehler" : "Sync error",
     syncNowBtn: language === "UA" ? "Синхронізувати зараз" : language === "DE" ? "Jetzt synchronisieren" : "Sync now",
     connecting: language === "UA" ? "Підключення..." : language === "DE" ? "Verbinde..." : "Connecting...",
+    revenueModeAddLabel:
+      language === "UA"
+        ? "Це окремий потік грошей (не через Stripe) — додавати виручку Shopify зверху, а не замінювати нею Stripe"
+        : language === "DE"
+        ? "Das ist ein separater Zahlungsfluss (nicht über Stripe) — Shopify-Umsatz zum Stripe-Umsatz addieren statt ihn zu ersetzen"
+        : "This is a separate money flow (not via Stripe) — add Shopify revenue on top instead of replacing Stripe's",
+    revenueModeCurrentReplace:
+      language === "UA"
+        ? "Дохід: Shopify замінює Stripe (той самий Checkout)"
+        : language === "DE"
+        ? "Umsatz: Shopify ersetzt Stripe (derselbe Checkout)"
+        : "Revenue: Shopify replaces Stripe (same checkout)",
+    revenueModeCurrentAdd:
+      language === "UA"
+        ? "Дохід: Shopify додається зверху Stripe (окремий потік)"
+        : language === "DE"
+        ? "Umsatz: Shopify wird zu Stripe addiert (separater Fluss)"
+        : "Revenue: Shopify is added on top of Stripe (separate flow)",
+    revenueModeSwitchToAdd: language === "UA" ? "Це окремий потік — додавати" : language === "DE" ? "Separater Fluss — addieren" : "Separate flow — add instead",
+    revenueModeSwitchToReplace: language === "UA" ? "Це той самий Stripe — замінювати" : language === "DE" ? "Derselbe Stripe — ersetzen" : "Same as Stripe — replace instead",
+    revenueModeSaving: language === "UA" ? "Зберігаємо..." : language === "DE" ? "Speichere..." : "Saving...",
   };
 
   const lockedTexts: Record<Exclude<LockReason, null>, { title: string; body: string; cta: string }> = {
@@ -486,6 +531,17 @@ export function IntegrationConnectCard({
             className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-600"
           />
           <p className="text-xs text-gray-500">{hint}</p>
+          {showRevenueModeCheckbox && (
+            <label className="flex items-start gap-2 text-xs text-gray-400 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={revenueModeAdd}
+                onChange={(e) => setRevenueModeAdd(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span>{texts.revenueModeAddLabel}</span>
+            </label>
+          )}
           {status === "error" && (
             <p className="text-xs text-red-400 flex items-center gap-1">
               <AlertCircle className="w-3 h-3" /> {errorMsg}
@@ -514,6 +570,23 @@ export function IntegrationConnectCard({
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {status === "connected" && showRevenueModeCheckbox && (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-800 bg-gray-950/50 px-3 py-2">
+          <p className="text-xs text-gray-400">
+            {revenueModeAdd ? texts.revenueModeCurrentAdd : texts.revenueModeCurrentReplace}
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-xs h-7 shrink-0"
+            onClick={handleToggleRevenueMode}
+            disabled={revenueModeSaving}
+          >
+            {revenueModeSaving ? texts.revenueModeSaving : revenueModeAdd ? texts.revenueModeSwitchToReplace : texts.revenueModeSwitchToAdd}
+          </Button>
         </div>
       )}
 
