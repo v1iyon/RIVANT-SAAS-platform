@@ -50,7 +50,9 @@ import {
   Download,
   RefreshCw,
   Filter,
+  Receipt,
 } from "lucide-react";
+import { WidgetPrefsPanel, WidgetCatalogItem } from "@/components/dashboard/widget-prefs-panel";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -655,6 +657,33 @@ const METRIC_CARD_THEMES: Record<string, { from: string; border: string; text: s
   "bg-green-500": { from: "from-green-500/10", border: "border-green-500/20", text: "text-green-500", ticker: "bg-green-500/60" },
   "bg-purple-500": { from: "from-purple-500/10", border: "border-purple-500/20", text: "text-purple-500", ticker: "bg-purple-500/60" },
   "bg-orange-500": { from: "from-orange-500/10", border: "border-orange-500/20", text: "text-orange-500", ticker: "bg-orange-500/60" },
+  "bg-cyan-500": { from: "from-cyan-500/10", border: "border-cyan-500/20", text: "text-cyan-500", ticker: "bg-cyan-500/60" },
+  "bg-pink-500": { from: "from-pink-500/10", border: "border-pink-500/20", text: "text-pink-500", ticker: "bg-pink-500/60" },
+  "bg-red-500": { from: "from-red-500/10", border: "border-red-500/20", text: "text-red-500", ticker: "bg-red-500/60" },
+};
+
+const WIDGET_CATALOG_IDS = ["revenue", "profit", "margin", "cac", "orders", "aov", "expenses"] as const;
+type WidgetId = (typeof WIDGET_CATALOG_IDS)[number];
+const DEFAULT_WIDGET_IDS: WidgetId[] = ["revenue", "profit", "margin", "cac"];
+
+const WIDGET_ICONS: Record<WidgetId, React.ComponentType<{ className?: string }>> = {
+  revenue: DollarSign,
+  profit: TrendingUp,
+  margin: Activity,
+  cac: Users,
+  orders: Package,
+  aov: CreditCard,
+  expenses: Receipt,
+};
+
+const WIDGET_DOT_CLASS: Record<WidgetId, string> = {
+  revenue: "bg-blue-500",
+  profit: "bg-green-500",
+  margin: "bg-purple-500",
+  cac: "bg-orange-500",
+  orders: "bg-cyan-500",
+  aov: "bg-pink-500",
+  expenses: "bg-red-500",
 };
 
 function MetricCard({ title, value, change, color, prefix = "$", suffix = "", sparklineData, prevValue, subtitle }: {
@@ -821,6 +850,9 @@ export default function DashboardClient() {
 
   const [metricsRows, setMetricsRows] = useState<MetricsRow[]>([]);
   const [metricsLoaded, setMetricsLoaded] = useState(false);
+
+  const [widgetIds, setWidgetIds] = useState<WidgetId[]>(DEFAULT_WIDGET_IDS);
+  const [widgetPrefsOpen, setWidgetPrefsOpen] = useState(false);
 
 const [forecastData, setForecastData] = useState<any>(null);
 const [forecastLoaded, setForecastLoaded] = useState(false);
@@ -1311,6 +1343,16 @@ if (bizData.business) {
       }
 
       try {
+        const widgetPrefsRes = await fetch(`/api/widget-prefs?email=${encodeURIComponent(email)}`, { cache: "no-store" });
+        const widgetPrefsData = await widgetPrefsRes.json();
+        if (Array.isArray(widgetPrefsData.widgetIds) && widgetPrefsData.widgetIds.length === 4) {
+          setWidgetIds(widgetPrefsData.widgetIds);
+        }
+      } catch (e) {
+        console.error("Failed to load widget prefs", e);
+      }
+
+      try {
         const alertsRes = await fetch(`/api/alerts?email=${encodeURIComponent(email)}`, { cache: "no-store" });
         const alertsData = await alertsRes.json();
         const mapRisk = (a: any): Risk => ({
@@ -1407,6 +1449,107 @@ useEffect(() => {
   const cacChange = currentCac != null && prevCac ? pctChange(currentCac, prevCac) : "0.0";
   const cacMetaChange = currentCacMeta != null && prevCacMeta ? pctChange(currentCacMeta, prevCacMeta) : "0.0";
   const cacGoogleChange = currentCacGoogle != null && prevCacGoogle ? pctChange(currentCacGoogle, prevCacGoogle) : "0.0";
+
+  const currentOrders = sumBy(currentMonthRows, (r) => r.orders);
+  const prevOrders = prevMonthRows.length ? sumBy(prevMonthRows, (r) => r.orders) : currentOrders;
+  const ordersChange = pctChange(currentOrders, prevOrders);
+  const ordersQueue = buildSparkline(metricsRows, (r) => r.orders);
+
+  const currentAov = currentOrders > 0 ? currentRevenue / currentOrders : 0;
+  const prevAov = prevOrders > 0 ? prevRevenue / prevOrders : currentAov;
+  const aovChange = pctChange(currentAov, prevAov);
+  const aovQueue = buildSparkline(metricsRows, (r) => (r.orders > 0 ? r.revenue / r.orders : 0));
+
+  const currentExpenses = sumBy(currentMonthRows, (r) => r.expenses);
+  const prevExpenses = prevMonthRows.length ? sumBy(prevMonthRows, (r) => r.expenses) : currentExpenses;
+  const expensesChange = pctChange(currentExpenses, prevExpenses);
+  const expensesQueue = buildSparkline(metricsRows, (r) => r.expenses);
+
+  const widgetLabel = (id: WidgetId): string => {
+    switch (id) {
+      case "revenue": return T.revenue || "Revenue";
+      case "profit": return T.profit || "Profit";
+      case "margin": return T.margin || "Margin";
+      case "cac": return "CAC";
+      case "orders": return language === "UA" ? "Замовлення" : language === "DE" ? "Bestellungen" : "Orders";
+      case "aov": return language === "UA" ? "Середній чек" : language === "DE" ? "Ø Bestellwert" : "Avg. order value";
+      case "expenses": return language === "UA" ? "Витрати" : language === "DE" ? "Ausgaben" : "Expenses";
+      default: return id;
+    }
+  };
+
+  const widgetCatalogForPanel: WidgetCatalogItem[] = WIDGET_CATALOG_IDS.map((id) => ({
+    id,
+    label: widgetLabel(id),
+    icon: WIDGET_ICONS[id],
+    dotClass: WIDGET_DOT_CLASS[id],
+  }));
+
+  const renderOverviewWidget = (id: WidgetId) => {
+    switch (id) {
+      case "revenue":
+        return (
+          <MetricCard key={id} title={T.revenue || "Revenue"} value={convert(currentRevenue)} change={parseFloat(revenueChange)}
+            color="bg-blue-500" prefix={symbol} subtitle={T.thisMonth} sparklineData={revenueQueue} prevValue={prevRevenue} />
+        );
+      case "profit":
+        return (
+          <MetricCard key={id} title={T.profit || "Profit"} value={convert(currentProfit)} change={parseFloat(profitChange)}
+            color="bg-green-500" prefix={symbol} subtitle={T.thisMonth} sparklineData={profitQueue} prevValue={prevProfit} />
+        );
+      case "margin":
+        return (
+          <MetricCard key={id} title={T.margin || "Margin"} value={currentMargin} change={parseFloat(marginChange)}
+            color="bg-purple-500" prefix="" suffix="%" subtitle={T.thisMonth} sparklineData={marginQueue} prevValue={prevMargin} />
+        );
+      case "cac":
+        return (
+          <SwipeableCacCard
+            key={id}
+            language={language}
+            symbol={symbol}
+            panels={[
+              { label: "Meta Ads", value: convertOrNull(currentCacMeta), change: parseFloat(cacMetaChange), prev: convertOrNull(prevCacMeta), sparklineData: cacMetaQueue },
+              {
+                label: language === "UA" ? "Загальне" : language === "DE" ? "Gesamt" : "Combined",
+                value: convertOrNull(currentCac),
+                change: parseFloat(cacChange),
+                prev: convertOrNull(prevCac),
+                sparklineData: cacQueue,
+              },
+              { label: "Google Ads", value: convertOrNull(currentCacGoogle), change: parseFloat(cacGoogleChange), prev: convertOrNull(prevCacGoogle), sparklineData: cacGoogleQueue },
+            ]}
+          />
+        );
+      case "orders":
+        return (
+          <MetricCard key={id} title={widgetLabel("orders")} value={currentOrders} change={parseFloat(ordersChange)}
+            color="bg-cyan-500" prefix="" subtitle={T.thisMonth} sparklineData={ordersQueue} prevValue={prevOrders} />
+        );
+      case "aov":
+        return (
+          <MetricCard key={id} title={widgetLabel("aov")} value={convert(currentAov)} change={parseFloat(aovChange)}
+            color="bg-pink-500" prefix={symbol} subtitle={T.thisMonth} sparklineData={aovQueue} prevValue={prevAov} />
+        );
+      case "expenses":
+        return (
+          <MetricCard key={id} title={widgetLabel("expenses")} value={convert(currentExpenses)} change={parseFloat(expensesChange)}
+            color="bg-red-500" prefix={symbol} subtitle={T.thisMonth} sparklineData={expensesQueue} prevValue={prevExpenses} />
+        );
+      default:
+        return null;
+    }
+  };
+
+  const handleWidgetPrefsApply = (ids: string[]) => {
+    setWidgetIds(ids as WidgetId[]);
+    setWidgetPrefsOpen(false);
+    fetch("/api/widget-prefs", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: profileEmail, widgetIds: ids }),
+    });
+  };
 
  const handleConnectTelegram = async () => {
   const res = await fetch("/api/telegram-connect", {
@@ -2069,58 +2212,40 @@ if (!subInfo) {
 
           {activeView === "overview" && (
             <div className="space-y-5">
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 items-start">
-                    <MetricCard
-                      title={T.revenue || "Revenue"}
-                      value={convert(currentRevenue)}
-                      change={parseFloat(revenueChange)}
-                      color="bg-blue-500"
-                      prefix={symbol}
-                      subtitle={T.thisMonth}
-                      sparklineData={revenueQueue}
-                      prevValue={prevRevenue}
-                    />
-                    <MetricCard
-                      title={T.profit || "Profit"}
-                      value={convert(currentProfit)}
-                      change={parseFloat(profitChange)}
-                      color="bg-green-500"
-                      prefix={symbol}
-                      subtitle={T.thisMonth}
-                      sparklineData={profitQueue}
-                      prevValue={prevProfit}
-                    />
-                    <MetricCard
-                      title={T.margin || "Margin"}
-                      value={currentMargin}
-                      change={parseFloat(marginChange)}
-                      color="bg-purple-500"
-                      prefix=""
-                      suffix="%"
-                      subtitle={T.thisMonth}
-                      sparklineData={marginQueue}
-                      prevValue={prevMargin}
-                    />
-                    <SwipeableCacCard
-                      language={language}
-                      symbol={symbol}
-                      panels={[
-                        { label: "Meta Ads", value: convertOrNull(currentCacMeta), change: parseFloat(cacMetaChange), prev: convertOrNull(prevCacMeta), sparklineData: cacMetaQueue },
-                        {
-                          label: language === "UA" ? "Загальне" : language === "DE" ? "Gesamt" : "Combined",
-                          value: convertOrNull(currentCac),
-                          change: parseFloat(cacChange),
-                          prev: convertOrNull(prevCac),
-                          sparklineData: cacQueue,
-                        },
-                        { label: "Google Ads", value: convertOrNull(currentCacGoogle), change: parseFloat(cacGoogleChange), prev: convertOrNull(prevCacGoogle), sparklineData: cacGoogleQueue },
-                      ]}
-                    />
+                  <div className="relative">
+                    <button
+                      onClick={() => setWidgetPrefsOpen(true)}
+                      className="absolute -top-2 -right-2 z-10 w-7 h-7 rounded-full bg-gray-800/90 border border-gray-700 flex items-center justify-center text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+                      aria-label={language === "UA" ? "Налаштувати картки" : language === "DE" ? "Kacheln anpassen" : "Customize cards"}
+                    >
+                      <Settings className="w-3.5 h-3.5" />
+                    </button>
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 items-start">
+                      {widgetIds.map((id) => renderOverviewWidget(id))}
+                    </div>
                   </div>
 
                   <RevenueExpensesChart history={chartHistory} />
             </div>
           )}
+
+          <WidgetPrefsPanel
+            open={widgetPrefsOpen}
+            onClose={() => setWidgetPrefsOpen(false)}
+            activeIds={widgetIds}
+            catalog={widgetCatalogForPanel}
+            onApply={handleWidgetPrefsApply}
+            labels={{
+              title: language === "UA" ? "Картки на дашборді" : language === "DE" ? "Dashboard-Kacheln" : "Dashboard cards",
+              active: language === "UA" ? "Активні (максимум 4)" : language === "DE" ? "Aktiv (max. 4)" : "Active (max 4)",
+              available: language === "UA" ? "Доступні" : language === "DE" ? "Verfügbar" : "Available",
+              done: language === "UA" ? "Готово" : language === "DE" ? "Fertig" : "Done",
+              cancel: language === "UA" ? "Скасувати" : language === "DE" ? "Abbrechen" : "Cancel",
+              needMore: (n: number) =>
+                language === "UA" ? `Виберіть ще ${n}, щоб зберегти` : language === "DE" ? `Wählen Sie noch ${n} aus, um zu speichern` : `Pick ${n} more to save`,
+              maxReached: language === "UA" ? "Уже вибрано 4 — заберіть щось, щоб додати інше" : language === "DE" ? "Bereits 4 ausgewählt — entfernen Sie eine, um eine andere hinzuzufügen" : "4 selected — remove one to add another",
+            }}
+          />
 
           {activeView === "risks" && (
             <div className="space-y-4">

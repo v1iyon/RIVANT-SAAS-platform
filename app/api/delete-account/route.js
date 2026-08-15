@@ -38,6 +38,7 @@ export async function POST(req) {
     }
 
     await admin.from("subscriptions").delete().eq("user_id", userId);
+    await admin.from("user_widget_prefs").delete().eq("user_id", userId);
     await admin.from("feedback").delete().eq("user_id", userId);
     await admin.from("reviews").delete().eq("email", email);
     await admin.from("leads").delete().eq("email", email);
