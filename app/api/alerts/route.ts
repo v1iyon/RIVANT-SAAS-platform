@@ -4,6 +4,7 @@
 // drops >20%) to the dashboard's Risks tab. Until now nothing read this
 // table from the frontend — the Risks tab showed a static demo array.
 import { createClient } from "@supabase/supabase-js";
+import { getPrimaryBusinessId } from "@/lib/get-primary-business";
 
 export const dynamic = "force-dynamic";
 
@@ -15,14 +16,7 @@ const admin = createClient(
 async function getBusinessId(email: string) {
   const { data: appUser } = await admin.from("users").select("id").eq("email", email).maybeSingle();
   if (!appUser) return null;
-  const { data: business } = await admin
-    .from("businesses")
-    .select("id")
-    .eq("user_id", appUser.id)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-  return business?.id ?? null;
+  return getPrimaryBusinessId(admin, appUser.id);
 }
 
 export async function GET(req: Request) {

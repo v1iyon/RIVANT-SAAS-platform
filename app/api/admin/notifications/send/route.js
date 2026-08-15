@@ -12,11 +12,17 @@ function checkAuth(req) {
 async function sendTelegramToAll(message) {
   const { data: users } = await admin
     .from("users")
-    .select("telegram_id")
+    .select("telegram_id, push_enabled")
     .not("telegram_id", "is", null);
 
+  // Тот же принцип, что уже применён в lib/alerts.mjs (getUserContact):
+  // push_enabled === false — явный отказ пользователя от уведомлений в
+  // Telegram, и админ-рассылка не должна его обходить. undefined/true
+  // остаются включёнными по умолчанию.
+  const recipients = (users || []).filter((u) => u.push_enabled !== false);
+
   let sentCount = 0;
-  for (const u of users || []) {
+  for (const u of recipients) {
     try {
       await fetch(`https://api.telegram.org/bot${process.env.BOT_TOKEN}/sendMessage`, {
         method: "POST",

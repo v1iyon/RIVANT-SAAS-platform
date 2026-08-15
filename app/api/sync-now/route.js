@@ -5,6 +5,7 @@
 // понимал, почему на дашборде всё ещё нули (это не баг, просто нужно было
 // подождать). Теперь после подключения фронт сразу дёргает этот роут.
 import { createClient } from "@supabase/supabase-js";
+import { getPrimaryBusinessId } from "@/lib/get-primary-business";
 
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
@@ -19,29 +20,23 @@ export async function POST(req) {
     const { data: user } = await admin.from("users").select("id").eq("email", email).maybeSingle();
     if (!user) return Response.json({ error: "not found" }, { status: 404 });
 
-    const { data: business } = await admin
-      .from("businesses")
-      .select("id")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: true })
-      .limit(1)
-      .maybeSingle();
-    if (!business) return Response.json({ error: "not found" }, { status: 404 });
+    const businessId = await getPrimaryBusinessId(admin, user.id);
+    if (!businessId) return Response.json({ error: "not found" }, { status: 404 });
 
     // Без provider — синкаем все три источника для этого бизнеса, каждый
     // независимо (ошибка одного не должна блокировать другие).
     const jobs = [];
     if (!provider || provider === "stripe") {
-      jobs.push(import("../../../scripts/sync-stripe-core.mjs").then((m) => m.runSync(business.id)));
+      jobs.push(import("../../../scripts/sync-stripe-core.mjs").then((m) => m.runSync(businessId)));
     }
     if (!provider || provider === "shopify") {
-      jobs.push(import("../../../scripts/shopify-sync.mjs").then((m) => m.runSync(business.id)));
+      jobs.push(import("../../../scripts/shopify-sync.mjs").then((m) => m.runSync(businessId)));
     }
     if (!provider || provider === "meta_ads") {
-      jobs.push(import("../../../scripts/meta-ads-sync.mjs").then((m) => m.runSync(business.id)));
+      jobs.push(import("../../../scripts/meta-ads-sync.mjs").then((m) => m.runSync(businessId)));
     }
     if (!provider || provider === "google_ads") {
-      jobs.push(import("../../../scripts/google-ads-sync.mjs").then((m) => m.runSync(business.id)));
+      jobs.push(import("../../../scripts/google-ads-sync.mjs").then((m) => m.runSync(businessId)));
     }
 
     const results = await Promise.allSettled(jobs);
@@ -54,7 +49,7 @@ export async function POST(req) {
     const { data: integrations } = await admin
       .from("integrations")
       .select("provider, status")
-      .eq("business_id", business.id)
+      .eq("business_id", businessId)
       .in("provider", attemptedProviders);
     const failedProviders = (integrations || [])
       .filter((integration) => integration.status === "error")

@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { getPrimaryBusiness } from "@/lib/get-primary-business";
 
 const admin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -31,24 +32,12 @@ export async function GET(req) {
     return Response.json({ error: "Application user was not initialized" }, { status: 404 });
   }
 
-  // Без ORDER BY .limit(1) не гарантує, яку саме строку поверне Postgres,
-  // якщо у користувача чомусь опинилось БІЛЬШЕ ОДНІЄЇ строки в businesses
-  // (наприклад, з гонки двох паралельних перших завантажень дашборду, які
-  // одночасно побачили "бізнесу нема" і обидва встигли створити свій).
-  // Раніше це виглядало як "назва компанії/ID то є, то раптом пропадає" —
-  // насправді просто щоразу підтягувалась інша строка. created_at ASC
-  // робить вибір детермінованим (завжди найперша створена).
-  let { data: business, error: businessError } = await admin
-    .from("businesses")
-    .select("*")
-    .eq("user_id", appUser.id)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-  if (businessError) {
-    console.error("business-profile read error:", businessError);
-    return Response.json({ error: businessError.message }, { status: 500 });
-  }
+  // Единый хелпер (lib/get-primary-business.ts) детерминированно выбирает
+  // самую первую созданную строку в businesses и обрабатывает случай, когда
+  // их у пользователя оказалось больше одной (гонка двух параллельных
+  // первых загрузок дашборда, которые одновременно не увидели бизнес и обе
+  // успели его создать).
+  let business = await getPrimaryBusiness(admin, appUser.id, "*");
 
   // Если бизнеса ещё нет — создаём пустой, чтобы было что редактировать
   if (!business) {
@@ -74,14 +63,7 @@ export async function PUT(req) {
   const { data: appUser } = await admin.from("users").select("id").eq("email", email).maybeSingle();
   if (!appUser) return Response.json({ error: "user not found" }, { status: 404 });
 
-  const { data: business, error: businessError } = await admin
-    .from("businesses")
-    .select("*")
-    .eq("user_id", appUser.id)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-  if (businessError) return Response.json({ error: businessError.message }, { status: 500 });
+  const business = await getPrimaryBusiness(admin, appUser.id, "*");
   if (!business) return Response.json({ error: "business not found" }, { status: 404 });
 
   const updates = {};

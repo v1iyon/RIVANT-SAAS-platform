@@ -1,5 +1,6 @@
 // app/api/metrics/route.ts
 import { createClient } from "@supabase/supabase-js";
+import { getPrimaryBusinessId } from "@/lib/get-primary-business";
 
 export const dynamic = "force-dynamic";
 
@@ -29,12 +30,8 @@ export async function GET(req: Request) {
   const { data: appUser } = await admin.from("users").select("id").eq("email", email).maybeSingle();
   if (!appUser) return Response.json({ hasData: false, rows: [] });
 
-  const { data: business } = await admin
-    .from("businesses")
-    .select("id")
-    .eq("user_id", appUser.id)
-    .maybeSingle();
-  if (!business) return Response.json({ hasData: false, rows: [] });
+  const businessId = await getPrimaryBusinessId(admin, appUser.id);
+  if (!businessId) return Response.json({ hasData: false, rows: [] });
 
   // Если Stripe отключён — данные не показываем вообще, даже если они
   // остались в metrics_computed с прошлого раза. Отключение интеграции
@@ -42,7 +39,7 @@ export async function GET(req: Request) {
   const { data: stripeIntegration } = await admin
     .from("integrations")
     .select("status")
-    .eq("business_id", business.id)
+    .eq("business_id", businessId)
     .eq("provider", "stripe")
     .maybeSingle();
 
@@ -70,7 +67,7 @@ export async function GET(req: Request) {
   const { data: rawRows, error } = await admin
     .from("metrics_computed")
     .select("date, revenue, cost, margin_pct, orders")
-    .eq("business_id", business.id)
+    .eq("business_id", businessId)
     .gte("date", sinceStr)
     .order("date", { ascending: true });
 
@@ -97,11 +94,10 @@ export async function GET(req: Request) {
   const { data: expenseRows } = await admin
     .from("expenses")
     .select("date, amount, category, source")
-    .eq("business_id", business.id)
+    .eq("business_id", businessId)
     .gte("date", minDate)
     .limit(2000);
-
-  const extraByDate: Record<string, { total: number; advertising: number; meta_ads: number; google_ads: number }> = {};
+    const extraByDate: Record<string, { total: number; advertising: number; meta_ads: number; google_ads: number }> = {};
   for (const e of expenseRows || []) {
     if (!extraByDate[e.date]) extraByDate[e.date] = { total: 0, advertising: 0, meta_ads: 0, google_ads: 0 };
     const amount = Number(e.amount) || 0;

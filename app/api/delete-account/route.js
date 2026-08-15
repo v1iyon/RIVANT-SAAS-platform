@@ -24,6 +24,16 @@ export async function POST(req) {
       await admin.from("integrations").delete().in("business_id", businessIds);
       await admin.from("metrics_computed").delete().in("business_id", businessIds);
       await admin.from("alerts_log").delete().in("business_id", businessIds);
+      // Эти три таблицы тоже завязаны на business_id этого пользователя и
+      // раньше не чистились: expenses (используется в /api/metrics для
+      // CAC/расходов), team_members (personal data — telegram_id/username
+      // приглашённых коллег), addon_subscriptions (допуслуга "Сповіщення
+      // для команди"). Без этого после "Удалить аккаунт" в базе годами
+      // оставались висячие строки с чужими данными — это уже вопрос не
+      // только аккуратности, но и полноты права на удаление (GDPR).
+      await admin.from("expenses").delete().in("business_id", businessIds);
+      await admin.from("team_members").delete().in("business_id", businessIds);
+      await admin.from("addon_subscriptions").delete().in("business_id", businessIds);
       await admin.from("businesses").delete().in("id", businessIds);
     }
 

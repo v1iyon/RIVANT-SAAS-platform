@@ -1,5 +1,6 @@
 // app/api/integrations-status/route.js
 import { createClient } from "@supabase/supabase-js";
+import { getPrimaryBusinessId } from "@/lib/get-primary-business";
 
 const admin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -17,19 +18,13 @@ export async function GET(req) {
   const { data: appUser } = await admin.from("users").select("id").eq("email", email).maybeSingle();
   if (!appUser) return Response.json({ integrations: [] });
 
-  const { data: business } = await admin
-    .from("businesses")
-    .select("id")
-    .eq("user_id", appUser.id)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-  if (!business) return Response.json({ integrations: [] });
+  const businessId = await getPrimaryBusinessId(admin, appUser.id);
+  if (!businessId) return Response.json({ integrations: [] });
 
   const { data: rows } = await admin
     .from("integrations")
     .select("provider, status, last_synced_at, key_preview, config")
-    .eq("business_id", business.id)
+    .eq("business_id", businessId)
     .in("provider", SUPPORTED_PROVIDERS);
 
   // Возвращаем запись для каждого провайдера из списка, даже если ещё не подключён —

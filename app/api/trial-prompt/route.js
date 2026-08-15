@@ -1,5 +1,6 @@
 // app/api/trial-prompt/route.js
 import { createClient } from "@supabase/supabase-js";
+import { getPrimaryBusinessId } from "@/lib/get-primary-business";
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
 export async function POST(req) {
@@ -11,17 +12,11 @@ export async function POST(req) {
   const { data: user } = await admin.from("users").select("id").eq("email", email).maybeSingle();
   if (!user) return Response.json({ error: "user not found" }, { status: 404 });
 
-  const { data: business } = await admin
-    .from("businesses")
-    .select("id")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  const businessId = await getPrimaryBusinessId(admin, user.id);
 
   await admin.from("user_events").insert({
     user_id: user.id,
-    business_id: business?.id || null,
+    business_id: businessId || null,
     event_type: response === "yes" ? "trial_prompt_yes" : "trial_prompt_no",
     channel: "web",
   });

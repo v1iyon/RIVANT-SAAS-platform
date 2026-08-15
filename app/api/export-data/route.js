@@ -32,6 +32,13 @@ export async function GET(req) {
     ? await admin.from("alerts_log").select("*").in("business_id", businessIds)
     : { data: [] };
 
+  // Дашборд считает CAC/расходы из expenses (см. app/api/metrics/route.ts),
+  // но эта таблица раньше не попадала в экспорт — "скачать мои данные" был
+  // неполным относительно того, что реально показывается пользователю.
+  const { data: expenses } = businessIds.length
+    ? await admin.from("expenses").select("*").in("business_id", businessIds)
+    : { data: [] };
+
   const { data: subscription } = await admin
     .from("subscriptions")
     .select("plan, access_status, current_period_end, created_at")
@@ -44,6 +51,7 @@ export async function GET(req) {
     subscription,
     businesses,
     metrics,
+    expenses,
     alerts,
   };
 
