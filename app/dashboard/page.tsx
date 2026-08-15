@@ -1467,9 +1467,9 @@ useEffect(() => {
 
   const widgetLabel = (id: WidgetId): string => {
     switch (id) {
-      case "revenue": return T.revenue || "Revenue";
-      case "profit": return T.profit || "Profit";
-      case "margin": return T.margin || "Margin";
+      case "revenue": return (t as any).revenue || "Revenue";
+      case "profit": return (t as any).profit || "Profit";
+      case "margin": return (t as any).margin || "Margin";
       case "cac": return "CAC";
       case "orders": return language === "UA" ? "Замовлення" : language === "DE" ? "Bestellungen" : "Orders";
       case "aov": return language === "UA" ? "Середній чек" : language === "DE" ? "Ø Bestellwert" : "Avg. order value";
@@ -1489,18 +1489,18 @@ useEffect(() => {
     switch (id) {
       case "revenue":
         return (
-          <MetricCard key={id} title={T.revenue || "Revenue"} value={convert(currentRevenue)} change={parseFloat(revenueChange)}
-            color="bg-blue-500" prefix={symbol} subtitle={T.thisMonth} sparklineData={revenueQueue} prevValue={prevRevenue} />
+          <MetricCard key={id} title={(t as any).revenue || "Revenue"} value={convert(currentRevenue)} change={parseFloat(revenueChange)}
+            color="bg-blue-500" prefix={symbol} subtitle={(t as any).thisMonth} sparklineData={revenueQueue} prevValue={prevRevenue} />
         );
       case "profit":
         return (
-          <MetricCard key={id} title={T.profit || "Profit"} value={convert(currentProfit)} change={parseFloat(profitChange)}
-            color="bg-green-500" prefix={symbol} subtitle={T.thisMonth} sparklineData={profitQueue} prevValue={prevProfit} />
+          <MetricCard key={id} title={(t as any).profit || "Profit"} value={convert(currentProfit)} change={parseFloat(profitChange)}
+            color="bg-green-500" prefix={symbol} subtitle={(t as any).thisMonth} sparklineData={profitQueue} prevValue={prevProfit} />
         );
       case "margin":
         return (
-          <MetricCard key={id} title={T.margin || "Margin"} value={currentMargin} change={parseFloat(marginChange)}
-            color="bg-purple-500" prefix="" suffix="%" subtitle={T.thisMonth} sparklineData={marginQueue} prevValue={prevMargin} />
+          <MetricCard key={id} title={(t as any).margin || "Margin"} value={currentMargin} change={parseFloat(marginChange)}
+            color="bg-purple-500" prefix="" suffix="%" subtitle={(t as any).thisMonth} sparklineData={marginQueue} prevValue={prevMargin} />
         );
       case "cac":
         return (
@@ -1524,17 +1524,17 @@ useEffect(() => {
       case "orders":
         return (
           <MetricCard key={id} title={widgetLabel("orders")} value={currentOrders} change={parseFloat(ordersChange)}
-            color="bg-cyan-500" prefix="" subtitle={T.thisMonth} sparklineData={ordersQueue} prevValue={prevOrders} />
+            color="bg-cyan-500" prefix="" subtitle={(t as any).thisMonth} sparklineData={ordersQueue} prevValue={prevOrders} />
         );
       case "aov":
         return (
           <MetricCard key={id} title={widgetLabel("aov")} value={convert(currentAov)} change={parseFloat(aovChange)}
-            color="bg-pink-500" prefix={symbol} subtitle={T.thisMonth} sparklineData={aovQueue} prevValue={prevAov} />
+            color="bg-pink-500" prefix={symbol} subtitle={(t as any).thisMonth} sparklineData={aovQueue} prevValue={prevAov} />
         );
       case "expenses":
         return (
           <MetricCard key={id} title={widgetLabel("expenses")} value={convert(currentExpenses)} change={parseFloat(expensesChange)}
-            color="bg-red-500" prefix={symbol} subtitle={T.thisMonth} sparklineData={expensesQueue} prevValue={prevExpenses} />
+            color="bg-red-500" prefix={symbol} subtitle={(t as any).thisMonth} sparklineData={expensesQueue} prevValue={prevExpenses} />
         );
       default:
         return null;
