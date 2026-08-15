@@ -3058,19 +3058,6 @@ if (!subInfo) {
     ))}
   </select>
 </div>
-                 <div>
-                    <label className="text-xs text-muted-foreground uppercase tracking-wider">{T.settingsAlertSensitivity || "Alert Sensitivity"}</label>
-                    <select
-                      value={alertSensitivity}
-                      onChange={(e) => saveAlertSensitivity(e.target.value as "low" | "normal" | "high")}
-                      className="mt-1 w-full bg-secondary border border-border rounded-lg px-3 py-2 text-foreground text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                    >
-                      <option value="low">{T.sensitivityLow || "Low — fewer, only major issues"}</option>
-                      <option value="normal">{T.sensitivityNormal || "Normal — balanced (default)"}</option>
-                      <option value="high">{T.sensitivityHigh || "High — catch smaller changes"}</option>
-                    </select>
-                    <p className="mt-1 text-xs text-muted-foreground">{T.settingsAlertSensitivityDesc || "How easily anomalies trigger an alert (revenue drops, CAC spikes, ad spend changes)"}</p>
-                  </div>
                 </div>
               </div>
 
@@ -3121,6 +3108,19 @@ if (!subInfo) {
     {language === "UA" ? "Оновити" : language === "DE" ? "Upgrade" : "Upgrade"}
   </Button>
                     )}
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3 py-2">
+                    <div className="flex-1 min-w-0"><p className="font-medium text-foreground">{T.settingsAlertSensitivity || "Alert Sensitivity"}</p><p className="text-xs text-muted-foreground">{T.settingsAlertSensitivityDesc || "Alert threshold"}</p></div>
+                    <select
+                      value={alertSensitivity}
+                      onChange={(e) => saveAlertSensitivity(e.target.value as "low" | "normal" | "high")}
+                      className="shrink-0 bg-secondary border border-border rounded-lg px-3 py-1.5 text-foreground text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    >
+                      <option value="low">{T.sensitivityLow || "Low"}</option>
+                      <option value="normal">{T.sensitivityNormal || "Normal"}</option>
+                      <option value="high">{T.sensitivityHigh || "High"}</option>
+                    </select>
                   </div>
 
                   <TeamAccessCard email={profileEmail} />
