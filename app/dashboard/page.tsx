@@ -3124,13 +3124,13 @@ if (!subInfo) {
   <select
     value={alertSensitivity}
     onChange={(e) => saveAlertSensitivity(e.target.value as "low" | "normal" | "high")}
-    className="appearance-none h-8 rounded-md border border-input bg-background pl-3 pr-7 text-xs font-medium text-foreground shadow-sm hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring transition-colors cursor-pointer"
+    className="appearance-none h-8 rounded-md border border-input bg-background pl-3 pr-6 text-xs font-medium text-foreground shadow-sm hover:bg-accent hover:text-accent-foreground focus:outline-none transition-colors cursor-pointer"
   >
     <option value="low">{T.sensitivityLow || "Low"}</option>
     <option value="normal">{T.sensitivityNormal || "Normal"}</option>
     <option value="high">{T.sensitivityHigh || "High"}</option>
   </select>
-  <ChevronDown className="w-3.5 h-3.5 text-muted-foreground absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+  <ChevronDown className="w-3 h-3 text-muted-foreground absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" />
 </div>
                   </div>
 
@@ -3140,13 +3140,13 @@ if (!subInfo) {
   <select
     value={digestFrequency}
     onChange={(e) => saveDigestFrequency(e.target.value as "both" | "morning_only" | "problems_only")}
-    className="appearance-none h-8 rounded-md border border-input bg-background pl-3 pr-7 text-xs font-medium text-foreground shadow-sm hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring transition-colors cursor-pointer"
+    className="appearance-none h-8 rounded-md border border-input bg-background pl-3 pr-6 text-xs font-medium text-foreground shadow-sm hover:bg-accent hover:text-accent-foreground focus:outline-none transition-colors cursor-pointer"
   >
     <option value="both">{T.digestBoth || "Twice a day"}</option>
     <option value="morning_only">{T.digestMorningOnly || "Morning only"}</option>
     <option value="problems_only">{T.digestProblemsOnly || "Issues only"}</option>
   </select>
-  <ChevronDown className="w-3.5 h-3.5 text-muted-foreground absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+  <ChevronDown className="w-3 h-3 text-muted-foreground absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" />
 </div>
                   </div>
 
