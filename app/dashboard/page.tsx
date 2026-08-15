@@ -1669,16 +1669,16 @@ const handleDisconnectTelegram = async () => {
     setShowEditProfileModal(true);
   };
 
-  const saveBusinessProfile = async () => {
-    await fetch("/api/business-profile", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: profileEmail, name: businessName, timezone }),
-    });
-    setCompanyDirty(false);
-    setCompanySaved(true);
-    setTimeout(() => setCompanySaved(false), 2000);
-  };
+  const saveBusinessProfile = () => {
+  setCompanyDirty(false);
+  setCompanySaved(true);
+  setTimeout(() => setCompanySaved(false), 900);
+  fetch("/api/business-profile", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: profileEmail, name: businessName, timezone }),
+  }).catch((e) => console.error("Failed to save business profile", e));
+};
 
   // РАНІШЕ тут відправлявся ще й `name: businessName` — і саме це стирало
   // назву компанії в базі. Ця функція викликається одразу після
@@ -1722,24 +1722,24 @@ const saveDigestFrequency = async (value: "both" | "morning_only" | "problems_on
   });
 };
 
-const savePhone = async () => {
-  try {
-    await fetch("/api/profile", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email: profileEmail,
-        full_name: profileName,
-        phone: profilePhone,
-        avatar_url: profilePhotoUrl,
-      }),
-    });
-    setPhoneDirty(false);
-    setPhoneSaved(true);
-    setTimeout(() => setPhoneSaved(false), 2000);
-  } catch (e) {
-    console.error("Failed to save phone", e);
-  }
+const savePhone = () => {
+  // Перемикаємо іконку на зелену ОДРАЗУ (оптимістично), не чекаючи
+  // відповіді мережі — раніше await fetch стояв ПЕРЕД зміною стану,
+  // тому синя галочка "висіла" на секунду-дві під час запиту, а потім
+  // різко змінювалась на зелену — це і виглядало як миготіння.
+  setPhoneDirty(false);
+  setPhoneSaved(true);
+  setTimeout(() => setPhoneSaved(false), 900);
+  fetch("/api/profile", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email: profileEmail,
+      full_name: profileName,
+      phone: profilePhone,
+      avatar_url: profilePhotoUrl,
+    }),
+  }).catch((e) => console.error("Failed to save phone", e));
 };
   
   const handleExportData = () => {
