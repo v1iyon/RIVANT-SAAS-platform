@@ -1078,13 +1078,13 @@ const [companySaved, setCompanySaved] = useState(false);
   // що сказати — див. scripts/daily-reports.mjs).
   const [digestFrequency, setDigestFrequencyState] = useState<"both" | "morning_only" | "problems_only">("both");
   useEffect(() => {
-    try {
-      const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      if (detected) setTimezoneState(detected);
-    } catch {
-      // Невідома/недоступна таймзона браузера — лишаємо дефолт, не ламаємо рендер.
-    }
-  });
+  try {
+    const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (detected) setTimezoneState(detected);
+  } catch {
+    // Невідома/недоступна таймзона браузера — лишаємо дефолт, не ламаємо рендер.
+  }
+}, []); // запускаємо ОДИН РАЗ при монтуванні, а не на кожен рендер
   // Скользящее окно "последние 24ч vs предыдущие 24ч" — тот же движок, что
   // считает revenue_drop для бота (scripts/sync-stripe-core.mjs), пишется
   // туда же в businesses.rolling_metrics при каждом часовом синке. Для
