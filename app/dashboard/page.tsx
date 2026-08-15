@@ -1059,6 +1059,10 @@ const [companySaved, setCompanySaved] = useState(false);
   // ad-spend/COGS-аномалій у sync-скриптах (lib/alerts.mjs). Дефолт "normal"
   // збігається з тим, що fallback'ається на бекенді для порожнього значення.
   const [alertSensitivity, setAlertSensitivityState] = useState<"low" | "normal" | "high">("normal");
+  // "Періодичність дайджесту" (Settings) — both (ранок+вечір, дефолт) /
+  // morning_only (тільки ранок) / problems_only (шлеться, тільки якщо є
+  // що сказати — див. scripts/daily-reports.mjs).
+  const [digestFrequency, setDigestFrequencyState] = useState<"both" | "morning_only" | "problems_only">("both");
   useEffect(() => {
     try {
       const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -1317,6 +1321,12 @@ if (bizData.business) {
     setAlertSensitivityState(bizData.business.alert_sensitivity);
   } else {
     setAlertSensitivityState("normal");
+  }
+
+  if (bizData.business.digest_frequency === "morning_only" || bizData.business.digest_frequency === "problems_only") {
+    setDigestFrequencyState(bizData.business.digest_frequency);
+  } else {
+    setDigestFrequencyState("both");
   }
 }
 
@@ -1684,6 +1694,15 @@ const saveAlertSensitivity = async (value: "low" | "normal" | "high") => {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email: profileEmail, alert_sensitivity: value }),
+  });
+};
+
+const saveDigestFrequency = async (value: "both" | "morning_only" | "problems_only") => {
+  setDigestFrequencyState(value);
+  await fetch("/api/business-profile", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: profileEmail, digest_frequency: value }),
   });
 };
 
@@ -3120,6 +3139,19 @@ if (!subInfo) {
                       <option value="low">{T.sensitivityLow || "Low"}</option>
                       <option value="normal">{T.sensitivityNormal || "Normal"}</option>
                       <option value="high">{T.sensitivityHigh || "High"}</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3 py-2">
+                    <div className="flex-1 min-w-0"><p className="font-medium text-foreground">{T.settingsDigestFrequency || "Digest Frequency"}</p><p className="text-xs text-muted-foreground">{T.settingsDigestFrequencyDesc || "Summary reports"}</p></div>
+                    <select
+                      value={digestFrequency}
+                      onChange={(e) => saveDigestFrequency(e.target.value as "both" | "morning_only" | "problems_only")}
+                      className="shrink-0 bg-secondary border border-border rounded-lg px-3 py-1.5 text-foreground text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    >
+                      <option value="both">{T.digestBoth || "Twice a day"}</option>
+                      <option value="morning_only">{T.digestMorningOnly || "Morning only"}</option>
+                      <option value="problems_only">{T.digestProblemsOnly || "Issues only"}</option>
                     </select>
                   </div>
 

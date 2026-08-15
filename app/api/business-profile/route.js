@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { getPrimaryBusiness } from "@/lib/get-primary-business";
+import { DIGEST_FREQUENCIES } from "@/lib/alerts.mjs";
 
 const admin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -59,7 +60,7 @@ export async function GET(req) {
 const VALID_ALERT_SENSITIVITY = ["low", "normal", "high"];
 
 export async function PUT(req) {
-  const { email, name, timezone, alert_sensitivity } = await req.json();
+  const { email, name, timezone, alert_sensitivity, digest_frequency } = await req.json();
   if (!email) return Response.json({ error: "email required" }, { status: 400 });
 
   const { data: appUser } = await admin.from("users").select("id").eq("email", email).maybeSingle();
@@ -78,6 +79,9 @@ export async function PUT(req) {
   // це друга лінія захисту, а не єдина.
   if (alert_sensitivity !== undefined && VALID_ALERT_SENSITIVITY.includes(alert_sensitivity)) {
     updates.alert_sensitivity = alert_sensitivity;
+  }
+  if (digest_frequency !== undefined && DIGEST_FREQUENCIES.includes(digest_frequency)) {
+    updates.digest_frequency = digest_frequency;
   }
 
   const { error } = await admin.from("businesses").update(updates).eq("id", business.id);

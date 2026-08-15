@@ -50,7 +50,7 @@ function localDateStr(tz) {
 }
 
 export async function runDailyReports() {
-  const { data: businesses } = await admin.from("businesses").select("id, user_id, name, timezone");
+  const { data: businesses } = await admin.from("businesses").select("id, user_id, name, timezone, digest_frequency");
   if (!businesses?.length) return;
 
   for (const business of businesses) {
@@ -68,6 +68,11 @@ export async function runDailyReports() {
       // alerts_log все одно гарантує рівно одну відправку на день).
       const kind = hour >= 8 && hour <= 11 ? "morning" : hour >= 20 && hour <= 23 ? "evening" : null;
       if (!kind) continue; // не час цього бізнесу — пропускаємо, наступний прогін за годину перевірить знову
+
+      // "Тільки вранці" — вечірній звіт для цього бізнесу взагалі не рахуємо
+      // й не шлемо, навіть без "нема про що казати": власник свідомо не
+      // хоче другий дотик за день.
+      if (business.digest_frequency === "morning_only" && kind === "evening") continue;
 
       const digestType = kind === "morning" ? "daily_digest_morning" : "daily_digest_evening";
       const today = localDateStr(tz);
@@ -129,6 +134,13 @@ export async function runDailyReports() {
           .not("type", "in", "(daily_digest_morning,daily_digest_evening)");
         count = newAlerts?.length || 0;
       }
+
+      // "Тільки проблеми" — не шлемо факт "все стабільно" щодня: якщо
+      // рахувати нема що (немає відкритих/нових сповіщень), просто
+      // пропускаємо цей прогін БЕЗ запису дедуп-рядка нижче — щоб наступний
+      // годинний прогін у тому самому вікні (8-11 / 20-23) перевірив ще раз
+      // і надіслав звіт одразу, якщо проблема з'явиться пізніше у вікні.
+      if (business.digest_frequency === "problems_only" && count === 0) continue;
 
       await sendDailyReport(business.id, business.name, contact, kind, { revenue, marginPct, count });
 
