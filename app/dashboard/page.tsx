@@ -1298,6 +1298,25 @@ useEffect(() => {
       ) {
         setLanguage(profile.language);
       }
+      // Перенесено сюда: имя/телефон/фото проставляем сразу после получения
+      // профиля, а не в самом конце эффекта (после ещё десятка await ниже).
+      // Раньше это создавало заметную задержку — поле "Телефон" появлялось
+      // позже, чем уже отрисованные Назва компанії/ID бізнесу.
+      const displayName = profile.full_name || email.split("@")[0] || "";
+      if (displayName) {
+        setProfileName(displayName);
+        setEditName(displayName);
+        const initials = displayName.split(" ").map((w: string) => w[0]).join("").toUpperCase().slice(0, 2);
+        setProfileInitials(initials);
+      }
+      if (profile.phone) {
+        setProfilePhone(profile.phone);
+        setEditPhone(profile.phone);
+      }
+      if (profile.avatar_url) {
+        setProfilePhotoUrl(profile.avatar_url);
+        setEditPhotoUrl(profile.avatar_url);
+      }
       setProfileEmail(email);
       setProfileSettingsLoaded(true);
       setEditEmail(email);
@@ -1436,23 +1455,6 @@ if (bizData.business) {
       const verifiedFactor = factorsData?.totp?.find((f: any) => f.status === "verified");
       setTwoFactorEnabled(!!verifiedFactor);
       if (verifiedFactor) setMfaFactorId(verifiedFactor.id);
-      // profile уже получен и язык уже скорректирован в начале эффекта
-      // (см. profilePromise выше) — здесь только используем оставшиеся поля.
-      const displayName = profile.full_name || email.split("@")[0] || "";
-      if (displayName) {
-        setProfileName(displayName);
-        setEditName(displayName);
-        const initials = displayName.split(" ").map((w: string) => w[0]).join("").toUpperCase().slice(0, 2);
-        setProfileInitials(initials);
-      }
-      if (profile.phone) {
-        setProfilePhone(profile.phone);
-        setEditPhone(profile.phone);
-      }
-      if (profile.avatar_url) {
-        setProfilePhotoUrl(profile.avatar_url);
-        setEditPhotoUrl(profile.avatar_url);
-      }
     });
   }, [router]);
 
@@ -2294,7 +2296,11 @@ if (!subInfo) {
                     </div>
                   </div>
 
-                  <RevenueExpensesChart history={chartHistory} />
+                  {metricsLoaded ? (
+                    <RevenueExpensesChart history={chartHistory} />
+                  ) : (
+                    <div className="h-[360px] rounded-2xl border border-gray-800 bg-card animate-pulse" />
+                  )}
             </div>
           )}
 
@@ -3111,6 +3117,33 @@ if (!subInfo) {
                       }} />
                     </div>
                   </div>
+
+                  <div className="flex items-center justify-between gap-3 py-2">
+                    <div className="flex-1 min-w-0"><p className="font-medium text-foreground">{T.settingsAlertSensitivity || "Alert Sensitivity"}</p><p className="text-xs text-muted-foreground">{T.settingsAlertSensitivityDesc || "Alert threshold"}</p></div>
+                    <select
+                      value={alertSensitivity}
+                      onChange={(e) => saveAlertSensitivity(e.target.value as "low" | "normal" | "high")}
+                      className="shrink-0 w-[168px] bg-secondary border border-border rounded-lg px-3 py-1.5 text-foreground text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    >
+                      <option value="low">{T.sensitivityLow || "Low"}</option>
+                      <option value="normal">{T.sensitivityNormal || "Normal"}</option>
+                      <option value="high">{T.sensitivityHigh || "High"}</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3 py-2">
+                    <div className="flex-1 min-w-0"><p className="font-medium text-foreground">{T.settingsDigestFrequency || "Digest Frequency"}</p><p className="text-xs text-muted-foreground">{T.settingsDigestFrequencyDesc || "Summary reports"}</p></div>
+                    <select
+                      value={digestFrequency}
+                      onChange={(e) => saveDigestFrequency(e.target.value as "both" | "morning_only" | "problems_only")}
+                      className="shrink-0 w-[168px] bg-secondary border border-border rounded-lg px-3 py-1.5 text-foreground text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    >
+                      <option value="both">{T.digestBoth || "Twice a day"}</option>
+                      <option value="morning_only">{T.digestMorningOnly || "Morning only"}</option>
+                      <option value="problems_only">{T.digestProblemsOnly || "Issues only"}</option>
+                    </select>
+                  </div>
+
                   <div className="flex items-center justify-between gap-3 py-2">
                     <div className="flex-1 min-w-0"><p className="font-medium text-foreground">{T.settingsTelegram || "Telegram Notifications"}</p><p className="text-xs text-muted-foreground">{T.settingsTelegramDesc || "Connect Telegram for instant alerts"}</p></div>
                     {hasGrowthAccess ? (
@@ -3127,32 +3160,6 @@ if (!subInfo) {
     {language === "UA" ? "Оновити" : language === "DE" ? "Upgrade" : "Upgrade"}
   </Button>
                     )}
-                  </div>
-
-                  <div className="flex items-center justify-between gap-3 py-2">
-                    <div className="flex-1 min-w-0"><p className="font-medium text-foreground">{T.settingsAlertSensitivity || "Alert Sensitivity"}</p><p className="text-xs text-muted-foreground">{T.settingsAlertSensitivityDesc || "Alert threshold"}</p></div>
-                    <select
-                      value={alertSensitivity}
-                      onChange={(e) => saveAlertSensitivity(e.target.value as "low" | "normal" | "high")}
-                      className="shrink-0 bg-secondary border border-border rounded-lg px-3 py-1.5 text-foreground text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                    >
-                      <option value="low">{T.sensitivityLow || "Low"}</option>
-                      <option value="normal">{T.sensitivityNormal || "Normal"}</option>
-                      <option value="high">{T.sensitivityHigh || "High"}</option>
-                    </select>
-                  </div>
-
-                  <div className="flex items-center justify-between gap-3 py-2">
-                    <div className="flex-1 min-w-0"><p className="font-medium text-foreground">{T.settingsDigestFrequency || "Digest Frequency"}</p><p className="text-xs text-muted-foreground">{T.settingsDigestFrequencyDesc || "Summary reports"}</p></div>
-                    <select
-                      value={digestFrequency}
-                      onChange={(e) => saveDigestFrequency(e.target.value as "both" | "morning_only" | "problems_only")}
-                      className="shrink-0 bg-secondary border border-border rounded-lg px-3 py-1.5 text-foreground text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                    >
-                      <option value="both">{T.digestBoth || "Twice a day"}</option>
-                      <option value="morning_only">{T.digestMorningOnly || "Morning only"}</option>
-                      <option value="problems_only">{T.digestProblemsOnly || "Issues only"}</option>
-                    </select>
                   </div>
 
                   <TeamAccessCard email={profileEmail} />
