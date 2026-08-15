@@ -414,12 +414,14 @@ export function TeamAccessCard({ email }: { email: string }) {
 
       {!inviteUrl && (
         <div className="mt-2 w-full">
-          <p className="text-[11px] text-muted-foreground mb-1.5">{tr.inviteCategoriesHint}</p>
-          <CategoryToggles
-            selected={inviteCategories}
-            onToggle={toggleInviteCategory}
-            categoryNames={tr.categoryNames}
-          />
+          <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2.5">
+            <p className="text-[11px] text-muted-foreground shrink-0">{tr.inviteCategoriesHint}</p>
+            <CategoryToggles
+              selected={inviteCategories}
+              onToggle={toggleInviteCategory}
+              categoryNames={tr.categoryNames}
+            />
+          </div>
         </div>
       )}
 

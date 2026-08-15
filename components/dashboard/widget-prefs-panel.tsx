@@ -141,19 +141,27 @@ export function WidgetPrefsPanel({
             <div className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">
               {labels.active}
             </div>
-            <div className="relative">
+            <div
+              className="relative"
+              style={{ height: draft.length * ROW_PITCH - 8 }}
+            >
               {draft.map((id, index) => {
                 const item = catalogById[id];
                 if (!item) return null;
                 const Icon = item.icon;
                 const isDragging = dragId === id;
+                const y = isDragging ? (dragState.current?.startIndex ?? index) * ROW_PITCH + dragOffsetY : index * ROW_PITCH;
                 return (
                   <div
                     key={id}
                     style={{
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      right: 0,
                       height: 48,
-                      marginBottom: 8,
-                      transform: isDragging ? `translateY(${dragOffsetY}px)` : undefined,
+                      transform: `translateY(${y}px)`,
+                      transition: isDragging ? "none" : "transform 220ms cubic-bezier(0.22, 1, 0.36, 1)",
                       zIndex: isDragging ? 10 : 1,
                     }}
                     className={`flex items-center gap-2 rounded-xl border px-3 bg-gray-800/60 ${
