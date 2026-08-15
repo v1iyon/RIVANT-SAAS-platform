@@ -3136,15 +3136,17 @@ if (!subInfo) {
 
                   <div className="flex items-center justify-between gap-3 py-2">
                     <div className="flex-1 min-w-0"><p className="font-medium text-foreground">{T.settingsAlertSensitivity || "Alert Sensitivity"}</p><p className="text-xs text-muted-foreground">{T.settingsAlertSensitivityDesc || "Alert threshold"}</p></div>
-                   <div className="relative shrink-0" ref={sensitivityRef}>
-  <button
+                  <div className="relative shrink-0" ref={sensitivityRef}>
+  <Button
     type="button"
+    variant="outline"
+    size="sm"
     onClick={() => setSensitivityOpen((v) => !v)}
-    className="h-8 rounded-md border border-input bg-background pl-3 pr-2 text-xs font-medium text-foreground shadow-sm hover:bg-accent hover:text-accent-foreground focus:outline-none transition-colors cursor-pointer flex items-center gap-1"
+    className="gap-1"
   >
     {alertSensitivity === "low" ? (T.sensitivityLow || "Low") : alertSensitivity === "high" ? (T.sensitivityHigh || "High") : (T.sensitivityNormal || "Normal")}
-    <ChevronDown className={`w-3 h-3 text-muted-foreground transition-transform ${sensitivityOpen ? "rotate-180" : ""}`} />
-  </button>
+    <ChevronDown className={`w-3 h-3 transition-transform ${sensitivityOpen ? "rotate-180" : ""}`} />
+  </Button>
   {sensitivityOpen && (
     <div className="absolute right-0 mt-1 w-full min-w-[110px] bg-gray-900 border border-gray-800 rounded-lg shadow-xl z-20 overflow-hidden">
       {(["low", "normal", "high"] as const).map((val) => (
@@ -3152,8 +3154,8 @@ if (!subInfo) {
           key={val}
           type="button"
           onClick={() => { saveAlertSensitivity(val); setSensitivityOpen(false); }}
-          className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
-            alertSensitivity === val ? "text-blue-400 bg-blue-500/10" : "text-gray-300 hover:bg-gray-800"
+          className={`w-full text-left px-3 py-1.5 text-xs font-medium transition-colors ${
+            alertSensitivity === val ? "bg-blue-600 text-white" : "text-gray-300 hover:bg-gray-800"
           }`}
         >
           {val === "low" ? (T.sensitivityLow || "Low") : val === "high" ? (T.sensitivityHigh || "High") : (T.sensitivityNormal || "Normal")}
@@ -3166,15 +3168,17 @@ if (!subInfo) {
 
                   <div className="flex items-center justify-between gap-3 py-2">
                     <div className="flex-1 min-w-0"><p className="font-medium text-foreground">{T.settingsDigestFrequency || "Digest Frequency"}</p><p className="text-xs text-muted-foreground">{T.settingsDigestFrequencyDesc || "Summary reports"}</p></div>
-                   <div className="relative shrink-0" ref={digestRef}>
-  <button
+                  <div className="relative shrink-0" ref={digestRef}>
+  <Button
     type="button"
+    variant="outline"
+    size="sm"
     onClick={() => setDigestOpen((v) => !v)}
-    className="h-8 rounded-md border border-input bg-background pl-3 pr-2 text-xs font-medium text-foreground shadow-sm hover:bg-accent hover:text-accent-foreground focus:outline-none transition-colors cursor-pointer flex items-center gap-1"
+    className="gap-1"
   >
     {digestFrequency === "morning_only" ? (T.digestMorningOnly || "Morning only") : digestFrequency === "problems_only" ? (T.digestProblemsOnly || "Issues only") : (T.digestBoth || "Twice a day")}
-    <ChevronDown className={`w-3 h-3 text-muted-foreground transition-transform ${digestOpen ? "rotate-180" : ""}`} />
-  </button>
+    <ChevronDown className={`w-3 h-3 transition-transform ${digestOpen ? "rotate-180" : ""}`} />
+  </Button>
   {digestOpen && (
     <div className="absolute right-0 mt-1 w-full min-w-[140px] bg-gray-900 border border-gray-800 rounded-lg shadow-xl z-20 overflow-hidden">
       {(["both", "morning_only", "problems_only"] as const).map((val) => (
@@ -3182,8 +3186,8 @@ if (!subInfo) {
           key={val}
           type="button"
           onClick={() => { saveDigestFrequency(val); setDigestOpen(false); }}
-          className={`w-full text-left px-3 py-1.5 text-xs whitespace-nowrap transition-colors ${
-            digestFrequency === val ? "text-blue-400 bg-blue-500/10" : "text-gray-300 hover:bg-gray-800"
+          className={`w-full text-left px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors ${
+            digestFrequency === val ? "bg-blue-600 text-white" : "text-gray-300 hover:bg-gray-800"
           }`}
         >
           {val === "morning_only" ? (T.digestMorningOnly || "Morning only") : val === "problems_only" ? (T.digestProblemsOnly || "Issues only") : (T.digestBoth || "Twice a day")}
