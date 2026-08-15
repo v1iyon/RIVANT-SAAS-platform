@@ -852,6 +852,13 @@ export default function DashboardClient() {
   const [metricsLoaded, setMetricsLoaded] = useState(false);
 
   const [widgetIds, setWidgetIds] = useState<WidgetId[]>(DEFAULT_WIDGET_IDS);
+  // Поки не отримали відповідь /api/widget-prefs, ми не знаємо — юзер нічого не
+  // міняв (тоді DEFAULT_WIDGET_IDS дійсно вірний) чи міняв (тоді дефолт — це
+  // тимчасово НЕ ті картки). Раніше рендерили одразу з дефолтом і підміняли
+  // після фетча — на дашборді був помітний "стрибок" карток. Тепер картки
+  // взагалі не рендеряться, поки прапорець не стане true — тобто юзер відразу
+  // бачить фінальний набір (дефолтний або збережений), без проміжного кадру.
+  const [widgetPrefsLoaded, setWidgetPrefsLoaded] = useState(false);
   const [widgetPrefsOpen, setWidgetPrefsOpen] = useState(false);
 
 const [forecastData, setForecastData] = useState<any>(null);
@@ -1350,6 +1357,11 @@ if (bizData.business) {
         }
       } catch (e) {
         console.error("Failed to load widget prefs", e);
+      } finally {
+        // Незалежно від того, є в юзера збережені preferences чи ні (тобто
+        // "нічого не міняв" -> лишається DEFAULT_WIDGET_IDS), тепер точно
+        // відомо, які картки показувати — можна рендерити.
+        setWidgetPrefsLoaded(true);
       }
 
       try {
@@ -2221,7 +2233,14 @@ if (!subInfo) {
                       <Settings className="w-3.5 h-3.5" />
                     </button>
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 items-start">
-                      {widgetIds.map((id) => renderOverviewWidget(id))}
+                      {widgetPrefsLoaded
+                        ? widgetIds.map((id) => renderOverviewWidget(id))
+                        : Array.from({ length: 4 }).map((_, i) => (
+                            <div
+                              key={`widget-skeleton-${i}`}
+                              className="h-[132px] rounded-xl border border-border bg-card animate-pulse"
+                            />
+                          ))}
                     </div>
                   </div>
 
@@ -2962,7 +2981,7 @@ if (!subInfo) {
                   </div>
                   <div>
                     <label className="text-xs text-muted-foreground uppercase tracking-wider">{T.settingsBusinessId || "Business ID"}</label>
-                    <p className="mt-1 w-full bg-secondary/50 border border-border rounded-lg px-3 py-2 text-foreground text-sm cursor-not-allowed">
+                    <p className="mt-1 w-full bg-secondary/50 border border-border rounded-lg px-3 py-2 text-foreground text-base md:text-sm cursor-not-allowed">
                       {businessId ? businessId.slice(0, 8) : "—"}
                     </p>
                   </div>
