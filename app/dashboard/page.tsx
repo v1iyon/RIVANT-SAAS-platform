@@ -931,6 +931,10 @@ const [forecastLoaded, setForecastLoaded] = useState(false);
   const [riskCategoryFilter, setRiskCategoryFilter] = useState<Risk["category"][]>([]);
   const [riskFilterOpen, setRiskFilterOpen] = useState(false);
   const riskFilterRef = useRef<HTMLDivElement | null>(null);
+  const [sensitivityOpen, setSensitivityOpen] = useState(false);
+const [digestOpen, setDigestOpen] = useState(false);
+const sensitivityRef = useRef<HTMLDivElement | null>(null);
+const digestRef = useRef<HTMLDivElement | null>(null);
   const riskFilterTouchStartYRef = useRef<number | null>(null);
 
   // Підвантажуємо збережений вибір фільтра один раз при монтуванні.
@@ -958,6 +962,16 @@ const [forecastLoaded, setForecastLoaded] = useState(false);
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [riskFilterOpen]);
+
+  useEffect(() => {
+  if (!sensitivityOpen && !digestOpen) return;
+  const handleClickOutside = (e: MouseEvent) => {
+    if (sensitivityRef.current && !sensitivityRef.current.contains(e.target as Node)) setSensitivityOpen(false);
+    if (digestRef.current && !digestRef.current.contains(e.target as Node)) setDigestOpen(false);
+  };
+  document.addEventListener("mousedown", handleClickOutside);
+  return () => document.removeEventListener("mousedown", handleClickOutside);
+}, [sensitivityOpen, digestOpen]);
 
   const toggleRiskCategory = (cat: Risk["category"]) => {
     setRiskCategoryFilter((prev) => (prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]));
@@ -2266,13 +2280,15 @@ if (!subInfo) {
 )}
 
        <div
-          className="flex-1 p-4 lg:p-6 overflow-auto"
-          onScroll={() => {
-            // Закриваємо дропдаун фільтра ризиків при скролі — так само,
-            // як і по свайпу вниз, щоб він не "висів" поверх контенту.
-            if (riskFilterOpen) setRiskFilterOpen(false);
-          }}
-        >
+  className="flex-1 p-4 lg:p-6 overflow-auto"
+  onScroll={() => {
+    // Закриваємо дропдаун фільтра ризиків при скролі — так само,
+    // як і по свайпу вниз, щоб він не "висів" поверх контенту.
+    if (riskFilterOpen) setRiskFilterOpen(false);
+    if (sensitivityOpen) setSensitivityOpen(false);
+    if (digestOpen) setDigestOpen(false);
+  }}
+>
 
           {activeView === "overview" && (
             <div className="space-y-5">
@@ -3120,33 +3136,61 @@ if (!subInfo) {
 
                   <div className="flex items-center justify-between gap-3 py-2">
                     <div className="flex-1 min-w-0"><p className="font-medium text-foreground">{T.settingsAlertSensitivity || "Alert Sensitivity"}</p><p className="text-xs text-muted-foreground">{T.settingsAlertSensitivityDesc || "Alert threshold"}</p></div>
-                   <div className="relative shrink-0">
-  <select
-    value={alertSensitivity}
-    onChange={(e) => saveAlertSensitivity(e.target.value as "low" | "normal" | "high")}
-    className="appearance-none h-8 rounded-md border border-input bg-background pl-3 pr-6 text-xs font-medium text-foreground shadow-sm hover:bg-accent hover:text-accent-foreground focus:outline-none transition-colors cursor-pointer"
+                   <div className="relative shrink-0" ref={sensitivityRef}>
+  <button
+    type="button"
+    onClick={() => setSensitivityOpen((v) => !v)}
+    className="h-8 rounded-md border border-input bg-background pl-3 pr-2 text-xs font-medium text-foreground shadow-sm hover:bg-accent hover:text-accent-foreground focus:outline-none transition-colors cursor-pointer flex items-center gap-1"
   >
-    <option value="low">{T.sensitivityLow || "Low"}</option>
-    <option value="normal">{T.sensitivityNormal || "Normal"}</option>
-    <option value="high">{T.sensitivityHigh || "High"}</option>
-  </select>
-  <ChevronDown className="w-3 h-3 text-muted-foreground absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+    {alertSensitivity === "low" ? (T.sensitivityLow || "Low") : alertSensitivity === "high" ? (T.sensitivityHigh || "High") : (T.sensitivityNormal || "Normal")}
+    <ChevronDown className={`w-3 h-3 text-muted-foreground transition-transform ${sensitivityOpen ? "rotate-180" : ""}`} />
+  </button>
+  {sensitivityOpen && (
+    <div className="absolute right-0 mt-1 w-full min-w-[110px] bg-gray-900 border border-gray-800 rounded-lg shadow-xl z-20 overflow-hidden">
+      {(["low", "normal", "high"] as const).map((val) => (
+        <button
+          key={val}
+          type="button"
+          onClick={() => { saveAlertSensitivity(val); setSensitivityOpen(false); }}
+          className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
+            alertSensitivity === val ? "text-blue-400 bg-blue-500/10" : "text-gray-300 hover:bg-gray-800"
+          }`}
+        >
+          {val === "low" ? (T.sensitivityLow || "Low") : val === "high" ? (T.sensitivityHigh || "High") : (T.sensitivityNormal || "Normal")}
+        </button>
+      ))}
+    </div>
+  )}
 </div>
                   </div>
 
                   <div className="flex items-center justify-between gap-3 py-2">
                     <div className="flex-1 min-w-0"><p className="font-medium text-foreground">{T.settingsDigestFrequency || "Digest Frequency"}</p><p className="text-xs text-muted-foreground">{T.settingsDigestFrequencyDesc || "Summary reports"}</p></div>
-                   <div className="relative shrink-0">
-  <select
-    value={digestFrequency}
-    onChange={(e) => saveDigestFrequency(e.target.value as "both" | "morning_only" | "problems_only")}
-    className="appearance-none h-8 rounded-md border border-input bg-background pl-3 pr-6 text-xs font-medium text-foreground shadow-sm hover:bg-accent hover:text-accent-foreground focus:outline-none transition-colors cursor-pointer"
+                   <div className="relative shrink-0" ref={digestRef}>
+  <button
+    type="button"
+    onClick={() => setDigestOpen((v) => !v)}
+    className="h-8 rounded-md border border-input bg-background pl-3 pr-2 text-xs font-medium text-foreground shadow-sm hover:bg-accent hover:text-accent-foreground focus:outline-none transition-colors cursor-pointer flex items-center gap-1"
   >
-    <option value="both">{T.digestBoth || "Twice a day"}</option>
-    <option value="morning_only">{T.digestMorningOnly || "Morning only"}</option>
-    <option value="problems_only">{T.digestProblemsOnly || "Issues only"}</option>
-  </select>
-  <ChevronDown className="w-3 h-3 text-muted-foreground absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+    {digestFrequency === "morning_only" ? (T.digestMorningOnly || "Morning only") : digestFrequency === "problems_only" ? (T.digestProblemsOnly || "Issues only") : (T.digestBoth || "Twice a day")}
+    <ChevronDown className={`w-3 h-3 text-muted-foreground transition-transform ${digestOpen ? "rotate-180" : ""}`} />
+  </button>
+  {digestOpen && (
+    <div className="absolute right-0 mt-1 w-full min-w-[140px] bg-gray-900 border border-gray-800 rounded-lg shadow-xl z-20 overflow-hidden">
+      {(["both", "morning_only", "problems_only"] as const).map((val) => (
+        <button
+          key={val}
+          type="button"
+          onClick={() => { saveDigestFrequency(val); setDigestOpen(false); }}
+          className={`w-full text-left px-3 py-1.5 text-xs whitespace-nowrap transition-colors ${
+            digestFrequency === val ? "text-blue-400 bg-blue-500/10" : "text-gray-300 hover:bg-gray-800"
+          }`}
+        >
+          {val === "morning_only" ? (T.digestMorningOnly || "Morning only") : val === "problems_only" ? (T.digestProblemsOnly || "Issues only") : (T.digestBoth || "Twice a day")}
+        </button>
+      ))}
+    </div>
+  )}
 </div>
                   </div>
 
