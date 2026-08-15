@@ -29,7 +29,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { decrypt } from "../lib/crypto.js";
 import { logError } from "../lib/log-error.js";
-import { sendAlertToBusiness, getUserContact, generateAlertExplanation, detectExpenseAnomaly, detectCacAnomaly } from "../lib/alerts.mjs";
+import { sendAlertToBusiness, getUserContact, generateAlertExplanation, detectExpenseAnomaly, detectCacAnomaly, getAlertSensitivity } from "../lib/alerts.mjs";
 
 // ВАЖНО: reason (err.message) сюда больше НЕ подставляется — это сырой
 // текст ошибки от Google Ads API, всегда на английском. Раньше он клеился
@@ -232,6 +232,7 @@ async function main(businessId) {
         const latestDate = dates[dates.length - 1];
         const latestAmount = byDate[latestDate];
         const contact = await getUserContact(await getBusinessUserId(integ.business_id));
+        const sensitivityMultiplier = await getAlertSensitivity(integ.business_id);
 
         const anomaly = await detectExpenseAnomaly({
           businessId: integ.business_id,
@@ -239,6 +240,7 @@ async function main(businessId) {
           category: "advertising",
           date: latestDate,
           todayAmount: latestAmount,
+          sensitivityMultiplier,
         });
         if (anomaly?.kind === "spike") {
           const msg = (SPEND_SPIKE_MESSAGE[contact.userLang] || SPEND_SPIKE_MESSAGE.EN)(anomaly.pct, anomaly.avg, anomaly.today, latestDate);
@@ -266,7 +268,7 @@ async function main(businessId) {
           });
         }
 
-        const cacAnomaly = await detectCacAnomaly({ businessId: integ.business_id, date: latestDate });
+        const cacAnomaly = await detectCacAnomaly({ businessId: integ.business_id, date: latestDate, sensitivityMultiplier });
         if (cacAnomaly) {
           const msg = (CAC_SPIKE_MESSAGE[contact.userLang] || CAC_SPIKE_MESSAGE.EN)(cacAnomaly.pct, cacAnomaly.avgCac, cacAnomaly.cacToday, latestDate);
           const explanation = await generateAlertExplanation(

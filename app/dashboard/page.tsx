@@ -1055,6 +1055,10 @@ const [companySaved, setCompanySaved] = useState(false);
   // таймзона підставляється ПІСЛЯ монтування через useEffect — це вже
   // звичайне оновлення стану, не розбіжність гідратації.
   const [timezone, setTimezoneState] = useState("America/New_York");
+  // "Чутливість сповіщень" (Settings) — множник до порогів revenue_drop/CAC/
+  // ad-spend/COGS-аномалій у sync-скриптах (lib/alerts.mjs). Дефолт "normal"
+  // збігається з тим, що fallback'ається на бекенді для порожнього значення.
+  const [alertSensitivity, setAlertSensitivityState] = useState<"low" | "normal" | "high">("normal");
   useEffect(() => {
     try {
       const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -1271,6 +1275,14 @@ useEffect(() => {
       // и дожидаемся именно его ПЕРЕД setProfileEmail, чтобы language был
       // уже верным к моменту первого запроса прогноза.
       const profilePromise = fetch(`/api/profile?email=${encodeURIComponent(email)}`, { cache: "no-store" }).then((r) => r.json());
+      // Той самий трюк, що і з profilePromise вище: /api/widget-prefs ні від
+      // чого іншого в цій цепочці не залежить (лише від email), тож немає
+      // причини чекати business-profile/integrations/metrics перед тим, як
+      // його запустити. Раніше він стартував ПІСЛЯ /api/metrics — це зайвий
+      // послідовний round-trip, який тільки збільшував час до появи карток
+      // (widgetPrefsLoaded). Тепер летить паралельно з усім іншим, а
+      // await — там же, де він реально потрібен, нижче.
+      const widgetPrefsPromise = fetch(`/api/widget-prefs?email=${encodeURIComponent(email)}`, { cache: "no-store" }).then((r) => r.json());
       const prefsRes = await fetch(`/api/notification-prefs?email=${encodeURIComponent(email)}`);
       const prefs = await prefsRes.json();
       setNotificationsEnabled(prefs.push_enabled);
@@ -1299,6 +1311,12 @@ if (bizData.business) {
     const detected = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
     setTimezoneState(detected);
     saveBusinessProfileWithTimezone(detected);
+  }
+
+  if (bizData.business.alert_sensitivity === "low" || bizData.business.alert_sensitivity === "high") {
+    setAlertSensitivityState(bizData.business.alert_sensitivity);
+  } else {
+    setAlertSensitivityState("normal");
   }
 }
 
@@ -1350,8 +1368,7 @@ if (bizData.business) {
       }
 
       try {
-        const widgetPrefsRes = await fetch(`/api/widget-prefs?email=${encodeURIComponent(email)}`, { cache: "no-store" });
-        const widgetPrefsData = await widgetPrefsRes.json();
+        const widgetPrefsData = await widgetPrefsPromise;
         if (Array.isArray(widgetPrefsData.widgetIds) && widgetPrefsData.widgetIds.length === 4) {
           setWidgetIds(widgetPrefsData.widgetIds);
         }
@@ -1653,6 +1670,20 @@ const handleDisconnectTelegram = async () => {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email: profileEmail, timezone: tz }),
+  });
+};
+
+// Той самий принцип, що й у saveBusinessProfileWithTimezone вище: шлемо
+// ТІЛЬКИ alert_sensitivity, без name/timezone, — інакше PUT перезаписав би
+// їх стороннім значенням зі стейту, який на момент виклику може бути ще
+// не синхронізований з бекендом (та сама причина, з якої там уже колись
+// стирало назву компанії).
+const saveAlertSensitivity = async (value: "low" | "normal" | "high") => {
+  setAlertSensitivityState(value);
+  await fetch("/api/business-profile", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: profileEmail, alert_sensitivity: value }),
   });
 };
 
@@ -3027,6 +3058,19 @@ if (!subInfo) {
     ))}
   </select>
 </div>
+                 <div>
+                    <label className="text-xs text-muted-foreground uppercase tracking-wider">{T.settingsAlertSensitivity || "Alert Sensitivity"}</label>
+                    <select
+                      value={alertSensitivity}
+                      onChange={(e) => saveAlertSensitivity(e.target.value as "low" | "normal" | "high")}
+                      className="mt-1 w-full bg-secondary border border-border rounded-lg px-3 py-2 text-foreground text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    >
+                      <option value="low">{T.sensitivityLow || "Low — fewer, only major issues"}</option>
+                      <option value="normal">{T.sensitivityNormal || "Normal — balanced (default)"}</option>
+                      <option value="high">{T.sensitivityHigh || "High — catch smaller changes"}</option>
+                    </select>
+                    <p className="mt-1 text-xs text-muted-foreground">{T.settingsAlertSensitivityDesc || "How easily anomalies trigger an alert (revenue drops, CAC spikes, ad spend changes)"}</p>
+                  </div>
                 </div>
               </div>
 

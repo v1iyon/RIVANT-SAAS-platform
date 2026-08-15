@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { decrypt } from "../lib/crypto.js";
 import { logError } from "../lib/log-error.js";
 import { getSeverityTelegramLabel } from "../lib/severity.js";
-import { getTeamContacts } from "../lib/alerts.mjs";
+import { getTeamContacts, resolveSensitivityMultiplier } from "../lib/alerts.mjs";
 
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
@@ -221,7 +221,7 @@ async function main(businessId) {
       // потрібна вже тут.
       const { data: business, error: bizErr } = await admin
         .from("businesses")
-        .select("id, user_id, name, cost_pct, timezone")
+        .select("id, user_id, name, cost_pct, timezone, alert_sensitivity")
         .eq("id", integ.business_id)
         .maybeSingle();
       console.log("DEBUG business lookup for", integ.business_id, "-> found:", !!business, "error:", bizErr);
@@ -515,11 +515,21 @@ async function main(businessId) {
           // Игнорируем колебания на копеечных суммах: $5 -> $0 формально
           // "-100%", но для реального бизнеса это шум, а не сигнал. Порог
           // применяется к ПРЕДЫДУЩЕМУ окну — если там уже было мало денег,
-          // относительный % ничего не значит.
+          // относительный % ничего не значит. Этот "шумовой пол" НЕ зависит
+          // от чувствительности — это отдельная защита, а не сам порог.
           const MIN_REVENUE_FOR_ALERT = 20;
           const tooSmallToMatter = prev24h.revenue < MIN_REVENUE_FOR_ALERT;
 
-          if (change > -20 || tooSmallToMatter) {
+          // "Чутливість сповіщень" (Settings) масштабує сам поріг падіння
+          // (базово 20%) і межі severity (35%/50%) — так пропорції між
+          // medium/high/critical лишаються тими самими незалежно від того,
+          // яку чутливість обрав власник.
+          const sensitivityMultiplier = resolveSensitivityMultiplier(business.alert_sensitivity);
+          const dropThresholdPct = 20 * sensitivityMultiplier;
+          const highSeverityPct = 35 * sensitivityMultiplier;
+          const criticalSeverityPct = 50 * sensitivityMultiplier;
+
+          if (change > -dropThresholdPct || tooSmallToMatter) {
             const { data: resolved, error: resolveErr } = await admin
               .from("alerts_log")
               .update({ status: "resolved" })
@@ -530,8 +540,8 @@ async function main(businessId) {
             console.log("DEBUG auto-resolved alerts:", resolved?.length, "error:", resolveErr);
           }
 
-          if (change <= -20 && !tooSmallToMatter) {
-            const severity = change <= -50 ? "critical" : change <= -35 ? "high" : "medium";
+          if (change <= -dropThresholdPct && !tooSmallToMatter) {
+            const severity = change <= -criticalSeverityPct ? "critical" : change <= -highSeverityPct ? "high" : "medium";
 
             const { data: user } = await admin
               .from("users")

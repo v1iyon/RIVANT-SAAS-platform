@@ -18,7 +18,7 @@ import { createClient } from "@supabase/supabase-js";
 import { decrypt } from "../lib/crypto.js";
 import { logError } from "../lib/log-error.js";
 import { resolveShopifyToken } from "../lib/shopify-token.mjs";
-import { sendAlertToBusiness, getUserContact, generateAlertExplanation, detectExpenseAnomaly } from "../lib/alerts.mjs";
+import { sendAlertToBusiness, getUserContact, generateAlertExplanation, detectExpenseAnomaly, getAlertSensitivity } from "../lib/alerts.mjs";
 
 const SYNC_FAILURE_MESSAGE = {
   UA: () => `Не вдалося синхронізувати Shopify`,
@@ -496,6 +496,7 @@ async function main(businessId) {
       if (allDates.length) {
         const latestDate = allDates[allDates.length - 1];
         const contact = await getUserContact(await getBusinessUserId(integ.business_id));
+        const sensitivityMultiplier = await getAlertSensitivity(integ.business_id);
 
         if (byDate[latestDate] != null) {
           const anomaly = await detectExpenseAnomaly({
@@ -504,6 +505,7 @@ async function main(businessId) {
             category: "shipping",
             date: latestDate,
             todayAmount: byDate[latestDate],
+            sensitivityMultiplier,
           });
           if (anomaly?.kind === "spike") {
             const msg = (SHIPPING_SPIKE_MESSAGE[contact.userLang] || SHIPPING_SPIKE_MESSAGE.EN)(anomaly.pct, anomaly.avg, anomaly.today, latestDate);
@@ -527,6 +529,7 @@ async function main(businessId) {
             category: "cogs",
             date: latestDate,
             todayAmount: cogsByDate[latestDate],
+            sensitivityMultiplier,
           });
           if (anomaly?.kind === "spike") {
             const msg = (COGS_SPIKE_MESSAGE[contact.userLang] || COGS_SPIKE_MESSAGE.EN)(anomaly.pct, anomaly.avg, anomaly.today, latestDate);

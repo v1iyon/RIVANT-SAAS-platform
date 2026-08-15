@@ -56,8 +56,10 @@ export async function GET(req) {
   return Response.json({ business: normalizeBusiness(business) });
 }
 
+const VALID_ALERT_SENSITIVITY = ["low", "normal", "high"];
+
 export async function PUT(req) {
-  const { email, name, timezone } = await req.json();
+  const { email, name, timezone, alert_sensitivity } = await req.json();
   if (!email) return Response.json({ error: "email required" }, { status: 400 });
 
   const { data: appUser } = await admin.from("users").select("id").eq("email", email).maybeSingle();
@@ -69,6 +71,14 @@ export async function PUT(req) {
   const updates = {};
   if (name !== undefined) updates[getBusinessNameColumn(business)] = name;
   if (timezone !== undefined) updates.timezone = timezone;
+  // Валідація тут (а не тільки CHECK-констрейнт у БД) — щоб сміттєве
+  // значення не пішло навіть у вигляді помилки 500 з боку Postgres, а
+  // просто мовчки ігнорувалось. Sync-скрипти (lib/alerts.mjs) все одно
+  // fallback'аються на "normal" для будь-якого невідомого значення, так що
+  // це друга лінія захисту, а не єдина.
+  if (alert_sensitivity !== undefined && VALID_ALERT_SENSITIVITY.includes(alert_sensitivity)) {
+    updates.alert_sensitivity = alert_sensitivity;
+  }
 
   const { error } = await admin.from("businesses").update(updates).eq("id", business.id);
   if (error) return Response.json({ error: error.message }, { status: 500 });
