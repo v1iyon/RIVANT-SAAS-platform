@@ -177,7 +177,7 @@ input[type="range"] {
 }
 
 [data-slot="slider"] {
-  touch-action: pan-x pinch-zoom !important;
+  touch-action: none !important;
 }
 
 button, a, [role="button"] {
@@ -193,14 +193,16 @@ button, a, [role="button"] {
   border-radius: 50% !important;
   background-color: var(--primary) !important;
   border: 2px solid white !important;
+  touch-action: none !important;
 }
 
 @media (max-width: 768px) {
   [data-slot="slider-thumb"] {
-    min-width: 44px !important;
-    min-height: 44px !important;
-    width: 44px !important;
-    height: 44px !important;
+    min-width: 22px !important;
+    min-height: 22px !important;
+    width: 22px !important;
+    height: 22px !important;
+    touch-action: none !important;
   }
   
   button, a, [role="button"] {
