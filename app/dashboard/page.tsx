@@ -2886,36 +2886,43 @@ if (!subInfo) {
 
          {activeView === "integrations" && (
             <div className="relative space-y-4 -mt-3 lg:-mt-4">
-              {/* Позиціонування 1:1 як у "шестерні" налаштування карток на Огляді:
-                  absolute -top-2 -right-2 відносно найближчого relative-контейнера
-                  (тут — обгортка .relative на activeView === "integrations" вище),
-                  тобто кружечок сидить прямо в кутку картки Stripe, наполовину
-                  перекриваючи її верхню межу — а не окремо "підвішений" над
-                  списком, як було раніше зі sticky-обгорткою. */}
-              <button
-                title={language === "UA" ? "Синхронізувати все" : language === "DE" ? "Alles synchronisieren" : "Sync all"}
-                aria-label={language === "UA" ? "Синхронізувати все" : language === "DE" ? "Alles synchronisieren" : "Sync all"}
-                className="absolute -top-2 -right-2 z-10 w-7 h-7 rounded-full bg-gray-800/90 border border-gray-700 flex items-center justify-center text-gray-400 hover:text-white hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:pointer-events-none"
-                disabled={!profileEmail || syncingAllIntegrations}
-                onClick={async () => {
-                  setSyncingAllIntegrations(true);
-                  setFailedSyncProviders([]);
-                  try {
-                    const response = await fetch("/api/sync-now", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ email: profileEmail }),
-                    });
-                    const result = await response.json().catch(() => ({}));
-                    setFailedSyncProviders(result.failedProviders || []);
-                    setIntegrationRefreshToken((token) => token + 1);
-                  } finally {
-                    setSyncingAllIntegrations(false);
-                  }
-                }}
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${syncingAllIntegrations ? "animate-spin" : ""}`} />
-              </button>
+              {/* sticky (не absolute) — кружок має лишатись НА МІСЦІ ЕКРАНА поверх
+                  карток під час скролу списку інтеграцій, а не прокручуватись
+                  разом з ними. Обгортка з h-0 не займає місця в потоці (картки
+                  під нею не зсуваються вниз); -top-2 на ній — той самий візуальний
+                  оверлап кута першої картки, що й у "шестерні" на Огляді
+                  (absolute -top-2 -right-2), тільки тут sticky з тим самим
+                  від'ємним offset-ом додатково тримає кружок у ЦІЙ ЖЕ точці
+                  екрана, коли картки під ним прокручуються. z-30, щоб лишався
+                  над заголовками карток, які він частково перекриває. */}
+              <div className="sticky -top-2 z-30 h-0">
+                <div className="flex justify-end">
+                  <button
+                    title={language === "UA" ? "Синхронізувати все" : language === "DE" ? "Alles synchronisieren" : "Sync all"}
+                    aria-label={language === "UA" ? "Синхронізувати все" : language === "DE" ? "Alles synchronisieren" : "Sync all"}
+                    className="-mr-2 w-7 h-7 rounded-full bg-gray-800/90 border border-gray-700 flex items-center justify-center text-gray-400 hover:text-white hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:pointer-events-none"
+                    disabled={!profileEmail || syncingAllIntegrations}
+                    onClick={async () => {
+                      setSyncingAllIntegrations(true);
+                      setFailedSyncProviders([]);
+                      try {
+                        const response = await fetch("/api/sync-now", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ email: profileEmail }),
+                        });
+                        const result = await response.json().catch(() => ({}));
+                        setFailedSyncProviders(result.failedProviders || []);
+                        setIntegrationRefreshToken((token) => token + 1);
+                      } finally {
+                        setSyncingAllIntegrations(false);
+                      }
+                    }}
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${syncingAllIntegrations ? "animate-spin" : ""}`} />
+                  </button>
+                </div>
+              </div>
               {subInfo?.plan === "growth" && (
                 <div className="bg-blue-500/5 rounded-lg px-3 py-2 border border-blue-500/20 flex items-center gap-2">
                   <Link2 className="w-3.5 h-3.5 text-blue-400 shrink-0" />
