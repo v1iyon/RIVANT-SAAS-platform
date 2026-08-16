@@ -162,7 +162,7 @@ async function upsertExpense({ businessId, date, amount, category, source, descr
   }
 }
 
-async function main(businessId) {
+async function main(businessId, options = {}) {
   let query = admin
     .from("integrations")
     .select("id, business_id, api_key_encrypted, config")
@@ -181,7 +181,7 @@ async function main(businessId) {
   }
 
   const until = new Date();
-  const since = new Date(Date.now() - 2 * 24 * 3600 * 1000); // последние 48ч, как у Stripe/Shopify/Meta Ads
+  const since = new Date(Date.now() - (options.sinceDays ? options.sinceDays * 24 : 2 * 24) * 3600 * 1000); // 48ч за замовчуванням, ширше — лише для бекфілу
 
   for (const integ of integrations) {
     try {
@@ -318,7 +318,7 @@ async function main(businessId) {
   }
 }
 
-export async function runSync(businessId) {
-  await main(businessId);
+export async function runSync(businessId, options = {}) {
+  await main(businessId, options);
   return { synced: true, timestamp: new Date().toISOString() };
 }

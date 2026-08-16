@@ -50,13 +50,25 @@ async function getBusinessUserId(businessId) {
 async function fetchMetaSpend(adAccountId, token, sinceDate, untilDate) {
   const accountId = adAccountId.replace(/^act_/, "");
   const timeRange = encodeURIComponent(JSON.stringify({ since: sinceDate, until: untilDate }));
-  const url = `https://graph.facebook.com/${GRAPH_API_VERSION}/act_${accountId}/insights?fields=spend&time_range=${timeRange}&time_increment=1&access_token=${encodeURIComponent(token)}`;
-  const res = await fetch(url);
-  const data = await res.json();
-  if (!res.ok || data.error) {
-    throw new Error(`Meta API error: ${data.error?.message || res.status}`);
+  let url = `https://graph.facebook.com/${GRAPH_API_VERSION}/act_${accountId}/insights?fields=spend&time_range=${timeRange}&time_increment=1&limit=500&access_token=${encodeURIComponent(token)}`;
+  // Пагінація: за замовчуванням (48г вікно, 1-2 дні) Meta завжди вкладається
+  // в одну сторінку, тому раніше paging.next просто ігнорувався. Для
+  // бекфілу (до 365 днів) це вже не гарантовано — Meta Insights API теж
+  // пагінує великі time-series відповіді, без цього старі місяці мовчки
+  // обрізались б.
+  let all = [];
+  let guard = 0;
+  while (url && guard < 20) {
+    guard += 1;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      throw new Error(`Meta API error: ${data.error?.message || res.status}`);
+    }
+    all = all.concat(data.data || []);
+    url = data.paging?.next || null;
   }
-  return data.data || []; // [{ spend, date_start, date_stop }, ...]
+  return all; // [{ spend, date_start, date_stop }, ...]
 }
 
 // Идемпотентная запись — как в shopify-sync.mjs: удаляем старую строку за
@@ -82,7 +94,7 @@ async function upsertExpense({ businessId, date, amount, category, source, descr
   }
 }
 
-async function main(businessId) {
+async function main(businessId, options = {}) {
   let query = admin
     .from("integrations")
     .select("id, business_id, api_key_encrypted, config")
@@ -101,7 +113,7 @@ async function main(businessId) {
   }
 
   const until = new Date();
-  const since = new Date(Date.now() - 2 * 24 * 3600 * 1000); // последние 48ч, как у Stripe/Shopify
+  const since = new Date(Date.now() - (options.sinceDays ? options.sinceDays * 24 : 2 * 24) * 3600 * 1000); // 48ч за замовчуванням, ширше — лише для бекфілу
 
   for (const integ of integrations) {
     try {
@@ -214,7 +226,7 @@ async function main(businessId) {
   }
 }
 
-export async function runSync(businessId) {
-  await main(businessId);
+export async function runSync(businessId, options = {}) {
+  await main(businessId, options);
   return { synced: true, timestamp: new Date().toISOString() };
 }

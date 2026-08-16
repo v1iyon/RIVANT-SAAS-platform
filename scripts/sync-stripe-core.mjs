@@ -192,7 +192,13 @@ async function fetchStripeCharges(apiKey, sinceUnix) {
   return all;
 }
 
-async function main(businessId) {
+async function main(businessId, options = {}) {
+  // sinceDays — используется ТОЛЬКО для одноразового бэкфилла исторических
+  // данных при первом подключении интеграции (см. app/api/cron/backfill-
+  // historical/route.js). Обычный часовой/суточный крон вызывает runSync()
+  // без options — поведение (48ч окно + самолечение пропусков за 30 дней)
+  // не меняется.
+  const sinceDaysOverride = options.sinceDays || null;
   let query = admin
     .from("integrations")
     .select("id, business_id, api_key_encrypted")
@@ -242,6 +248,14 @@ async function main(businessId) {
       // Дати тут — локальні дати бізнеса (так само пишуться в metrics_computed
       // нижче), не UTC.
       let sinceUnix = Math.floor(Date.now() / 1000) - 48 * 3600;
+      if (sinceDaysOverride) {
+        // Бэкфилл: игнорируем gap-детекцию за 30 дней ниже — сразу берём
+        // всё окно, которое просили (например, 365 дней при первом
+        // подключении), чтобы графики/реконструкция/дайджест могли
+        // опираться на реальную историю Stripe, а не только на дни после
+        // подключения.
+        sinceUnix = Math.floor(Date.now() / 1000) - sinceDaysOverride * 24 * 3600;
+      }
       const { data: existingDatesRows } = await admin
         .from("metrics_computed")
         .select("date")
@@ -249,7 +263,7 @@ async function main(businessId) {
         .gte("date", localDateStr(bizTimezone, Math.floor(Date.now() / 1000) - 30 * 24 * 3600))
         .order("date", { ascending: true });
       const existingDateSet = new Set((existingDatesRows || []).map((r) => r.date));
-      if (existingDateSet.size > 0) {
+      if (!sinceDaysOverride && existingDateSet.size > 0) {
         const earliestKnown = [...existingDateSet][0];
         for (let i = 2; i < 30; i++) {
           const atSec = Math.floor(Date.now() / 1000) - i * 24 * 3600;
@@ -734,7 +748,7 @@ if (existingAlerts?.length) continue;
   }
 }
 
-export async function runSync(businessId) {
-  await main(businessId);
+export async function runSync(businessId, options = {}) {
+  await main(businessId, options);
   return { synced: true, timestamp: new Date().toISOString() };
 }

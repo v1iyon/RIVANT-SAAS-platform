@@ -88,7 +88,7 @@ export async function POST(req) {
     if (existing) {
       await admin
         .from("integrations")
-        .update({ api_key_encrypted: encrypted, status: "connected", key_preview: keyPreview })
+        .update({ api_key_encrypted: encrypted, status: "connected", key_preview: keyPreview, config: { backfill_pending: true } })
         .eq("id", existing.id);
     } else {
       await admin.from("integrations").insert({
@@ -97,6 +97,7 @@ export async function POST(req) {
         api_key_encrypted: encrypted,
         status: "connected",
         key_preview: keyPreview,
+        config: { backfill_pending: true },
       });
     }
 

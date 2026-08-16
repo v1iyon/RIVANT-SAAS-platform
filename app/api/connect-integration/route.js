@@ -81,6 +81,11 @@ export async function POST(req) {
     }
 
     const cleanConfig = config && typeof config === "object" ? { ...config } : {};
+    // Одноразовий бекфіл історії при (пере)підключенні — see
+    // app/api/cron/backfill-historical/route.js. Прапорець просто в config
+    // (jsonb, вже є в таблиці) — без міграції схеми. Крон сам скидає його
+    // після того, як витягне історичні дані.
+    cleanConfig.backfill_pending = true;
 
     // Вырезаем секретные поля (client_secret, developer_token у Google Ads) из config —
     // они уйдут в зашифрованный payload вместе с apiKey, а не будут храниться в открытом
