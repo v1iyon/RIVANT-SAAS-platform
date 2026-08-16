@@ -9,7 +9,13 @@ const admin = createClient(
   process.env.SUPABASE_SERVICE_KEY
 );
 
-// GET /api/profile?email=... -> отдаёт сохранённые full_name, phone, avatar_url, language
+// GET /api/profile -> отдаёт сохранённые full_name, phone, avatar_url, language
+// текущего залогиненного пользователя.
+//
+// email больше не берём из query — это была ровно та же дыра п. 1.1, что и
+// везде: любой, зная (или подобрав) чужой email, мог через
+// GET /api/profile?email=жертва@x.com прочитать чужие full_name/phone/
+// avatar_url/language без какого-либо входа в аккаунт.
 //
 // language теперь тоже отдаём отсюда: раньше язык интерфейса жил ТОЛЬКО в
 // localStorage конкретного браузера (lib/translations.tsx), поэтому на новом
@@ -18,8 +24,13 @@ const admin = createClient(
 // не было вообще. users.language используется ботом/алертами уже давно
 // (см. sync-stripe-core.mjs), просто дашборд его никогда не читал обратно.
 export async function GET(req) {
-  const email = new URL(req.url).searchParams.get("email");
-  if (!email) return Response.json({ error: "email required" }, { status: 400 });
+  let email;
+  try {
+    ({ email } = await requireUser());
+  } catch (e) {
+    if (e instanceof UnauthorizedError) return Response.json({ error: "unauthorized" }, { status: 401 });
+    throw e;
+  }
 
   const { data: appUser } = await admin
     .from("users")
@@ -34,19 +45,29 @@ export async function GET(req) {
   return Response.json(appUser, { headers: { "Cache-Control": "no-store, max-age=0" } });
 }
 
-// POST /api/profile -> сохраняет full_name/phone/avatar_url/language для пользователя по email
+// POST /api/profile -> сохраняет full_name/phone/avatar_url/language для
+// текущего залогиненного пользователя.
 //
-// ВАЖНО: раньше .update() всегда передавал все 4 поля, включая те, что не
-// пришли в body — вызывающая сторона могла отправить только { email, language }
-// (как теперь делает переключатель языка в настройках), и full_name/phone/
-// avatar_url при этом улетали как undefined -> Supabase писал в них NULL,
-// затирая уже сохранённые значения. Теперь обновляем в БД только те поля,
-// которые реально присутствуют в теле запроса.
+// email больше не берём из body — та же дыра п. 1.1: любой, зная чужой
+// email, мог через POST /api/profile переписать чужие phone/avatar_url и
+// остальные поля профиля без входа в аккаунт.
+//
+// ВАЖНО: .update() передаёт в БД только те поля, которые реально пришли в
+// body — раньше передавались все 4 поля всегда, и вызывающая сторона могла
+// отправить только { language } (как делает переключатель языка в
+// настройках), а full_name/phone/avatar_url при этом улетали как undefined
+// -> Supabase писал в них NULL, затирая уже сохранённые значения.
 export async function POST(req) {
-  const body = await req.json();
-  const { email, full_name, phone, avatar_url, language } = body || {};
+  let email;
+  try {
+    ({ email } = await requireUser());
+  } catch (e) {
+    if (e instanceof UnauthorizedError) return Response.json({ error: "unauthorized" }, { status: 401 });
+    throw e;
+  }
 
-  if (!email) return Response.json({ error: "email required" }, { status: 400 });
+  const body = await req.json();
+  const { full_name, phone, avatar_url, language } = body || {};
 
   const updates = {};
   if (full_name !== undefined) updates.full_name = full_name;
