@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { requireUser, UnauthorizedError } from "@/lib/require-user";
 
 const admin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -6,8 +7,16 @@ const admin = createClient(
 );
 
 export async function POST(req) {
-  const { email } = await req.json();
-  if (!email) return Response.json({ error: "email required" }, { status: 400 });
+  // email больше не берём из body — это самая опасная из дыр п. 1.1:
+  // раньше зная чужой email можно было необратимо удалить чужой аккаунт
+  // целиком, без входа в него.
+  let email;
+  try {
+    ({ email } = await requireUser());
+  } catch (e) {
+    if (e instanceof UnauthorizedError) return Response.json({ error: "unauthorized" }, { status: 401 });
+    throw e;
+  }
 
   const { data: user } = await admin.from("users").select("id").eq("email", email).maybeSingle();
   if (!user) return Response.json({ error: "Account not found" }, { status: 404 });

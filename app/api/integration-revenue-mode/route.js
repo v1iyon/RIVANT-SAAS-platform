@@ -7,6 +7,7 @@
 // вимагає повного connect-integration флоу — просто patch одного поля в
 // config без торкання api_key_encrypted/status.
 import { createClient } from "@supabase/supabase-js";
+import { requireUser, UnauthorizedError } from "@/lib/require-user";
 
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
@@ -18,9 +19,10 @@ const SUPPORTED_PROVIDERS = ["shopify"];
 
 export async function PATCH(req) {
   try {
-    const { email, provider, revenueMode } = await req.json();
-    if (!email || !provider) {
-      return Response.json({ error: "email and provider are required" }, { status: 400 });
+    const { provider, revenueMode } = await req.json();
+    const { email } = await requireUser();
+    if (!provider) {
+      return Response.json({ error: "provider is required" }, { status: 400 });
     }
     if (!SUPPORTED_PROVIDERS.includes(provider)) {
       return Response.json({ error: "revenue_mode is not applicable to this provider" }, { status: 400 });
@@ -58,6 +60,7 @@ export async function PATCH(req) {
 
     return Response.json({ success: true, revenueMode });
   } catch (err) {
+    if (err instanceof UnauthorizedError) return Response.json({ error: "unauthorized" }, { status: 401 });
     console.error("integration-revenue-mode error:", err);
     return Response.json({ error: "Server error" }, { status: 500 });
   }

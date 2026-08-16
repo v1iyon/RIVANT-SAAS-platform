@@ -5,6 +5,7 @@
 // table from the frontend — the Risks tab showed a static demo array.
 import { createClient } from "@supabase/supabase-js";
 import { getPrimaryBusinessId } from "@/lib/get-primary-business";
+import { requireUser, UnauthorizedError } from "@/lib/require-user";
 
 export const dynamic = "force-dynamic";
 
@@ -20,8 +21,15 @@ async function getBusinessId(email: string) {
 }
 
 export async function GET(req: Request) {
-  const email = new URL(req.url).searchParams.get("email");
-  if (!email) return Response.json({ error: "email required" }, { status: 400 });
+  // email больше не берём из query — иначе чужие алерты (Risks-таб) можно
+  // было прочитать, просто зная чужой email.
+  let email: string;
+  try {
+    ({ email } = await requireUser());
+  } catch (e) {
+    if (e instanceof UnauthorizedError) return Response.json({ error: "unauthorized" }, { status: 401 });
+    throw e;
+  }
 
   const businessId = await getBusinessId(email);
   if (!businessId) return Response.json({ alerts: [] });
@@ -62,8 +70,8 @@ export async function GET(req: Request) {
 // dismisses a risk card or clicks "Clear all" in the Risks tab.
 export async function PATCH(req: Request) {
   try {
-    const { email, id, resolveAll } = await req.json();
-    if (!email) return Response.json({ error: "email required" }, { status: 400 });
+    const { id, resolveAll } = await req.json();
+    const { email } = await requireUser();
 
     const businessId = await getBusinessId(email);
     if (!businessId) return Response.json({ error: "Business not found" }, { status: 404 });
@@ -87,6 +95,7 @@ export async function PATCH(req: Request) {
 
     return Response.json({ success: true });
   } catch (err) {
+    if (err instanceof UnauthorizedError) return Response.json({ error: "unauthorized" }, { status: 401 });
     console.error("PATCH /api/alerts error:", err);
     return Response.json({ error: "Server error" }, { status: 500 });
   }
@@ -98,8 +107,7 @@ export async function PATCH(req: Request) {
 // clear from their history.
 export async function DELETE(req: Request) {
   try {
-    const { email } = await req.json();
-    if (!email) return Response.json({ error: "email required" }, { status: 400 });
+    const { email } = await requireUser();
 
     const businessId = await getBusinessId(email);
     if (!businessId) return Response.json({ error: "Business not found" }, { status: 404 });
@@ -117,6 +125,7 @@ export async function DELETE(req: Request) {
 
     return Response.json({ success: true });
   } catch (err) {
+    if (err instanceof UnauthorizedError) return Response.json({ error: "unauthorized" }, { status: 401 });
     console.error("DELETE /api/alerts error:", err);
     return Response.json({ error: "Server error" }, { status: 500 });
   }

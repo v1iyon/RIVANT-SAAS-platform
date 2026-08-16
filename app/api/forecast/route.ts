@@ -9,6 +9,7 @@
 // - Результат кэшируется в forecast_cache на 6 часов, чтобы не дёргать
 //   Anthropic API при каждом открытии дашборда (синк всё равно раз в час).
 import { createClient } from "@supabase/supabase-js";
+import { requireUser, UnauthorizedError } from "@/lib/require-user";
 
 // Курс для конвертации сумм в промпте для ИИ-объяснения — сознательно НЕ
 // импортируем из lib/currency.tsx: тот файл помечен "use client" и тянет за
@@ -215,13 +216,19 @@ function localizedFallbackExplanation(
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
-  const email = url.searchParams.get("email");
   const language = url.searchParams.get("language") || "EN";
   const currencyParam = url.searchParams.get("currency");
   const currency: Currency = currencyParam === "EUR" ? "EUR" : "USD";
 
-
-  if (!email) return Response.json({ error: "email required" }, { status: 400 });
+  // email больше не берём из query — иначе прогноз (и промпт с реальными
+  // цифрами выручки) чужого бизнеса можно было получить, зная его email.
+  let email: string;
+  try {
+    ({ email } = await requireUser());
+  } catch (e) {
+    if (e instanceof UnauthorizedError) return Response.json({ error: "unauthorized" }, { status: 401 });
+    throw e;
+  }
 
   const businessId = await getBusinessId(email);
   if (!businessId) return Response.json({ sufficient: false, days: 0 });

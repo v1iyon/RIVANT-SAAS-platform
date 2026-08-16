@@ -1,12 +1,20 @@
 // app/api/trial-prompt/route.js
 import { createClient } from "@supabase/supabase-js";
 import { getPrimaryBusinessId } from "@/lib/get-primary-business";
+import { requireUser, UnauthorizedError } from "@/lib/require-user";
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
 export async function POST(req) {
-  const { email, response } = await req.json();
-  if (!email || !["yes", "not_now"].includes(response)) {
+  const { response } = await req.json();
+  if (!["yes", "not_now"].includes(response)) {
     return Response.json({ error: "invalid input" }, { status: 400 });
+  }
+  let email;
+  try {
+    ({ email } = await requireUser());
+  } catch (e) {
+    if (e instanceof UnauthorizedError) return Response.json({ error: "unauthorized" }, { status: 401 });
+    throw e;
   }
 
   const { data: user } = await admin.from("users").select("id").eq("email", email).maybeSingle();

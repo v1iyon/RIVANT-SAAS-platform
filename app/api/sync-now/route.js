@@ -6,6 +6,7 @@
 // подождать). Теперь после подключения фронт сразу дёргает этот роут.
 import { createClient } from "@supabase/supabase-js";
 import { getPrimaryBusinessId } from "@/lib/get-primary-business";
+import { requireUser, UnauthorizedError } from "@/lib/require-user";
 
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
@@ -14,8 +15,8 @@ const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUP
 
 export async function POST(req) {
   try {
-    const { email, provider } = await req.json();
-    if (!email) return Response.json({ error: "email required" }, { status: 400 });
+    const { provider } = await req.json();
+    const { email } = await requireUser();
 
     const { data: user } = await admin.from("users").select("id").eq("email", email).maybeSingle();
     if (!user) return Response.json({ error: "not found" }, { status: 404 });
@@ -62,6 +63,7 @@ export async function POST(req) {
       failedProviders,
     });
   } catch (err) {
+    if (err instanceof UnauthorizedError) return Response.json({ error: "unauthorized" }, { status: 401 });
     console.error("sync-now error:", err);
     return Response.json({ error: "Server error" }, { status: 500 });
   }

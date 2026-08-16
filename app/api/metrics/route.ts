@@ -1,6 +1,7 @@
 // app/api/metrics/route.ts
 import { createClient } from "@supabase/supabase-js";
 import { getPrimaryBusinessId } from "@/lib/get-primary-business";
+import { requireUser, UnauthorizedError } from "@/lib/require-user";
 
 export const dynamic = "force-dynamic";
 
@@ -24,8 +25,15 @@ const HISTORY_DAYS_BY_PLAN: Record<string, number> = {
 const DEFAULT_HISTORY_DAYS = 30;
 
 export async function GET(req: Request) {
-  const email = new URL(req.url).searchParams.get("email");
-  if (!email) return Response.json({ error: "email required" }, { status: 400 });
+  // email больше не берём из query — раньше это отдавало полный дашборд
+  // (выручку, расходы, CAC) чужого бизнеса любому, кто знает email жертвы.
+  let email: string;
+  try {
+    ({ email } = await requireUser());
+  } catch (e) {
+    if (e instanceof UnauthorizedError) return Response.json({ error: "unauthorized" }, { status: 401 });
+    throw e;
+  }
 
   const { data: appUser } = await admin.from("users").select("id").eq("email", email).maybeSingle();
   if (!appUser) return Response.json({ hasData: false, rows: [] });

@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { requireUser, UnauthorizedError } from "@/lib/require-user";
 
 const admin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -6,8 +7,13 @@ const admin = createClient(
 );
 
 export async function GET(req) {
-  const email = new URL(req.url).searchParams.get("email");
-  if (!email) return Response.json({ error: "email required" }, { status: 400 });
+  let email;
+  try {
+    ({ email } = await requireUser());
+  } catch (e) {
+    if (e instanceof UnauthorizedError) return Response.json({ error: "unauthorized" }, { status: 401 });
+    throw e;
+  }
 
   const { data: user } = await admin
     .from("users")
@@ -34,8 +40,13 @@ export async function GET(req) {
 }
 
 export async function POST(req) {
-  const { email } = await req.json();
-  if (!email) return Response.json({ error: "email required" }, { status: 400 });
+  let email;
+  try {
+    ({ email } = await requireUser());
+  } catch (e) {
+    if (e instanceof UnauthorizedError) return Response.json({ error: "unauthorized" }, { status: 401 });
+    throw e;
+  }
 
   await admin
     .from("users")

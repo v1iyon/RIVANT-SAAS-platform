@@ -7,6 +7,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { ALERT_CATEGORIES } from "@/lib/alerts.mjs";
+import { requireUser, UnauthorizedError } from "@/lib/require-user";
 
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
@@ -22,8 +23,14 @@ function sanitizeCategories(input) {
 }
 
 export async function POST(req) {
-  const { email, categories } = await req.json();
-  if (!email) return Response.json({ error: "email required" }, { status: 400 });
+  const { categories } = await req.json();
+  let email;
+  try {
+    ({ email } = await requireUser());
+  } catch (e) {
+    if (e instanceof UnauthorizedError) return Response.json({ error: "unauthorized" }, { status: 401 });
+    throw e;
+  }
   const safeCategories = sanitizeCategories(categories);
 
   const { data: appUser } = await admin.from("users").select("id").eq("email", email).maybeSingle();

@@ -1,6 +1,7 @@
 // app/api/integrations-status/route.js
 import { createClient } from "@supabase/supabase-js";
 import { getPrimaryBusinessId } from "@/lib/get-primary-business";
+import { requireUser, UnauthorizedError } from "@/lib/require-user";
 
 const admin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -12,8 +13,13 @@ const admin = createClient(
 const SUPPORTED_PROVIDERS = ["meta_ads", "google_ads", "shopify", "quickbooks", "google_analytics"];
 
 export async function GET(req) {
-  const email = new URL(req.url).searchParams.get("email");
-  if (!email) return Response.json({ error: "email required" }, { status: 400 });
+  let email;
+  try {
+    ({ email } = await requireUser());
+  } catch (e) {
+    if (e instanceof UnauthorizedError) return Response.json({ error: "unauthorized" }, { status: 401 });
+    throw e;
+  }
 
   const { data: appUser } = await admin.from("users").select("id").eq("email", email).maybeSingle();
   if (!appUser) return Response.json({ integrations: [] });

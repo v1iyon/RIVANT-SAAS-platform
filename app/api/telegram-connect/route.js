@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { requireUser, UnauthorizedError } from "@/lib/require-user";
 
 const admin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -6,9 +7,13 @@ const admin = createClient(
 );
 
 export async function POST(req) {
-  const { email, language } = await req.json();
-  if (!email) {
-    return Response.json({ error: "email required" }, { status: 400 });
+  const { language } = await req.json();
+  let email;
+  try {
+    ({ email } = await requireUser());
+  } catch (e) {
+    if (e instanceof UnauthorizedError) return Response.json({ error: "unauthorized" }, { status: 401 });
+    throw e;
   }
   const lang = ["EN", "DE", "UA"].includes(language) ? language : "EN";
 

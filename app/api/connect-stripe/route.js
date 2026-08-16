@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
+import { requireUser, UnauthorizedError } from "@/lib/require-user";
 
 export const runtime = "nodejs";
 
@@ -29,10 +30,11 @@ async function verifyStripeKey(apiKey) {
 
 export async function POST(req) {
   try {
-    const { email, apiKey } = await req.json();
+    const { apiKey } = await req.json();
+    const { email } = await requireUser();
 
-    if (!email || !apiKey) {
-      return Response.json({ error: "Email and API key are required" }, { status: 400 });
+    if (!apiKey) {
+      return Response.json({ error: "API key is required" }, { status: 400 });
     }
 
     if (!apiKey.startsWith("rk_")) {
@@ -103,6 +105,7 @@ export async function POST(req) {
 
     return Response.json({ success: true });
   } catch (err) {
+    if (err instanceof UnauthorizedError) return Response.json({ error: "unauthorized" }, { status: 401 });
     console.error("connect-stripe error:", err);
     return Response.json({ error: "Server error, try again" }, { status: 500 });
   }

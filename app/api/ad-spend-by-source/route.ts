@@ -1,6 +1,7 @@
 // app/api/ad-spend-by-source/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { requireUser, UnauthorizedError } from "@/lib/require-user";
 
 export async function GET(req: Request) {
   const supabase = createClient(
@@ -8,9 +9,13 @@ export async function GET(req: Request) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  const { searchParams } = new URL(req.url);
-  const email = searchParams.get("email");
-  if (!email) return NextResponse.json({ error: "email required" }, { status: 400 });
+  let email: string;
+  try {
+    ({ email } = await requireUser());
+  } catch (e) {
+    if (e instanceof UnauthorizedError) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    throw e;
+  }
 
   const { data: business } = await supabase
     .from("businesses")

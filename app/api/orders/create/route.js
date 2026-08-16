@@ -10,6 +10,7 @@
 // serviceType: "business_setup" | "whatif_analysis" | "monthly_digest" | "team_alerts"
 
 import { createClient } from "@supabase/supabase-js";
+import { requireUser, UnauthorizedError } from "@/lib/require-user";
 
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
@@ -24,8 +25,15 @@ const PADDLE_PRICE_BY_SERVICE = {
 const CALENDAR_BOOKING_URL = process.env.CALENDAR_BOOKING_URL || "https://cal.com/rivant/onboarding";
 
 export async function POST(req) {
-  const { email, serviceType } = await req.json();
-  if (!email || !serviceType) return Response.json({ error: "missing fields" }, { status: 400 });
+  const { serviceType } = await req.json();
+  let email;
+  try {
+    ({ email } = await requireUser());
+  } catch (e) {
+    if (e instanceof UnauthorizedError) return Response.json({ error: "unauthorized" }, { status: 401 });
+    throw e;
+  }
+  if (!serviceType) return Response.json({ error: "missing fields" }, { status: 400 });
 
   if (serviceType === "business_setup") {
     return Response.json({ mode: "redirect", url: CALENDAR_BOOKING_URL });

@@ -1,9 +1,11 @@
 // app/api/trial-prompt-status/route.js
 import { createClient } from "@supabase/supabase-js";
+import { requireUser } from "@/lib/require-user";
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
 export async function GET(req) {
-  const email = new URL(req.url).searchParams.get("email");
+  const user = await requireUser().catch(() => null);
+  const email = user?.email;
   if (!email) return Response.json({ shouldShow: false });
 
   const { data: user } = await admin.from("users").select("id").eq("email", email).maybeSingle();

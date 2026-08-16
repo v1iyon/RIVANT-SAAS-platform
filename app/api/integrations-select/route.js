@@ -1,5 +1,6 @@
 // app/api/integrations-select/route.js
 import { createClient } from "@supabase/supabase-js";
+import { requireUser, UnauthorizedError } from "@/lib/require-user";
 
 const admin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -10,8 +11,13 @@ const admin = createClient(
 const SELECTABLE_PROVIDERS = ["meta_ads", "google_ads", "shopify", "quickbooks", "google_analytics"];
 
 export async function GET(req) {
-  const email = new URL(req.url).searchParams.get("email");
-  if (!email) return Response.json({ error: "email required" }, { status: 400 });
+  let email;
+  try {
+    ({ email } = await requireUser());
+  } catch (e) {
+    if (e instanceof UnauthorizedError) return Response.json({ error: "unauthorized" }, { status: 401 });
+    throw e;
+  }
 
   const { data: user } = await admin.from("users").select("id").eq("email", email).maybeSingle();
   if (!user) return Response.json({ selected: [], locked: false });
@@ -38,9 +44,10 @@ export async function GET(req) {
 
 export async function POST(req) {
   try {
-    const { email, providers } = await req.json();
-    if (!email || !Array.isArray(providers)) {
-      return Response.json({ error: "email and providers[] are required" }, { status: 400 });
+    const { providers } = await req.json();
+    const { email } = await requireUser();
+    if (!Array.isArray(providers)) {
+      return Response.json({ error: "providers[] is required" }, { status: 400 });
     }
     if (providers.some((p) => !SELECTABLE_PROVIDERS.includes(p))) {
       return Response.json({ error: "Unknown provider in selection" }, { status: 400 });
@@ -79,6 +86,7 @@ export async function POST(req) {
 
     return Response.json({ success: true, selected: providers });
   } catch (err) {
+    if (err instanceof UnauthorizedError) return Response.json({ error: "unauthorized" }, { status: 401 });
     console.error("integrations-select error:", err);
     return Response.json({ error: "Server error" }, { status: 500 });
   }

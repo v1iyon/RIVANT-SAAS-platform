@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { getPrimaryBusiness } from "@/lib/get-primary-business";
 import { DIGEST_FREQUENCIES } from "@/lib/alerts.mjs";
+import { requireUser, UnauthorizedError } from "@/lib/require-user";
 
 const admin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -25,8 +26,13 @@ function getBusinessNameColumn(row) {
 }
 
 export async function GET(req) {
-  const email = new URL(req.url).searchParams.get("email");
-  if (!email) return Response.json({ error: "email required" }, { status: 400 });
+  let email;
+  try {
+    ({ email } = await requireUser());
+  } catch (e) {
+    if (e instanceof UnauthorizedError) return Response.json({ error: "unauthorized" }, { status: 401 });
+    throw e;
+  }
 
   const { data: appUser } = await admin.from("users").select("id").eq("email", email).maybeSingle();
   if (!appUser) {
@@ -60,8 +66,14 @@ export async function GET(req) {
 const VALID_ALERT_SENSITIVITY = ["low", "normal", "high"];
 
 export async function PUT(req) {
-  const { email, name, timezone, alert_sensitivity, digest_frequency } = await req.json();
-  if (!email) return Response.json({ error: "email required" }, { status: 400 });
+  const { name, timezone, alert_sensitivity, digest_frequency } = await req.json();
+  let email;
+  try {
+    ({ email } = await requireUser());
+  } catch (e) {
+    if (e instanceof UnauthorizedError) return Response.json({ error: "unauthorized" }, { status: 401 });
+    throw e;
+  }
 
   const { data: appUser } = await admin.from("users").select("id").eq("email", email).maybeSingle();
   if (!appUser) return Response.json({ error: "user not found" }, { status: 404 });

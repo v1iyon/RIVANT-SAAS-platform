@@ -1,6 +1,7 @@
 // app/api/connect-integration/route.js
 import { createClient } from "@supabase/supabase-js";
 import { encrypt } from "@/lib/crypto";
+import { requireUser, UnauthorizedError } from "@/lib/require-user";
 
 export const runtime = "nodejs";
 
@@ -40,10 +41,11 @@ const SENSITIVE_CONFIG_FIELDS = {
 
 export async function POST(req) {
   try {
-    const { email, provider, apiKey, config } = await req.json();
+    const { provider, apiKey, config } = await req.json();
+    const { email } = await requireUser();
 
-    if (!email || !provider || !apiKey) {
-      return Response.json({ error: "email, provider and apiKey are required" }, { status: 400 });
+    if (!provider || !apiKey) {
+      return Response.json({ error: "provider and apiKey are required" }, { status: 400 });
     }
     if (!SUPPORTED_PROVIDERS.includes(provider)) {
       return Response.json({ error: "Unsupported provider" }, { status: 400 });
@@ -140,6 +142,7 @@ export async function POST(req) {
 
     return Response.json({ success: true });
   } catch (err) {
+    if (err instanceof UnauthorizedError) return Response.json({ error: "unauthorized" }, { status: 401 });
     console.error("connect-integration error:", err);
     return Response.json({ error: "Server error, try again" }, { status: 500 });
   }
@@ -148,9 +151,10 @@ export async function POST(req) {
 // Отключение (mirрор /api/stripe-disconnect, но для generic-провайдеров).
 export async function DELETE(req) {
   try {
-    const { email, provider } = await req.json();
-    if (!email || !provider) {
-      return Response.json({ error: "email and provider are required" }, { status: 400 });
+    const { provider } = await req.json();
+    const { email } = await requireUser();
+    if (!provider) {
+      return Response.json({ error: "provider is required" }, { status: 400 });
     }
     if (!SUPPORTED_PROVIDERS.includes(provider)) {
       return Response.json({ error: "Unsupported provider" }, { status: 400 });
@@ -176,6 +180,7 @@ export async function DELETE(req) {
 
     return Response.json({ success: true });
   } catch (err) {
+    if (err instanceof UnauthorizedError) return Response.json({ error: "unauthorized" }, { status: 401 });
     console.error("connect-integration DELETE error:", err);
     return Response.json({ error: "Server error" }, { status: 500 });
   }

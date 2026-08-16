@@ -5,6 +5,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { ALERT_CATEGORIES } from "@/lib/alerts.mjs";
+import { requireUser, UnauthorizedError } from "@/lib/require-user";
 
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
@@ -26,8 +27,13 @@ async function getBusinessId(email) {
 }
 
 export async function GET(req) {
-  const email = new URL(req.url).searchParams.get("email");
-  if (!email) return Response.json({ error: "email required" }, { status: 400 });
+  let email;
+  try {
+    ({ email } = await requireUser());
+  } catch (e) {
+    if (e instanceof UnauthorizedError) return Response.json({ error: "unauthorized" }, { status: 401 });
+    throw e;
+  }
 
   const businessId = await getBusinessId(email);
   if (!businessId) return Response.json({ members: [] });
@@ -46,8 +52,15 @@ export async function GET(req) {
 // учаснику (наприклад, дати бухгалтеру ще й "inventory" пізніше), а не лише
 // один раз зафіксувати категорії в момент видачі запрошення.
 export async function PATCH(req) {
-  const { email, memberId, categories } = await req.json();
-  if (!email || !memberId) return Response.json({ error: "missing fields" }, { status: 400 });
+  const { memberId, categories } = await req.json();
+  let email;
+  try {
+    ({ email } = await requireUser());
+  } catch (e) {
+    if (e instanceof UnauthorizedError) return Response.json({ error: "unauthorized" }, { status: 401 });
+    throw e;
+  }
+  if (!memberId) return Response.json({ error: "missing fields" }, { status: 400 });
   if (!Array.isArray(categories) || categories.length === 0) {
     return Response.json({ error: "categories must be a non-empty array" }, { status: 400 });
   }
@@ -70,8 +83,15 @@ export async function PATCH(req) {
 }
 
 export async function DELETE(req) {
-  const { email, memberId } = await req.json();
-  if (!email || !memberId) return Response.json({ error: "missing fields" }, { status: 400 });
+  const { memberId } = await req.json();
+  let email;
+  try {
+    ({ email } = await requireUser());
+  } catch (e) {
+    if (e instanceof UnauthorizedError) return Response.json({ error: "unauthorized" }, { status: 401 });
+    throw e;
+  }
+  if (!memberId) return Response.json({ error: "missing fields" }, { status: 400 });
 
   const businessId = await getBusinessId(email);
   if (!businessId) return Response.json({ error: "not found" }, { status: 404 });
