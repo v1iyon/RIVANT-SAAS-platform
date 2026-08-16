@@ -61,11 +61,11 @@ export function CookieConsentBanner() {
       {consent === "accepted" && <Analytics />}
 
       {hydrated && consent === null && (
-        <div className="fixed bottom-0 left-0 right-0 z-[9998] p-4 sm:p-6">
-          <div className="max-w-3xl mx-auto bg-card border border-border rounded-xl shadow-lg p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4">
-            <p className="text-sm text-muted-foreground flex-1">
+        <div className="fixed bottom-0 left-0 right-0 z-[9998] p-3 sm:p-4">
+          <div className="max-w-xl mx-auto bg-neutral-800/95 backdrop-blur border border-white/15 rounded-xl shadow-2xl p-3 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center gap-3">
+            <p className="text-xs text-neutral-300 flex-1 leading-snug">
               {t.message}{" "}
-              <a href="/cookies" className="underline text-foreground">
+              <a href="/cookies" className="underline text-white">
                 {t.link}
               </a>
               .
@@ -73,13 +73,13 @@ export function CookieConsentBanner() {
             <div className="flex gap-2 shrink-0 w-full sm:w-auto">
               <button
                 onClick={() => choose("declined")}
-                className="flex-1 sm:flex-none px-4 py-2 text-sm font-medium rounded-lg bg-secondary text-foreground hover:bg-secondary/80"
+                className="flex-1 sm:flex-none px-3 py-1.5 text-xs font-medium rounded-lg bg-neutral-700 text-neutral-100 hover:bg-neutral-600"
               >
                 {t.decline}
               </button>
               <button
                 onClick={() => choose("accepted")}
-                className="flex-1 sm:flex-none px-4 py-2 text-sm font-medium rounded-lg bg-primary text-white hover:opacity-90"
+                className="flex-1 sm:flex-none px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-white hover:opacity-90"
               >
                 {t.accept}
               </button>
