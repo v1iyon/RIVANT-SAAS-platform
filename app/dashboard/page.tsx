@@ -1759,6 +1759,34 @@ const savePhone = () => {
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const exportMenuRef = useRef<HTMLDivElement>(null);
   const [exportingFormat, setExportingFormat] = useState(false);
+  // Період, за який выгружаем xlsx/pdf. JSON ("Export All Data") бьёт в
+  // /api/export-data — отдельный полный дамп аккаунта (см. handleExportData),
+  // период на него не влияет и не должен, поэтому фильтруем только для
+  // xlsx/pdf ниже.
+  type ExportPeriod = "month" | "3m" | "6m" | "year";
+  const [exportPeriod, setExportPeriod] = useState<ExportPeriod>("month");
+  const exportPeriodLabel = (p: ExportPeriod) => {
+    if (language === "UA") return p === "month" ? "Цей місяць" : p === "3m" ? "3 місяці" : p === "6m" ? "6 місяців" : "Рік";
+    if (language === "DE") return p === "month" ? "Dieser Monat" : p === "3m" ? "3 Monate" : p === "6m" ? "6 Monate" : "1 Jahr";
+    return p === "month" ? "This month" : p === "3m" ? "3 months" : p === "6m" ? "6 months" : "1 year";
+  };
+  // Режем metricsRows по выбранному периоду ПЕРЕД экспортом — та же логика
+  // "от начала календарного месяца", что и у графика в RevenueExpensesChart,
+  // просто с более длинными окнами (3мес/6мес/год считаем календарно от
+  // сегодняшней даты назад, не только от начала месяца).
+  const filterRowsByExportPeriod = (rows: MetricsRow[], period: ExportPeriod): MetricsRow[] => {
+    if (!rows.length) return rows;
+    const now = new Date();
+    let cutoff: Date;
+    if (period === "month") {
+      cutoff = new Date(now.getFullYear(), now.getMonth(), 1);
+    } else {
+      const monthsBack = period === "3m" ? 3 : period === "6m" ? 6 : 12;
+      cutoff = new Date(now.getFullYear(), now.getMonth() - monthsBack, now.getDate());
+    }
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
+    return rows.filter((r) => r.date >= cutoffStr);
+  };
   const handleExportFormat = async (format: "json" | "xlsx" | "pdf") => {
     setExportMenuOpen(false);
     if (format === "json") {
@@ -1767,12 +1795,13 @@ const savePhone = () => {
     }
     setExportingFormat(true);
     try {
+      const rowsForExport = filterRowsByExportPeriod(metricsRows, exportPeriod);
       if (format === "xlsx") {
         const { exportMetricsToExcel } = await import("@/lib/export-metrics");
-        await exportMetricsToExcel(metricsRows, businessName);
+        await exportMetricsToExcel(rowsForExport, businessName);
       } else {
         const { exportMetricsToPdf } = await import("@/lib/export-metrics");
-        await exportMetricsToPdf(metricsRows, businessName);
+        await exportMetricsToPdf(rowsForExport, businessName);
       }
     } catch (e) {
       console.error("Export failed", e);
@@ -3385,7 +3414,28 @@ if (!subInfo) {
                       {exportingFormat ? (language === "UA" ? "Експорт..." : language === "DE" ? "Exportiere..." : "Exporting...") : (T.settingsExport || "Export")}
                     </Button>
                     {exportMenuOpen && (
-                      <div className="absolute right-0 bottom-full mb-1 z-10 bg-gray-900 border border-gray-700 rounded-lg shadow-xl overflow-hidden min-w-[140px]">
+                      <div className="absolute right-0 bottom-full mb-1 z-10 bg-gray-900 border border-gray-700 rounded-lg shadow-xl overflow-hidden min-w-[190px]">
+                        {/* Период применяется только к xlsx/pdf (см. filterRowsByExportPeriod) —
+                            JSON ниже игнорирует выбор, т.к. это отдельный полный дамп аккаунта. */}
+                        <div className="px-3 pt-2.5 pb-1.5 text-[10px] uppercase tracking-wide text-gray-500">
+                          {language === "UA" ? "Період (Excel/PDF)" : language === "DE" ? "Zeitraum (Excel/PDF)" : "Period (Excel/PDF)"}
+                        </div>
+                        <div className="px-2 pb-2 grid grid-cols-2 gap-1">
+                          {(["month", "3m", "6m", "year"] as const).map((p) => (
+                            <button
+                              key={p}
+                              onClick={() => setExportPeriod(p)}
+                              className={`text-left px-2 py-1 text-xs rounded transition-colors ${
+                                exportPeriod === p
+                                  ? "bg-blue-600/20 text-blue-400 border border-blue-600/40"
+                                  : "text-gray-400 border border-transparent hover:bg-gray-800"
+                              }`}
+                            >
+                              {exportPeriodLabel(p)}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="border-t border-gray-800" />
                         <button onClick={() => handleExportFormat("json")} className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 transition-colors">JSON</button>
                         <button onClick={() => handleExportFormat("xlsx")} className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 transition-colors">Excel (.xlsx)</button>
                         <button onClick={() => handleExportFormat("pdf")} className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 transition-colors">PDF (.pdf)</button>
