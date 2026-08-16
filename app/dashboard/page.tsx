@@ -1759,12 +1759,13 @@ const savePhone = () => {
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const exportMenuRef = useRef<HTMLDivElement>(null);
   const [exportingFormat, setExportingFormat] = useState(false);
-  // Період, за який выгружаем xlsx/pdf. JSON ("Export All Data") бьёт в
-  // /api/export-data — отдельный полный дамп аккаунта (см. handleExportData),
-  // период на него не влияет и не должен, поэтому фильтруем только для
-  // xlsx/pdf ниже.
+  // Двухшаговое меню: клик "Export" → список форматов (JSON/Excel/PDF).
+  // Для xlsx/pdf второй шаг — период; JSON бьёт в /api/export-data
+  // (отдельный полный дамп аккаунта, см. handleExportData) и периода не
+  // спрашивает вообще. Раньше период рисовался сразу вместе с форматами
+  // одним большим блоком — разбили на два шага, чтобы меню не разрасталось.
   type ExportPeriod = "month" | "3m" | "6m" | "year";
-  const [exportPeriod, setExportPeriod] = useState<ExportPeriod>("month");
+  const [exportPeriodStepFormat, setExportPeriodStepFormat] = useState<"xlsx" | "pdf" | null>(null);
   const exportPeriodLabel = (p: ExportPeriod) => {
     if (language === "UA") return p === "month" ? "Цей місяць" : p === "3m" ? "3 місяці" : p === "6m" ? "6 місяців" : "Рік";
     if (language === "DE") return p === "month" ? "Dieser Monat" : p === "3m" ? "3 Monate" : p === "6m" ? "6 Monate" : "1 Jahr";
@@ -1787,15 +1788,25 @@ const savePhone = () => {
     const cutoffStr = cutoff.toISOString().slice(0, 10);
     return rows.filter((r) => r.date >= cutoffStr);
   };
-  const handleExportFormat = async (format: "json" | "xlsx" | "pdf") => {
-    setExportMenuOpen(false);
+  // Шаг 1 (клик по формату в меню). JSON выполняется сразу, xlsx/pdf
+  // переключают меню на шаг 2 (выбор периода) вместо немедленного экспорта.
+  const handleExportFormatPick = (format: "json" | "xlsx" | "pdf") => {
     if (format === "json") {
+      setExportMenuOpen(false);
       handleExportData();
       return;
     }
+    setExportPeriodStepFormat(format);
+  };
+  // Шаг 2 (клик по периоду) — тут реально выполняем экспорт.
+  const handleExportPeriodPick = async (period: ExportPeriod) => {
+    const format = exportPeriodStepFormat;
+    if (!format) return;
+    setExportMenuOpen(false);
+    setExportPeriodStepFormat(null);
     setExportingFormat(true);
     try {
-      const rowsForExport = filterRowsByExportPeriod(metricsRows, exportPeriod);
+      const rowsForExport = filterRowsByExportPeriod(metricsRows, period);
       if (format === "xlsx") {
         const { exportMetricsToExcel } = await import("@/lib/export-metrics");
         await exportMetricsToExcel(rowsForExport, businessName);
@@ -1812,14 +1823,20 @@ const savePhone = () => {
 
   // Закрываем меню экспорта при клике вне него или при скролле —
   // раньше закрывалось только повторным кликом на "Export"/пункт меню.
+  // Сбрасываем и шаг периода, чтобы при следующем открытии меню всегда
+  // начиналось с шага 1 (выбор формата), а не зависало на шаге 2.
   useEffect(() => {
     if (!exportMenuOpen) return;
     const handleOutside = (e: MouseEvent) => {
       if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
         setExportMenuOpen(false);
+        setExportPeriodStepFormat(null);
       }
     };
-    const handleScroll = () => setExportMenuOpen(false);
+    const handleScroll = () => {
+      setExportMenuOpen(false);
+      setExportPeriodStepFormat(null);
+    };
     document.addEventListener("mousedown", handleOutside);
     window.addEventListener("scroll", handleScroll, true);
     return () => {
@@ -1827,6 +1844,7 @@ const savePhone = () => {
       window.removeEventListener("scroll", handleScroll, true);
     };
   }, [exportMenuOpen]);
+
 
   const submitReview = async () => {
     setReviewMsg("");
@@ -3410,38 +3428,51 @@ if (!subInfo) {
 </div>
                   <div ref={exportMenuRef} className="flex items-center justify-between pt-2 border-t border-border relative">
                     <div><p className="font-medium text-foreground">{T.settingsExportData || "Export All Data"}</p><p className="text-xs text-muted-foreground">{T.settingsExportDataDesc || "Download all your business data"}</p></div>
-                    <Button variant="outline" size="sm" onClick={() => setExportMenuOpen((v) => !v)} disabled={exportingFormat}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        // Каждое новое открытие меню — заново с шага 1 (форматы),
+                        // даже если в прошлый раз его закрыли на шаге 2 (период).
+                        setExportPeriodStepFormat(null);
+                        setExportMenuOpen((v) => !v);
+                      }}
+                      disabled={exportingFormat}
+                    >
                       {exportingFormat ? (language === "UA" ? "Експорт..." : language === "DE" ? "Exportiere..." : "Exporting...") : (T.settingsExport || "Export")}
                     </Button>
-                    {exportMenuOpen && (
-                      <div className="absolute right-0 bottom-full mb-1 z-10 bg-gray-900 border border-gray-700 rounded-lg shadow-xl overflow-hidden min-w-[190px]">
-                        {/* Период применяется только к xlsx/pdf (см. filterRowsByExportPeriod) —
-                            JSON ниже игнорирует выбор, т.к. это отдельный полный дамп аккаунта. */}
-                        <div className="px-3 pt-2.5 pb-1.5 text-[10px] uppercase tracking-wide text-gray-500">
-                          {language === "UA" ? "Період (Excel/PDF)" : language === "DE" ? "Zeitraum (Excel/PDF)" : "Period (Excel/PDF)"}
-                        </div>
-                        <div className="px-2 pb-2 grid grid-cols-2 gap-1">
-                          {(["month", "3m", "6m", "year"] as const).map((p) => (
-                            <button
-                              key={p}
-                              onClick={() => setExportPeriod(p)}
-                              className={`text-left px-2 py-1 text-xs rounded transition-colors ${
-                                exportPeriod === p
-                                  ? "bg-blue-600/20 text-blue-400 border border-blue-600/40"
-                                  : "text-gray-400 border border-transparent hover:bg-gray-800"
-                              }`}
-                            >
-                              {exportPeriodLabel(p)}
-                            </button>
-                          ))}
-                        </div>
+                    {exportMenuOpen && !exportPeriodStepFormat && (
+                      // Шаг 1: выбор формата.
+                      <div className="absolute right-0 bottom-full mb-1 z-10 bg-gray-900 border border-gray-700 rounded-lg shadow-xl overflow-hidden min-w-[140px]">
+                        <button onClick={() => handleExportFormatPick("json")} className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 transition-colors">JSON</button>
+                        <button onClick={() => handleExportFormatPick("xlsx")} className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 transition-colors">Excel (.xlsx)</button>
+                        <button onClick={() => handleExportFormatPick("pdf")} className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 transition-colors">PDF (.pdf)</button>
+                      </div>
+                    )}
+                    {exportMenuOpen && exportPeriodStepFormat && (
+                      // Шаг 2 (только для xlsx/pdf): выбор периода. Кнопка "назад"
+                      // возвращает на шаг 1, не закрывая меню целиком.
+                      <div className="absolute right-0 bottom-full mb-1 z-10 bg-gray-900 border border-gray-700 rounded-lg shadow-xl overflow-hidden min-w-[160px]">
+                        <button
+                          onClick={() => setExportPeriodStepFormat(null)}
+                          className="w-full text-left px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-800 transition-colors flex items-center gap-1"
+                        >
+                          ← {exportPeriodStepFormat === "xlsx" ? "Excel (.xlsx)" : "PDF (.pdf)"}
+                        </button>
                         <div className="border-t border-gray-800" />
-                        <button onClick={() => handleExportFormat("json")} className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 transition-colors">JSON</button>
-                        <button onClick={() => handleExportFormat("xlsx")} className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 transition-colors">Excel (.xlsx)</button>
-                        <button onClick={() => handleExportFormat("pdf")} className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 transition-colors">PDF (.pdf)</button>
+                        {(["month", "3m", "6m", "year"] as const).map((p) => (
+                          <button
+                            key={p}
+                            onClick={() => handleExportPeriodPick(p)}
+                            className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 transition-colors"
+                          >
+                            {exportPeriodLabel(p)}
+                          </button>
+                        ))}
                       </div>
                     )}
                   </div>
+
                 </div>
               </div>
             </div>
