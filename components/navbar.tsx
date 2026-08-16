@@ -170,7 +170,6 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
   };
 
   const changeLanguage = (lang: Language) => {
-    console.log("Changing language to:", lang);
     setLanguage(lang);
   };
 
@@ -179,7 +178,6 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
   };
 
   const openLogin = () => {
-    console.log("Opening login modal");
     setShowForgotHint(false);
     setIsForgotPassword(false);
     setIsLoginModalOpen(true);

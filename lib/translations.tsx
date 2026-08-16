@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from "react";
+import { createContext, useContext, useState, ReactNode, useCallback } from "react";
 
 export type Language = "EN" | "UA" | "DE";
 
@@ -927,17 +927,7 @@ function getInitialLanguage(): Language {
 export function LanguageProvider({ children }: { children: ReactNode }) {
   const [language, setLanguageState] = useState<Language>(getInitialLanguage);
 
-  // FIX (аудит п.9): <html lang="en"> в layout.tsx был захардкожен и не
-  // менялся при переключении языка — это портит доступность (скринридеры
-  // выбирают неправильное произношение) и немного вредит SEO/семантике.
-  // UA соответствует ISO-коду "uk" (не "ua" — это код страны, а не языка).
-  useEffect(() => {
-    const htmlLang = language === "UA" ? "uk" : language === "DE" ? "de" : "en";
-    document.documentElement.lang = htmlLang;
-  }, [language]);
-
   const setLanguage = useCallback((lang: Language) => {
-    console.log("Setting language to:", lang);
     setLanguageState(lang);
     localStorage.setItem("preferredLanguage", lang);
     window.dispatchEvent(new Event('languagechange'));

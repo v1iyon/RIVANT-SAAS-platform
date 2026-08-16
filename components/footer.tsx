@@ -76,6 +76,7 @@ export function Footer() {
                 key={link.name}
                 href={link.href}
                 target="_blank"
+                rel="noopener noreferrer"
                 className="text-muted-foreground/50 hover:text-foreground transition-colors"
               >
                 <link.icon className="w-3.5 h-3.5" />
