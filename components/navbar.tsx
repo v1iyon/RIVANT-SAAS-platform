@@ -170,6 +170,19 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
     setIsMobileMenuOpen(false);
   };
 
+  // FIX (аудит п.5): раньше кнопка "Cabinet" всегда открывала модалку логина,
+  // даже если пользователь уже вошёл (isLoggedIn выставлялся, но нигде не
+  // читался). Теперь залогиненный сразу попадает в /dashboard, без лишнего
+  // шага с формой входа.
+  const handleCabinetClick = () => {
+    if (isLoggedIn) {
+      setIsMobileMenuOpen(false);
+      router.push("/dashboard");
+    } else {
+      openLogin();
+    }
+  };
+
   // Supabase (и просто network errors типа "Failed to fetch") отдают текст
   // ошибки на английском независимо от языка сайта — раньше это летело в UI
   // как есть. Мапим самые частые случаи на текст на текущем языке интерфейса,
@@ -412,7 +425,7 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
                 <Button
                   size="sm"
                   className="border border-blue-600 bg-blue-600/20 text-blue-600 hover:bg-blue-600 hover:text-white cursor-pointer"
-                  onClick={openLogin}
+                  onClick={handleCabinetClick}
                 >
                   <User className="w-4 h-4 mr-1" /> {T.cabinet || "Cabinet"}
                 </Button>
@@ -567,7 +580,7 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
             </button>
 
             <button
-              onClick={openLogin}
+              onClick={handleCabinetClick}
               className="w-full px-4 py-3 border border-blue-600 bg-blue-600/20 text-blue-600 rounded-lg font-medium hover:bg-blue-600 hover:text-white"
             >
               <User className="w-4 h-4 inline mr-2" /> {T.cabinet || "Cabinet"}

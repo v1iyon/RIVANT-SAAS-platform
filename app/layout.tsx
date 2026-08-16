@@ -1,8 +1,8 @@
 import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
-import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
 import { ClientProvider } from '@/components/ClientProvider'
+import { CookieConsentBanner } from '@/components/cookie-consent-banner'
 
 const inter = Inter({ 
   subsets: ["latin"],
@@ -28,8 +28,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className={`${inter.variable} font-sans antialiased bg-black`}>
         <ClientProvider>
           {children}
+          {process.env.NODE_ENV === 'production' && <CookieConsentBanner />}
         </ClientProvider>
-        {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>
   )

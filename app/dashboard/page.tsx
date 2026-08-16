@@ -1862,11 +1862,13 @@ const savePhone = () => {
         business_name: businessName,
         rating: reviewRating,
         comment: reviewComment,
+        website_url: reviewHoneypot,
       }),
     });
     if (res.ok) {
       setReviewMsg("success");
       setReviewComment("");
+      setReviewHoneypot("");
     } else {
       setReviewMsg("error");
     }
@@ -1877,11 +1879,12 @@ const savePhone = () => {
   const res = await fetch("/api/feedback", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email: profileEmail, type: feedbackType, message: feedbackMessage }),
+    body: JSON.stringify({ email: profileEmail, type: feedbackType, message: feedbackMessage, website_url: feedbackHoneypot }),
   });
   if (res.ok) {
     setFeedbackMsg("success");
     setFeedbackMessage("");
+    setFeedbackHoneypot("");
   } else {
     setFeedbackMsg("error");
   }
@@ -3349,6 +3352,17 @@ if (!subInfo) {
                     </button>
                   ))}
                 </div>
+                {/* Honeypot: видиме ботам, невидиме людям — не чіпати tabIndex/autoComplete/position */}
+                <input
+                  type="text"
+                  name="website_url"
+                  tabIndex={-1}
+                  autoComplete="off"
+                  aria-hidden="true"
+                  value={reviewHoneypot}
+                  onChange={(e) => setReviewHoneypot(e.target.value)}
+                  style={{ position: "absolute", left: "-9999px", width: "1px", height: "1px", opacity: 0 }}
+                />
                 <textarea
                   value={reviewComment}
                   onChange={(e) => setReviewComment(e.target.value)}
@@ -3395,6 +3409,17 @@ if (!subInfo) {
       {language === "UA" ? "Пропозиція функції" : language === "DE" ? "Funktionsvorschlag" : "Feature request"}
     </button>
   </div>
+  {/* Honeypot: видиме ботам, невидиме людям — не чіпати tabIndex/autoComplete/position */}
+  <input
+    type="text"
+    name="website_url"
+    tabIndex={-1}
+    autoComplete="off"
+    aria-hidden="true"
+    value={feedbackHoneypot}
+    onChange={(e) => setFeedbackHoneypot(e.target.value)}
+    style={{ position: "absolute", left: "-9999px", width: "1px", height: "1px", opacity: 0 }}
+  />
   <textarea
     value={feedbackMessage}
     onChange={(e) => setFeedbackMessage(e.target.value)}
