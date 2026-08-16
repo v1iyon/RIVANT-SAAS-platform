@@ -1809,10 +1809,10 @@ const savePhone = () => {
       const rowsForExport = filterRowsByExportPeriod(metricsRows, period);
       if (format === "xlsx") {
         const { exportMetricsToExcel } = await import("@/lib/export-metrics");
-        await exportMetricsToExcel(rowsForExport, businessName);
+        await exportMetricsToExcel(rowsForExport, businessName, language);
       } else {
         const { exportMetricsToPdf } = await import("@/lib/export-metrics");
-        await exportMetricsToPdf(rowsForExport, businessName);
+        await exportMetricsToPdf(rowsForExport, businessName, language);
       }
     } catch (e) {
       console.error("Export failed", e);
@@ -2891,12 +2891,15 @@ if (!subInfo) {
                   місці під час скролу списку інтеграцій (як шапка/футер). */}
               <div className="sticky top-2 z-30 h-0">
                 <div className="flex justify-end pr-0">
-                  <Button
-                    size="icon"
-                    variant="outline"
+                  {/* Та сама візуальна мова, що й у "шестерні" налаштування карток
+                      на Огляді (розмір w-7 h-7, сірий bg-gray-800/90 + border-gray-700) —
+                      просто звичайна кнопка замість <Button>, щоб не тягнути за
+                      собою розміри size="icon" (size-9) з components/ui/button.
+                      Іконка лишається RefreshCw ("стрілочки"), як і просили. */}
+                  <button
                     title={language === "UA" ? "Синхронізувати все" : language === "DE" ? "Alles synchronisieren" : "Sync all"}
                     aria-label={language === "UA" ? "Синхронізувати все" : language === "DE" ? "Alles synchronisieren" : "Sync all"}
-                    className="h-9 w-9 rounded-full border-blue-400/30 text-blue-300 bg-gray-950/90 backdrop-blur-sm shadow-lg shadow-black/40 hover:bg-blue-500/10"
+                    className="w-7 h-7 rounded-full bg-gray-800/90 border border-gray-700 flex items-center justify-center text-gray-400 hover:text-white hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:pointer-events-none"
                     disabled={!profileEmail || syncingAllIntegrations}
                     onClick={async () => {
                       setSyncingAllIntegrations(true);
@@ -2915,8 +2918,8 @@ if (!subInfo) {
                       }
                     }}
                   >
-                    <RefreshCw className={`h-4 w-4 ${syncingAllIntegrations ? "animate-spin" : ""}`} />
-                  </Button>
+                    <RefreshCw className={`w-3.5 h-3.5 ${syncingAllIntegrations ? "animate-spin" : ""}`} />
+                  </button>
                 </div>
               </div>
               {subInfo?.plan === "growth" && (
