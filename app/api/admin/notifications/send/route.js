@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { isValidSecret } from "@/lib/verify-secret";
 
 const admin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -6,7 +7,7 @@ const admin = createClient(
 );
 
 function checkAuth(req) {
-  return req.headers.get("x-admin-secret") === process.env.ADMIN_SECRET;
+  return isValidSecret(req.headers.get("x-admin-secret"), process.env.ADMIN_SECRET);
 }
 
 async function sendTelegramToAll(message) {

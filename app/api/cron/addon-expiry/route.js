@@ -8,13 +8,17 @@
 //   оплати, а не автоматичне повернення).
 
 import { createClient } from "@supabase/supabase-js";
+import { isValidSecret } from "@/lib/verify-secret";
 
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
 export async function GET(req) {
+  // Timing-safe сравнение секрета — см. lib/verify-secret.js и п. 2.5 аудита.
   const secret = req.headers.get("x-cron-secret");
-  const isVercelCron = req.headers.get("authorization") === `Bearer ${process.env.CRON_SECRET}`;
-  if (secret !== process.env.CRON_SECRET && !isVercelCron) return Response.json({ error: "unauthorized" }, { status: 401 });
+  const authHeader = req.headers.get("authorization");
+  const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice("Bearer ".length) : null;
+  const isVercelCron = isValidSecret(bearerToken, process.env.CRON_SECRET);
+  if (!isValidSecret(secret, process.env.CRON_SECRET) && !isVercelCron) return Response.json({ error: "unauthorized" }, { status: 401 });
 
   const { data: expired } = await admin
     .from("addon_subscriptions")

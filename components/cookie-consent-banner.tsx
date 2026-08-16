@@ -62,7 +62,7 @@ export function CookieConsentBanner() {
 
       {hydrated && consent === null && (
         <div className="fixed bottom-0 left-0 right-0 z-[9998] p-3 sm:p-4">
-          <div className="max-w-xl mx-auto bg-neutral-800/95 backdrop-blur border border-white/15 rounded-xl shadow-2xl p-3 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center gap-3">
+          <div className="max-w-5xl mx-auto bg-neutral-800/95 backdrop-blur border border-white/15 rounded-xl shadow-2xl p-3 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center gap-3">
             <p className="text-xs text-neutral-300 flex-1 leading-snug">
               {t.message}{" "}
               <a href="/cookies" className="underline text-white">
@@ -73,13 +73,13 @@ export function CookieConsentBanner() {
             <div className="flex gap-2 shrink-0 w-full sm:w-auto">
               <button
                 onClick={() => choose("declined")}
-                className="flex-1 sm:flex-none px-3 py-1.5 text-xs font-medium rounded-lg bg-neutral-700 text-neutral-100 hover:bg-neutral-600"
+                className="flex-1 sm:flex-none px-4 py-1.5 text-xs font-medium rounded-lg bg-neutral-700 text-neutral-100 hover:bg-neutral-600"
               >
                 {t.decline}
               </button>
               <button
                 onClick={() => choose("accepted")}
-                className="flex-1 sm:flex-none px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-white hover:opacity-90"
+                className="flex-1 sm:flex-none px-4 py-1.5 text-xs font-medium rounded-lg bg-primary text-white hover:opacity-90"
               >
                 {t.accept}
               </button>

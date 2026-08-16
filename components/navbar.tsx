@@ -27,6 +27,18 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
   const [mfaStep, setMfaStep] = useState(false);
   const [mfaCode, setMfaCode] = useState("");
   const [mfaFactorId, setMfaFactorId] = useState("");
+  // "Забули пароль?" — з'являється під формою входу ПІСЛЯ невдалої спроби
+  // з невірним паролем (не одразу, щоб не захаращувати форму для тих, хто
+  // просто вперше бачить логін). isForgotPassword перемикає саму модалку
+  // на окремий міні-флоу (email -> supabase.auth.resetPasswordForEmail),
+  // не чіпаючи authMode — щоб "Назад" повертав рівно туди, звідки прийшли
+  // (signin або signup).
+  const [showForgotHint, setShowForgotHint] = useState(false);
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotError, setForgotError] = useState("");
+  const [forgotSent, setForgotSent] = useState(false);
   const supabase = createClient();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { language, setLanguage, t } = useLanguage();
@@ -85,6 +97,8 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
         typeof window !== "undefined" && localStorage.getItem("rivant_has_account") === "1";
       setAuthMode(hasAccount ? "signin" : "signup");
       setAuthError("");
+      setShowForgotHint(false);
+      setIsForgotPassword(false);
       setIsLoginModalOpen(true);
       setIsMobileMenuOpen(false);
     };
@@ -166,6 +180,8 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
 
   const openLogin = () => {
     console.log("Opening login modal");
+    setShowForgotHint(false);
+    setIsForgotPassword(false);
     setIsLoginModalOpen(true);
     setIsMobileMenuOpen(false);
   };
@@ -230,6 +246,46 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
     return dict[key][language] || dict[key].EN;
   };
 
+  // Той самий патерн визначення "невірний пароль/email", що вже
+  // використовується всередині translateAuthError вище — винесено окремо,
+  // бо тут потрібен саме булевий прапорець (показати лінк "Забули пароль?"),
+  // а не текст помилки.
+  const isInvalidCredentialsError = (rawMessage: string): boolean => {
+    const msg = (rawMessage || "").toLowerCase();
+    return msg.includes("invalid login credentials") || msg.includes("invalid email or password");
+  };
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotError("");
+    setForgotLoading(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    setForgotLoading(false);
+    if (error) {
+      // Свідомо не розрізняємо "такого email немає" від інших помилок —
+      // інакше форма скидання пароля перетворюється на спосіб перевірити,
+      // чи зареєстрований конкретний email (user enumeration).
+      setForgotError(translateAuthError(error.message));
+      return;
+    }
+    setForgotSent(true);
+  };
+
+  const openForgotPassword = () => {
+    setForgotEmail(loginEmail);
+    setForgotError("");
+    setForgotSent(false);
+    setIsForgotPassword(true);
+  };
+
+  const backFromForgotPassword = () => {
+    setIsForgotPassword(false);
+    setForgotError("");
+    setForgotSent(false);
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError("");
@@ -279,8 +335,12 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
       setAuthLoading(false);
       if (error) {
         setAuthError(translateAuthError(error.message));
+        // "Забули пароль?" з'являється саме тут — після реальної невдалої
+        // спроби входу з невірними даними, а не за замовчуванням на формі.
+        setShowForgotHint(isInvalidCredentialsError(error.message));
         return;
       }
+      setShowForgotHint(false);
 
       const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
       if (aal && aal.nextLevel === "aal2" && aal.nextLevel !== aal.currentLevel) {
@@ -603,7 +663,68 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
               <X className="w-5 h-5" />
             </button>
 
-           {mfaStep ? (
+           {isForgotPassword ? (
+              <>
+                <h2 className="text-2xl font-bold text-white mb-2">
+                  {language === "UA" ? "Відновлення пароля" : language === "DE" ? "Passwort zurücksetzen" : "Reset your password"}
+                </h2>
+                {forgotSent ? (
+                  <>
+                    <p className="text-gray-400 text-sm mb-6">
+                      {language === "UA"
+                        ? <>Якщо акаунт з адресою <span className="text-gray-300 font-medium">{forgotEmail}</span> існує, ми надіслали на неї лист із посиланням для скидання пароля. Перевірте також папку "Спам".</>
+                        : language === "DE"
+                        ? <>Falls ein Konto mit der Adresse <span className="text-gray-300 font-medium">{forgotEmail}</span> existiert, haben wir eine E-Mail mit einem Link zum Zurücksetzen des Passworts gesendet. Prüfen Sie auch Ihren Spam-Ordner.</>
+                        : <>If an account with <span className="text-gray-300 font-medium">{forgotEmail}</span> exists, we've sent a password reset link to it. Check your spam folder too.</>}
+                    </p>
+                    <button
+                      onClick={backFromForgotPassword}
+                      className="w-full py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700"
+                    >
+                      {language === "UA" ? "Назад до входу" : language === "DE" ? "Zurück zur Anmeldung" : "Back to sign in"}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-gray-400 text-sm mb-6">
+                      {language === "UA"
+                        ? "Введіть email, з яким ви реєструвались — надішлемо посилання для скидання пароля."
+                        : language === "DE"
+                        ? "Geben Sie Ihre E-Mail-Adresse ein — wir senden Ihnen einen Link zum Zurücksetzen des Passworts."
+                        : "Enter the email you signed up with — we'll send you a password reset link."}
+                    </p>
+                    <form onSubmit={handleForgotPassword} className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-1">{t.emailLabel}</label>
+                        <input
+                          type="email"
+                          value={forgotEmail}
+                          onChange={(e) => setForgotEmail(e.target.value)}
+                          className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 text-white text-base"
+                          placeholder="you@company.com"
+                          required
+                          autoFocus
+                        />
+                      </div>
+                      {forgotError && <p className="text-red-400 text-sm">{forgotError}</p>}
+                      <button
+                        type="submit"
+                        disabled={forgotLoading}
+                        className="w-full py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        {forgotLoading ? "..." : language === "UA" ? "Надіслати посилання" : language === "DE" ? "Link senden" : "Send reset link"}
+                      </button>
+                    </form>
+                    <button
+                      onClick={backFromForgotPassword}
+                      className="w-full text-center text-sm text-gray-500 hover:text-gray-300 mt-4"
+                    >
+                      {language === "UA" ? "← Назад до входу" : language === "DE" ? "← Zurück zur Anmeldung" : "← Back to sign in"}
+                    </button>
+                  </>
+                )}
+              </>
+            ) : mfaStep ? (
               <>
                 <h2 className="text-2xl font-bold text-white mb-2">
                   {language === "UA" ? "Введіть код 2FA" : language === "DE" ? "2FA-Code eingeben" : "Enter 2FA code"}
@@ -674,7 +795,20 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
       </button>
     </div>
   </div>
-  {authError && <p className="text-red-400 text-sm">{authError}</p>}
+  {authError && (
+    <div>
+      <p className="text-red-400 text-sm">{authError}</p>
+      {authMode === "signin" && showForgotHint && (
+        <button
+          type="button"
+          onClick={openForgotPassword}
+          className="text-sm text-blue-500 hover:underline mt-1"
+        >
+          {language === "UA" ? "Забули пароль?" : language === "DE" ? "Passwort vergessen?" : "Forgot password?"}
+        </button>
+      )}
+    </div>
+  )}
   <button
     type="submit"
     disabled={authLoading}
@@ -689,7 +823,7 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
     <>
       {t.noAccountText}{" "}
       <button 
-        onClick={() => { setAuthMode("signup"); setAuthError(""); }} 
+        onClick={() => { setAuthMode("signup"); setAuthError(""); setShowForgotHint(false); }} 
         className="text-blue-500 hover:underline"
       >
         {t.signUpLink}
@@ -699,7 +833,7 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
     <>
       {t.hasAccountText}{" "}
       <button 
-        onClick={() => { setAuthMode("signin"); setAuthError(""); }} 
+        onClick={() => { setAuthMode("signin"); setAuthError(""); setShowForgotHint(false); }} 
         className="text-blue-500 hover:underline"
       >
         {t.signInLink}

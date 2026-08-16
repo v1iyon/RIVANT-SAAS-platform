@@ -8,6 +8,7 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useLanguage, Language } from "@/lib/translations";
+import { commonError, translateUnknownError } from "@/lib/error-messages";
 import { useCurrency, Currency } from "@/lib/currency";
 import { getSeverityLabel, getSeverityColorClasses } from "@/lib/severity";
 import { TrialPromptModal } from "@/components/dashboard/trial-prompt-modal";
@@ -1243,7 +1244,7 @@ const [companySaved, setCompanySaved] = useState(false);
       }
       setTimeout(() => setGadsToast(null), 6000);
     } catch {
-      setGadsPickerError("Network error");
+      setGadsPickerError(commonError("network", language));
       setGadsPickerLoading(false);
     }
   };
@@ -1632,7 +1633,8 @@ useEffect(() => {
   if (data.url) {
     window.open(data.url, "_blank");
   } else {
-    alert("Error: " + (data.error || "could not get link"));
+    console.error("telegram-connect failed:", data.error);
+    alert(commonError("couldNotGetLink", language));
   }
 };
 
@@ -1665,14 +1667,15 @@ const handleDisconnectTelegram = async () => {
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      setDeleteError(data.error || "Something went wrong");
+      console.error("delete-account failed:", data.error);
+      setDeleteError(commonError("generic", language));
       setDeleting(false);
       return;
     }
     await supabase.auth.signOut();
     router.push("/");
   } catch {
-    setDeleteError("Network error");
+    setDeleteError(commonError("network", language));
     setDeleting(false);
   }
 };
@@ -1911,7 +1914,8 @@ const savePhone = () => {
   const { error } = await supabase.auth.updateUser({ password: newPassword });
   setPasswordLoading(false);
   if (error) {
-    setPasswordMsg(error.message);
+    console.error("updateUser (password) failed:", error.message);
+    setPasswordMsg(translateUnknownError(error.message, language));
     return;
   }
   setPasswordMsg(

@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
+import { isValidSecret } from "@/lib/verify-secret";
 
 export const maxDuration = 60; // на Hobby-плане Vercel лимит 60s, на Pro можно больше
 
 export async function GET(req) {
-  // Защита от чужих вызовов — Vercel Cron сам добавляет этот заголовок
+  // Защита от чужих вызовов — Vercel Cron сам добавляет этот заголовок.
+  // Timing-safe сравнение — см. lib/verify-secret.js и п. 2.5 аудита.
   const authHeader = req.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice("Bearer ".length) : null;
+  if (!isValidSecret(bearerToken, process.env.CRON_SECRET)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 

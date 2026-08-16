@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { isValidSecret } from "@/lib/verify-secret";
 
 const admin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -7,7 +8,7 @@ const admin = createClient(
 
 function checkAuth(req) {
   const secret = req.headers.get("x-admin-secret");
-  return secret === process.env.ADMIN_SECRET;
+  return isValidSecret(secret, process.env.ADMIN_SECRET);
 }
 
 // Цены тарифов в USD/мес — если у вас другие суммы, поправьте здесь.

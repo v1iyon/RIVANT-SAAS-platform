@@ -1,12 +1,14 @@
 import { createClient } from "@supabase/supabase-js";
 import { InlineKeyboard } from "grammy";
 import { getDict } from "../../../../src/i18n.js"; // поправь путь под свою структуру
+import { isValidSecret } from "@/lib/verify-secret";
 
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
 export async function GET(req) {
+  // Timing-safe сравнение — см. lib/verify-secret.js и п. 2.5 аудита.
   const secret = req.headers.get("x-cron-secret");
-  if (secret !== process.env.CRON_SECRET) {
+  if (!isValidSecret(secret, process.env.CRON_SECRET)) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
 

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Check, Zap, FileText, Users, ArrowRight } from "lucide-react";
 import { useLanguage } from "@/lib/translations";
 import { useCurrency } from "@/lib/currency";
+import { commonError } from "@/lib/error-messages";
 
 type Plan = {
   name: string;
@@ -23,7 +24,7 @@ const PRICE_IDS: Record<string, string> = {
 };
 
 export function PricingSection() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const T = t as any;
   const { formatPrice } = useCurrency();
   const supabase = createClient();
@@ -56,7 +57,7 @@ export function PricingSection() {
       });
     } catch (e) {
       console.error("paddle checkout error:", e);
-      alert("Не удалось открыть окно оплаты");
+      alert(commonError("paymentWindowFailed", language));
     } finally {
       setLoadingPlan(null);
     }
@@ -115,7 +116,7 @@ export function PricingSection() {
       }
     } catch (e) {
       console.error("order create error:", e);
-      alert("Не вдалося оформити заявку, спробуйте ще раз");
+      alert(commonError("requestFailed", language));
     } finally {
       setOrderingService(null);
     }
