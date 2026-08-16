@@ -1,12 +1,37 @@
 import { createClient } from "@supabase/supabase-js";
+import { getClientIp, checkRateLimit, isHoneypotTripped } from "@/lib/rate-limit";
 
 const admin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_KEY
 );
 
+// 5 заявок в час с одного IP — реальный человек, оставляющий заявку на
+// демо, никогда столько не отправит; бот-скрипт — легко. См. п. 2.3
+// аудита и lib/rate-limit.js про ограничения in-memory лимита в serverless.
+const RATE_LIMIT = { limit: 5, windowMs: 60 * 60 * 1000 };
+
 export async function POST(req) {
-  const { name, company, email, telegram, message, source } = await req.json();
+  const ip = getClientIp(req);
+  const { allowed, retryAfterSeconds } = checkRateLimit(`contact:${ip}`, RATE_LIMIT);
+  if (!allowed) {
+    return Response.json(
+      { error: "too many requests" },
+      { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } }
+    );
+  }
+
+  const body = await req.json();
+  const { name, company, email, telegram, message, source } = body;
+
+  // Honeypot-поле — фронту нужно добавить скрытый input с этим именем
+  // (пустой по умолчанию, невидимый людям через CSS). Если он заполнен —
+  // почти наверняка бот. Отвечаем обычным "ok", ничего не сохраняя и не
+  // отправляя, чтобы не подсказывать боту, что его вычислили.
+  if (isHoneypotTripped(body)) {
+    return Response.json({ ok: true });
+  }
+
   if (!name || !email) {
     return Response.json({ error: "missing fields" }, { status: 400 });
   }

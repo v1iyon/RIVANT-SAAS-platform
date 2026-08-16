@@ -1,11 +1,14 @@
 import { createClient } from "@supabase/supabase-js";
+import { getClientIp, checkRateLimit, isHoneypotTripped } from "@/lib/rate-limit";
 
 const admin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_KEY
 );
 
-// GET — публичный список одобренных отзывов (для главной страницы)
+// GET — публичный список одобренных отзывов (для главной страницы).
+// Не трогаем rate-limit'ом: это просто чтение публичных данных, лимит
+// нужен только там, где запрос что-то создаёт/пишет.
 export async function GET() {
   const { data: reviews } = await admin
     .from("reviews")
@@ -17,9 +20,33 @@ export async function GET() {
   return Response.json({ reviews: reviews || [] });
 }
 
+// 3 отзыва в час с одного IP — эта форма и так только для зарегистрированных
+// клиентов (ищем user по email), но лимит всё равно нужен: без него можно
+// было бы залить ленту отзывов десятками фейковых записей со статусом
+// "pending" за секунды. Одобрение всё ещё модерируется вручную (status),
+// но и в очередь на модерацию заваливать не стоит. См. п. 2.3 аудита.
+const RATE_LIMIT = { limit: 3, windowMs: 60 * 60 * 1000 };
+
 // POST — отправка нового отзыва (только зарегистрированные клиенты)
 export async function POST(req) {
-  const { email, author_name, business_name, rating, comment } = await req.json();
+  const ip = getClientIp(req);
+  const { allowed, retryAfterSeconds } = checkRateLimit(`reviews:${ip}`, RATE_LIMIT);
+  if (!allowed) {
+    return Response.json(
+      { error: "too many requests" },
+      { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } }
+    );
+  }
+
+  const body = await req.json();
+  const { email, author_name, business_name, rating, comment } = body;
+
+  // Honeypot — см. lib/rate-limit.js. Фронту нужно добавить скрытое поле
+  // с тем же именем в форму отзыва.
+  if (isHoneypotTripped(body)) {
+    return Response.json({ ok: true });
+  }
+
   if (!email || !author_name || !rating || !comment) {
     return Response.json({ error: "missing fields" }, { status: 400 });
   }

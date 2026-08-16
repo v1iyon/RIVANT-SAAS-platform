@@ -12,6 +12,7 @@
 // прямо в коді (вони різні для sandbox/production).
 
 import { createClient } from "@supabase/supabase-js";
+import crypto from "crypto";
 
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
@@ -21,15 +22,57 @@ const PRICE_TO_ADDON = {
   [process.env.PADDLE_PRICE_TEAM_ALERTS]: { kind: "subscription", addon_type: "team_alerts" },
 };
 
+// Сколько секунд назад ещё считаем вебхук свежим. Paddle подписывает
+// каждый запрос меткой времени — если кто-то перехватит старый (валидный)
+// вебхук и пришлёт его повторно позже, подпись всё ещё совпадёт, если не
+// проверять возраст. 5 минут — с большим запасом на сетевые задержки/ретраи
+// самого Paddle, но достаточно узко, чтобы закрыть replay.
+const MAX_SIGNATURE_AGE_SECONDS = 300;
+
 async function verifyPaddleSignature(rawBody, signatureHeader) {
-  // Paddle Billing підписує вебхуки HMAC-SHA256: "ts=...;h1=...".
-  // Реалізація навмисно лишена як TODO — вставте офіційний приклад із
-  // https://developer.paddle.com/webhooks/signature-verification, коли
-  // будете підключати справжній ключ. Без цієї перевірки НЕ можна пускати
-  // вебхук в продакшн — будь-хто зможе намалювати собі фейкову оплату.
-  if (!process.env.PADDLE_WEBHOOK_SECRET) return false;
-  // ... HMAC перевірка тут ...
-  return true;
+  // Paddle Billing подписывает вебхуки HMAC-SHA256 и присылает заголовок
+  // paddle-signature в формате "ts=<unix-время>;h1=<hex-дайджест>".
+  // Подписанное сообщение — это "<ts>:<rawBody>" (сырое тело запроса, ДО
+  // JSON.parse — поэтому здесь работаем со строкой, а не с объектом).
+  // См. https://developer.paddle.com/webhooks/signature-verification
+  const secret = process.env.PADDLE_WEBHOOK_SECRET;
+  if (!secret) return false;
+  if (!signatureHeader) return false;
+
+  const parts = Object.fromEntries(
+    signatureHeader.split(";").map((pair) => {
+      const [key, value] = pair.split("=");
+      return [key, value];
+    })
+  );
+  const ts = parts.ts;
+  const h1 = parts.h1;
+  if (!ts || !h1) return false;
+
+  const tsNum = Number(ts);
+  if (!Number.isFinite(tsNum) || Math.abs(Date.now() / 1000 - tsNum) > MAX_SIGNATURE_AGE_SECONDS) {
+    return false;
+  }
+
+  const expectedHex = crypto.createHmac("sha256", secret).update(`${ts}:${rawBody}`).digest("hex");
+
+  // timingSafeEqual требует буферы одинаковой длины — сверяем длину до
+  // вызова, иначе он бросает исключение вместо false на некорректном h1
+  // (например, если это вообще не валидный hex или подделанная строка
+  // другой длины).
+  let expectedBuf, actualBuf;
+  try {
+    expectedBuf = Buffer.from(expectedHex, "hex");
+    actualBuf = Buffer.from(h1, "hex");
+  } catch {
+    return false;
+  }
+  if (expectedBuf.length !== actualBuf.length) return false;
+
+  // timingSafeEqual вместо === — чтобы нельзя было подобрать h1 по времени
+  // ответа сервера (та же логика, что и с ADMIN_SECRET/CRON_SECRET, см.
+  // п. 2.5 аудита).
+  return crypto.timingSafeEqual(expectedBuf, actualBuf);
 }
 
 export async function POST(req) {
