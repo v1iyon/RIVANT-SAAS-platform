@@ -22,6 +22,18 @@ const PRICE_TO_ADDON = {
   [process.env.PADDLE_PRICE_TEAM_ALERTS]: { kind: "subscription", addon_type: "team_alerts" },
 };
 
+// Основні тарифи (Starter/Growth/Scale) — ті самі priceId, що й у
+// components/pricing-section.tsx (NEXT_PUBLIC_..., бо ними ж відкривається
+// чекаут на клієнті). Раніше ці priceId тут взагалі не оброблялись: людина
+// платила через Paddle, гроші приходили, а subscriptions.plan лишався
+// "trial" назавжди, бо ніщо в коді його не оновлювало на платний план. Див.
+// п. 3 аудиту.
+const PRICE_TO_PLAN = {
+  [process.env.NEXT_PUBLIC_PADDLE_PRICE_STARTER]: "starter",
+  [process.env.NEXT_PUBLIC_PADDLE_PRICE_GROWTH]: "growth",
+  [process.env.NEXT_PUBLIC_PADDLE_PRICE_SCALE]: "scale",
+};
+
 // Сколько секунд назад ещё считаем вебхук свежим. Paddle подписывает
 // каждый запрос меткой времени — если кто-то перехватит старый (валидный)
 // вебхук и пришлёт его повторно позже, подпись всё ещё совпадёт, если не
@@ -94,23 +106,76 @@ export async function POST(req) {
   const email = data?.customer?.email || data?.custom_data?.email;
   const businessId = data?.custom_data?.business_id;
   const priceId = data?.items?.[0]?.price?.id;
-  const mapping = PRICE_TO_ADDON[priceId];
 
-  if (!email || !businessId || !mapping) {
-    console.error("paddle webhook: missing email/businessId or unknown priceId", { email, businessId, priceId });
+  const addonMapping = PRICE_TO_ADDON[priceId];
+  const planMapping = PRICE_TO_PLAN[priceId];
+
+  if (!email || (!addonMapping && !planMapping)) {
+    console.error("paddle webhook: missing email or unknown priceId", { email, priceId });
     return Response.json({ ok: true }); // 200, щоб Paddle не ретраїв нескінченно
   }
 
   const { data: appUser } = await admin.from("users").select("id").eq("email", email).maybeSingle();
   if (!appUser) return Response.json({ ok: true });
 
-  if (eventType === "transaction.completed" && mapping.kind === "order") {
+  // ── Основні тарифи (Starter/Growth/Scale) ─────────────────────────────
+  // На відміну від допуслуг, вони прив'язані до user_id (subscriptions —
+  // одна строка на юзера), а не до business_id, тому business_id тут не
+  // обов'язковий. Значення access_status/plan тримаємо в синку з тим, що
+  // читає app/api/subscription-status/route.js.
+  if (planMapping) {
+    if (
+      eventType === "subscription.created" ||
+      eventType === "subscription.activated" ||
+      eventType === "subscription.updated" ||
+      eventType === "transaction.completed"
+    ) {
+      const periodEnd = data.current_billing_period?.ends_at || data.next_billed_at || null;
+      const { data: existingSub } = await admin
+        .from("subscriptions")
+        .select("user_id")
+        .eq("user_id", appUser.id)
+        .maybeSingle();
+
+      const payload = {
+        plan: planMapping,
+        access_status: "active",
+        current_period_end: periodEnd,
+        paddle_subscription_id: data.subscription_id || data.id,
+      };
+
+      if (existingSub) {
+        await admin.from("subscriptions").update(payload).eq("user_id", appUser.id);
+      } else {
+        await admin.from("subscriptions").insert({ user_id: appUser.id, ...payload });
+      }
+    }
+
+    if (eventType === "subscription.canceled" || eventType === "subscription.past_due") {
+      // Не чіпаємо plan/current_period_end — access_status: "blocked" вже
+      // достатньо, щоб subscription-status/route.js відрізав доступ; коли
+      // період справді закінчиться, та сама логіка обробить це так само,
+      // як і для щойно завершеного тріалу.
+      await admin.from("subscriptions").update({ access_status: "blocked" }).eq("user_id", appUser.id);
+    }
+
+    return Response.json({ ok: true });
+  }
+
+  // ── Допуслуги (What-If / Monthly digest / Team alerts) ────────────────
+  // Ці завжди прив'язані до конкретного business_id.
+  if (!businessId) {
+    console.error("paddle webhook: addon event missing business_id", { email, priceId });
+    return Response.json({ ok: true });
+  }
+
+  if (eventType === "transaction.completed" && addonMapping.kind === "order") {
     // Разова допуслуга (What-If) — створюємо замовлення, яке підхопить
     // app/api/cron/process-service-orders і згенерує звіт автоматично.
     await admin.from("service_orders").insert({
       business_id: businessId,
       user_id: appUser.id,
-      service_type: mapping.service_type,
+      service_type: addonMapping.service_type,
       status: "pending",
       paddle_transaction_id: data.id,
     });
@@ -118,13 +183,13 @@ export async function POST(req) {
 
   if (
     (eventType === "subscription.created" || eventType === "subscription.activated" || eventType === "transaction.completed") &&
-    mapping.kind === "subscription"
+    addonMapping.kind === "subscription"
   ) {
     const periodEnd = data.current_billing_period?.ends_at || data.next_billed_at;
     await admin.from("addon_subscriptions").upsert(
       {
         business_id: businessId,
-        addon_type: mapping.addon_type,
+        addon_type: addonMapping.addon_type,
         status: "active",
         paddle_subscription_id: data.subscription_id || data.id,
         current_period_end: periodEnd,
@@ -138,7 +203,7 @@ export async function POST(req) {
       .from("addon_subscriptions")
       .update({ status: "expired" })
       .eq("business_id", businessId)
-      .eq("addon_type", mapping.addon_type);
+      .eq("addon_type", addonMapping.addon_type);
   }
 
   return Response.json({ ok: true });

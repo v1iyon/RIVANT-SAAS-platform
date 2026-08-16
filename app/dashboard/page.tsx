@@ -1021,6 +1021,11 @@ const [deleteError, setDeleteError] = useState("");
   const [reviewComment, setReviewComment] = useState("");
   const [feedbackType, setFeedbackType] = useState<"bug" | "feature">("bug");
   const [feedbackMessage, setFeedbackMessage] = useState("");
+  // Honeypot для форм відгуків/фідбеку — ті самі /api/reviews і /api/feedback
+  // вже перевіряють поле "website_url" (lib/rate-limit.js), але на фронті
+  // його досі ніде не було, тож захист фактично не працював.
+  const [reviewHoneypot, setReviewHoneypot] = useState("");
+  const [feedbackHoneypot, setFeedbackHoneypot] = useState("");
   const [feedbackMsg, setFeedbackMsg] = useState("");
   const [reviewMsg, setReviewMsg] = useState("");
   const [mfaLoading, setMfaLoading] = useState(false);

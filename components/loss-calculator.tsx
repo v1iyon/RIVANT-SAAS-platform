@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 import { DollarSign, Users, Cpu, Megaphone, TrendingDown } from "lucide-react";
@@ -11,16 +11,6 @@ export function LossCalculator() {
   const { t, language } = useLanguage();
   const { currency, convert } = useCurrency();
   const T = t as any;
-  const [isMobile, setIsMobile] = useState(true); // По умолчанию скрыт
-
-  useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768);
-    };
-    checkMobile();
-    window.addEventListener("resize", checkMobile);
-    return () => window.removeEventListener("resize", checkMobile);
-  }, []);
 
   const [revenue, setRevenue] = useState([100000]);
   const [teamSize, setTeamSize] = useState([25]);
@@ -52,11 +42,6 @@ export function LossCalculator() {
       maximumFractionDigits: 0,
     }).format(convert(value));
   };
-
-  // НА ТЕЛЕФОНЕ НЕ ПОКАЗЫВАЕМ ВООБЩЕ НИЧЕГО
-  if (isMobile) {
-    return null;
-  }
 
   const handleSend = async () => {
     if (!email.trim()) return;

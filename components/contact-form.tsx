@@ -16,6 +16,11 @@ export function ContactForm() {
     email: "",
     telegram: "",
     source: "contact_form",
+    // Honeypot: реальні люди це поле ніколи не бачать і не заповнюють
+    // (сховане стилями нижче). Бекенд (lib/rate-limit.js::isHoneypotTripped)
+    // вже перевіряє саме це ім'я поля — раніше на фронті його просто не
+    // було, тому захист фактично не працював.
+    website_url: "",
   });
 
   const [submitError, setSubmitError] = useState("");
@@ -46,7 +51,7 @@ export function ContactForm() {
       setIsSubmitted(true);
       setTimeout(() => {
         setIsSubmitted(false);
-        setFormData({ name: "", company: "", email: "", telegram: "", source: "contact_form" });
+        setFormData({ name: "", company: "", email: "", telegram: "", source: "contact_form", website_url: "" });
       }, 3000);
     } catch {
       setIsSubmitting(false);
@@ -108,6 +113,19 @@ export function ContactForm() {
               </div>
             ) : (
               <form onSubmit={handleSubmit} className="space-y-6">
+                {/* Honeypot: видиме ботам, невидиме людям. Не чіпати tabIndex/
+                    autoComplete/position — саме так поле лишається невидимим
+                    і недосяжним для реальної клавіатурної навігації. */}
+                <input
+                  type="text"
+                  name="website_url"
+                  tabIndex={-1}
+                  autoComplete="off"
+                  aria-hidden="true"
+                  value={formData.website_url}
+                  onChange={(e) => setFormData({ ...formData, website_url: e.target.value })}
+                  style={{ position: "absolute", left: "-9999px", width: "1px", height: "1px", opacity: 0 }}
+                />
                 <div className="space-y-1">
                   <Label htmlFor="name">
                     {language === "UA" ? "Повне ім'я" : language === "DE" ? "Vollständiger Name" : "Full Name"}
