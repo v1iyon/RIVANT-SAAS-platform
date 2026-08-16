@@ -22,6 +22,7 @@
 // помилка йде в error_logs так само, як і в звичайному синку.
 import { createClient } from "@supabase/supabase-js";
 import { logError } from "../../../../lib/log-error.js";
+import { isValidSecret } from "../../../../lib/verify-secret.js";
 import { runSync as runStripeSync } from "../../../../scripts/sync-stripe-core.mjs";
 import { runSync as runShopifySync } from "../../../../scripts/shopify-sync.mjs";
 import { runSync as runMetaAdsSync } from "../../../../scripts/meta-ads-sync.mjs";
@@ -47,9 +48,18 @@ async function clearBackfillFlag(integration) {
 }
 
 export async function GET(req) {
+  // Раньше secret !== process.env.CRON_SECRET сравнивалось обычным ===
+  // (и Vercel-вариант — обычным сравнением строк "Bearer ..."). Оба
+  // заменены на константное по времени сравнение — см. lib/verify-secret.js
+  // и п. 2.5 аудита.
   const secret = req.headers.get("x-cron-secret");
-  const isVercelCron = req.headers.get("authorization") === `Bearer ${process.env.CRON_SECRET}`;
-  if (secret !== process.env.CRON_SECRET && !isVercelCron) {
+  const authHeader = req.headers.get("authorization");
+  const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice("Bearer ".length) : null;
+
+  const validHeaderSecret = isValidSecret(secret, process.env.CRON_SECRET);
+  const validVercelCron = isValidSecret(bearerToken, process.env.CRON_SECRET);
+
+  if (!validHeaderSecret && !validVercelCron) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
 
