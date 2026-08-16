@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { requireUser, UnauthorizedError } from "@/lib/require-user";
 
 const admin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -7,8 +8,7 @@ const admin = createClient(
 
 export async function POST(req) {
   try {
-    const { email } = await req.json();
-    if (!email) return Response.json({ error: "email required" }, { status: 400 });
+    const { email } = await requireUser();
 
     const { data: user } = await admin.from("users").select("id").eq("email", email).maybeSingle();
     if (!user) return Response.json({ error: "not found" }, { status: 404 });
@@ -30,6 +30,7 @@ export async function POST(req) {
 
     return Response.json({ success: true });
   } catch (err) {
+    if (err instanceof UnauthorizedError) return Response.json({ error: "unauthorized" }, { status: 401 });
     console.error("stripe-disconnect error:", err);
     return Response.json({ error: "Server error" }, { status: 500 });
   }
