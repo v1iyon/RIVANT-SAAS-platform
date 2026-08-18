@@ -85,7 +85,7 @@ interface CryptoCheckoutModalProps {
   token: string;
   chain: string;
   receivingWallet: string;
-  locale?: Locale; // 'de' | 'en' | 'uk', по умолчанию 'de'
+  locale?: Locale; // 'de' | 'en' | 'uk', по умолчанию 'uk' (язык сайта)
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -96,7 +96,7 @@ export function CryptoCheckoutModal({
   token,
   chain,
   receivingWallet,
-  locale: initialLocale = "de",
+  locale: initialLocale = "uk",
   onClose,
   onSuccess,
 }: CryptoCheckoutModalProps) {
