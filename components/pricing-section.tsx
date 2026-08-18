@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase-browser";
 import { loadPaddle, openPaddleCheckout } from "@/lib/paddle-client";
+import { createCryptoOrder } from "@/lib/crypto-checkout";
+import { CryptoCheckoutModal } from "@/components/crypto-checkout-modal";
 import { Button } from "@/components/ui/button";
 import { Check, Zap, FileText, Users, ArrowRight } from "lucide-react";
 import { useLanguage } from "@/lib/translations";
@@ -36,32 +38,31 @@ export function PricingSection() {
     [T.scale ?? "Scale"]: "scale",
   };
 
-  const handleGetStarted = async (planName: string) => {
+ const [cryptoOrder, setCryptoOrder] = useState<any>(null);
+
+const planPrices: Record<string, number> = { starter: 99, growth: 299, scale: 499 };
+
+const handleGetStarted = async (planName: string) => {
     const { data } = await supabase.auth.getSession();
     if (!data.session) {
-      // Не авторизован — открываем модалку регистрации в навбаре,
-      // чтобы человек мог сразу начать пробный период.
       window.dispatchEvent(new CustomEvent("rivant:open-signup"));
       return;
     }
     const planKey = planKeyMap[planName];
-    const priceId = PRICE_IDS[planKey];
-
     setLoadingPlan(planKey);
     try {
-      await loadPaddle();
-      openPaddleCheckout({
-        priceId,
-        email: data.session.user.email!,
-        plan: planKey,
+      const order = await createCryptoOrder({
+        userId: data.session.user.id,
+        baseAmountCents: planPrices[planKey] * 100,
       });
+      setCryptoOrder(order);
     } catch (e) {
-      console.error("paddle checkout error:", e);
+      console.error("crypto checkout error:", e);
       alert(commonError("paymentWindowFailed", language));
     } finally {
       setLoadingPlan(null);
     }
-  };
+};
 
   const plans: Plan[] = [
     {
@@ -226,6 +227,21 @@ export function PricingSection() {
           </div>
         </div>
       </div>
+
+      {cryptoOrder && (
+  <CryptoCheckoutModal
+    orderId={cryptoOrder.order_id}
+    amountToSend={cryptoOrder.amount_to_send}
+    token={cryptoOrder.token}
+    chain={cryptoOrder.chain}
+    receivingWallet={cryptoOrder.receiving_wallet}
+    onClose={() => setCryptoOrder(null)}
+    onSuccess={() => {
+      setCryptoOrder(null);
+      window.location.href = "/dashboard?checkout=success";
+    }}
+  />
+)}
     </section>
   );
 }
