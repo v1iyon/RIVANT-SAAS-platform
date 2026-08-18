@@ -52,9 +52,8 @@ const handleGetStarted = async (planName: string) => {
     setLoadingPlan(planKey);
     try {
       const order = await createCryptoOrder({
-        userId: data.session.user.id,
-        baseAmountCents: planPrices[planKey] * 100,
-      });
+  baseAmountCents: planPrices[planKey] * 100,
+});
       setCryptoOrder(order);
     } catch (e) {
       console.error("crypto checkout error:", e);
