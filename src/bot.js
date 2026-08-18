@@ -1,4 +1,4 @@
-const { Bot, InlineKeyboard } = require("grammy");
+const { Bot, InlineKeyboard, Keyboard } = require("grammy");
 const { supabase } = require("./supabase");
 const { getDict, formatMoney } = require("./i18n");
 
@@ -53,6 +53,40 @@ function mainMenu(lang) {
     .text(d.menu.integrations, "integrations").row()
     .text(d.menu.team, "team").row()
     .url(d.menu.support || "💬 Support", "https://t.me/official_rivant");
+}
+
+// ---------------------------------------------------------------------------
+// Клавиатура внизу экрана (Reply Keyboard) — сворачиваемая
+// ---------------------------------------------------------------------------
+// В отличие от InlineKeyboard (кнопки внутри одного конкретного сообщения,
+// которые быстро "уезжают" вверх в потоке алертов и уведомлений), это
+// клавиатура уровня чата. Она привязывается к чату один раз (см. /start,
+// /menu), но НЕ навязывается пользователю постоянно: он может свернуть её
+// нажатием на квадратную иконку рядом со скрепкой — она снова раскроется
+// по тому же нажатию, как на референсном скрине с подарком.
+//
+// .resized() — кнопки компактного размера, а не на всю высоту экрана.
+// Флаг .persistent() (Bot API 7.0+) намеренно НЕ используется — именно он
+// раньше принудительно держал клавиатуру развёрнутой всегда и не давал
+// пользователю её свернуть за иконку. Без него Telegram-клиент сам
+// показывает маленькую иконку клавиатуры рядом со скрепкой, и пользователь
+// открывает/закрывает кнопки по тапу на неё.
+function persistentMenu(lang) {
+  const d = getDict(lang);
+  return new Keyboard()
+    .text(d.menu.summary).row()
+    .text(d.menu.metrics).text(d.menu.problems).row()
+    .text(d.menu.subscription).text(d.menu.integrations).row()
+    .text(d.menu.team).text(d.menu.support || "💬 Support")
+    .resized();
+}
+
+// Массив подписей кнопки на всех 3 языках сразу — чтобы bot.hears() ловил
+// нажатие независимо от того, на каком языке сейчас у пользователя стоит
+// клавиатура (например, если он сменил язык в кабинете, но старое
+// сообщение с клавиатурой на предыдущем языке ещё не переотправлено).
+function allLabels(menuKey) {
+  return ["EN", "UA", "DE"].map((l) => getDict(l).menu[menuKey]).filter(Boolean);
 }
 
 // ---------------------------------------------------------------------------
@@ -140,6 +174,10 @@ bot.command("start", async (ctx) => {
   const lang = user?.language || "EN";
   const d = getDict(lang);
 
+  // Сначала закрепляем постоянную клавиатуру снизу (остаётся у всех
+  // будущих сообщений — алертов, дайджестов и т.д.), отдельным сообщением
+  // отправляем инлайн-меню для самого первого знакомства с разделами.
+  await ctx.reply(d.mainMenuTitle, { reply_markup: persistentMenu(lang) });
   await ctx.reply(d.linkSuccess, { reply_markup: mainMenu(lang) });
 });
 
@@ -207,15 +245,18 @@ async function requireAccess(ctx) {
 }
 
 bot.command("menu", async (ctx) => {
-  const d = ctx.rivant.d;
-  await ctx.reply(d.mainMenuTitle, { reply_markup: mainMenu(ctx.rivant.lang) });
+  const { d, lang } = ctx.rivant;
+  // На случай если постоянная клавиатура снизу пропала (например, юзер
+  // нажал "Очистить историю" в клиенте) — /menu переотправляет её заново,
+  // плюс инлайн-меню как раньше.
+  await ctx.reply(d.mainMenuTitle, { reply_markup: persistentMenu(lang) });
+  await ctx.reply(d.mainMenuTitle, { reply_markup: mainMenu(lang) });
 });
 
 // ---------------------------------------------------------------------------
 // 📊 Сводка сегодня
 // ---------------------------------------------------------------------------
-bot.callbackQuery("summary", async (ctx) => {
-  await ctx.answerCallbackQuery();
+async function handleSummary(ctx) {
   if (!(await requireAccess(ctx))) return;
   const { lang, d, user } = ctx.rivant;
 
@@ -248,13 +289,17 @@ bot.callbackQuery("summary", async (ctx) => {
       `${d.ordersLabel}: *${metric.orders}*`,
     { parse_mode: "Markdown" }
   );
+}
+bot.callbackQuery("summary", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  await handleSummary(ctx);
 });
+bot.hears(allLabels("summary"), handleSummary);
 
 // ---------------------------------------------------------------------------
 // 📈 Метрики недели
 // ---------------------------------------------------------------------------
-bot.callbackQuery("metrics", async (ctx) => {
-  await ctx.answerCallbackQuery();
+async function handleMetrics(ctx) {
   if (!(await requireAccess(ctx))) return;
   const { lang, d, user } = ctx.rivant;
 
@@ -295,13 +340,17 @@ bot.callbackQuery("metrics", async (ctx) => {
     .join("\n");
 
   await ctx.reply(`${d.metricsTitle(business.name)}\n\n${lines}`, { parse_mode: "Markdown" });
+}
+bot.callbackQuery("metrics", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  await handleMetrics(ctx);
 });
+bot.hears(allLabels("metrics"), handleMetrics);
 
 // ---------------------------------------------------------------------------
 // ⚠️ Активные проблемы
 // ---------------------------------------------------------------------------
-bot.callbackQuery("problems", async (ctx) => {
-  await ctx.answerCallbackQuery();
+async function handleProblems(ctx) {
   if (!(await requireAccess(ctx))) return;
   const { d, user } = ctx.rivant;
 
@@ -321,13 +370,17 @@ bot.callbackQuery("problems", async (ctx) => {
 
   const lines = alerts.map((a) => `• ${a.message} (${new Date(a.sent_at).toLocaleDateString(getDict(ctx.rivant.lang).locale)})`).join("\n");
   await ctx.reply(`${d.problemsTitle}\n\n${lines}`, { parse_mode: "Markdown" });
+}
+bot.callbackQuery("problems", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  await handleProblems(ctx);
 });
+bot.hears(allLabels("problems"), handleProblems);
 
 // ---------------------------------------------------------------------------
 // 💳 Подписка
 // ---------------------------------------------------------------------------
-bot.callbackQuery("subscription", async (ctx) => {
-  await ctx.answerCallbackQuery();
+async function handleSubscription(ctx) {
   const { d, lang, subscription: sub } = ctx.rivant;
 
   if (!sub) return ctx.reply(d.subNotFound(SITE_URL));
@@ -341,13 +394,17 @@ bot.callbackQuery("subscription", async (ctx) => {
     `${d.subTitle}\n\n${d.subPlan}: *${sub.plan}*\n${d.subStatusLabel}: ${statusLabel}\n${d.subUntil}: *${until}*\n\n${d.subManage(SITE_URL)}`,
     { parse_mode: "Markdown" }
   );
+}
+bot.callbackQuery("subscription", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  await handleSubscription(ctx);
 });
+bot.hears(allLabels("subscription"), handleSubscription);
 
 // ---------------------------------------------------------------------------
 // 🔗 Источники данных
 // ---------------------------------------------------------------------------
-bot.callbackQuery("integrations", async (ctx) => {
-  await ctx.answerCallbackQuery();
+async function handleIntegrations(ctx) {
   if (!(await requireAccess(ctx))) return;
   const { d, user } = ctx.rivant;
 
@@ -355,7 +412,12 @@ bot.callbackQuery("integrations", async (ctx) => {
   const ids = (businesses || []).map((b) => b.id);
 
   await ctx.reply(ids.length ? d.integrationsConnected(ids.length, SITE_URL) : d.integrationsNone(SITE_URL));
+}
+bot.callbackQuery("integrations", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  await handleIntegrations(ctx);
 });
+bot.hears(allLabels("integrations"), handleIntegrations);
 
 // ---------------------------------------------------------------------------
 // 👥 Учасники команди — тільки перегляд (той самий список, що в модалці
@@ -363,8 +425,7 @@ bot.callbackQuery("integrations", async (ctx) => {
 // там дія прив'язана до авторизованої сесії, а тут — просто зручний
 // перегляд для власника прямо в тому ж чаті, де приходять сповіщення.
 // ---------------------------------------------------------------------------
-bot.callbackQuery("team", async (ctx) => {
-  await ctx.answerCallbackQuery();
+async function handleTeam(ctx) {
   if (!(await requireAccess(ctx))) return;
   const { lang, d, user } = ctx.rivant;
 
@@ -406,6 +467,19 @@ bot.callbackQuery("team", async (ctx) => {
     .join("\n");
 
   await ctx.reply(`${d.teamTitle}\n\n${lines}`, { parse_mode: "Markdown" });
+}
+bot.callbackQuery("team", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  await handleTeam(ctx);
+});
+bot.hears(allLabels("team"), handleTeam);
+
+// Кнопка "Поддержка" на нижней клавиатуре — в Reply Keyboard (в отличие от
+// InlineKeyboard) кнопки не умеют открывать ссылку напрямую, поэтому просто
+// отправляем текст со ссылкой на тот же чат поддержки, что и url-кнопка в
+// инлайн-меню.
+bot.hears(allLabels("support"), async (ctx) => {
+  await ctx.reply("https://t.me/official_rivant");
 });
 
 // ---------------------------------------------------------------------------
