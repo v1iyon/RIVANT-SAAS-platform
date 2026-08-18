@@ -1,36 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
 import { decrypt } from "../lib/crypto.js";
 import { logError } from "../lib/log-error.js";
-import { getSeverityTelegramLabel } from "../lib/severity.js";
-import { getTeamContacts, resolveSensitivityMultiplier } from "../lib/alerts.mjs";
+import { sendAlertToBusiness, hasRecentAlert, resolveSensitivityMultiplier } from "../lib/alerts.mjs";
 
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-
-async function sendTelegram(chatId, text) {
-  if (!chatId) return;
-  await fetch(`https://api.telegram.org/bot${process.env.BOT_TOKEN}/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ chat_id: chatId, text }),
-  });
-}
-
-async function sendEmail(to, subject, text) {
-  if (!to) return;
-  await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: "RIVANT <onboarding@resend.dev>",
-      to,
-      subject,
-      text,
-    }),
-  });
-}
 
 // ЄДИНЕ джерело правди для "якому календарному дню бізнесу належить ця
 // мить" — той самий підхід, що вже був у daily-reports.mjs (localDateStr)
@@ -207,8 +180,6 @@ async function main(businessId, options = {}) {
   if (businessId) query = query.eq("business_id", businessId);
   const { data: integrations, error: fetchErr } = await query;
 
-  console.log("DEBUG fetchErr:", fetchErr);
-  console.log("DEBUG integrations found:", integrations?.length, JSON.stringify(integrations?.map(i => i.id)));
 
   if (!integrations?.length) {
     console.log("No connected Stripe integrations, nothing to sync.");
@@ -217,9 +188,7 @@ async function main(businessId, options = {}) {
 
   for (const integ of integrations) {
     try {
-      console.log("DEBUG processing integration:", integ.id, "business_id:", integ.business_id);
       const apiKey = decrypt(integ.api_key_encrypted);
-      console.log("DEBUG decrypt OK, key prefix:", apiKey?.slice(0, 8));
 
       // Тепер тягнемо business (і його timezone) ОДРАЗУ — раніше цей запит
       // стояв нижче, ПІСЛЯ gap-detection і групування charges по датах, тому
@@ -230,7 +199,6 @@ async function main(businessId, options = {}) {
         .select("id, user_id, name, cost_pct, timezone, alert_sensitivity")
         .eq("id", integ.business_id)
         .maybeSingle();
-      console.log("DEBUG business lookup for", integ.business_id, "-> found:", !!business, "error:", bizErr);
       if (!business) continue;
       const bizTimezone = business.timezone || "UTC";
 
@@ -271,15 +239,12 @@ async function main(businessId, options = {}) {
           if (d < earliestKnown) break;
           if (!existingDateSet.has(d)) {
             sinceUnix = Math.min(sinceUnix, atSec - 12 * 3600); // запас у пів доби, щоб точно захопити весь локальний день
-            console.log("DEBUG gap day detected, widening sync window to backfill:", d);
           }
         }
       }
 
       const charges = await fetchStripeCharges(apiKey, sinceUnix);
-      console.log("DEBUG charges fetched:", charges.length);
       const successful = charges.filter((c) => c.paid && !c.refunded);
-      console.log("DEBUG successful charges:", successful.length);
 
       const byDate = {};
       for (const c of successful) {
@@ -418,7 +383,6 @@ async function main(businessId, options = {}) {
       const shopifyRevenueAuthoritative = shopifyConnected && shopifyIntegration?.config?.revenue_mode !== "add";
 
       const costPct = shopifyConnected ? 0 : Number(business.cost_pct) || 30;
-      console.log("DEBUG byDate:", JSON.stringify(byDate), "shopifyConnected:", shopifyConnected);
 
       // Дашборд (карточки Дохід/Прибуток/Маржа) раньше сравнивал "этот
       // месяц-до-сегодня" с прошлым месяцем — рядом с бейджем "Наживо" это
@@ -511,7 +475,6 @@ async function main(businessId, options = {}) {
             },
             { onConflict: "business_id,date" }
           );
-          console.log("DEBUG upsert result for", date, "error:", upsertErr);
         }
 
         if (date !== latestDate) continue; // см. комментарий про фикс спама выше
@@ -551,10 +514,9 @@ async function main(businessId, options = {}) {
               .eq("type", "revenue_drop")
               .eq("status", "open")
               .select("id");
-            console.log("DEBUG auto-resolved alerts:", resolved?.length, "error:", resolveErr);
           }
 
-          if (change <= -dropThresholdPct && !tooSmallToMatter) {
+          if (change <= -dropThresholdPct && !tooSmallToMatter && !(await hasRecentAlert(business.id, "revenue_drop"))) {
             const severity = change <= -criticalSeverityPct ? "critical" : change <= -highSeverityPct ? "high" : "medium";
 
             const { data: user } = await admin
@@ -566,20 +528,6 @@ async function main(businessId, options = {}) {
             const userLang = user?.language || "EN";
             const buildMessage = REVENUE_DROP_MESSAGE[userLang] || REVENUE_DROP_MESSAGE.EN;
             const message = buildMessage(business.name, Math.abs(change).toFixed(0));
-
-           const oneDayAgo = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
-const { data: existingAlerts, error: dedupErr } = await admin
-  .from("alerts_log")
-  .select("id, sent_at")
-  .eq("business_id", business.id)
-  .eq("type", "revenue_drop")
-  .eq("status", "open")
-  .gte("sent_at", oneDayAgo)
-  .order("sent_at", { ascending: false })
-  .limit(1);
-
-console.log("DEBUG dedup check:", existingAlerts?.length, "error:", dedupErr);
-if (existingAlerts?.length) continue;
 
             const { marginPct: todayFullMargin, fullCost: todayFullCost } = await getFullMargin(
               business.id, date, last24h.revenue, last24hCost
@@ -596,43 +544,33 @@ if (existingAlerts?.length) continue;
               change
             );
 
-            const { error: alertErr } = await admin.from("alerts_log").insert({
-              business_id: business.id,
-              type: "revenue_drop",
-              message,
-              ai_explanation: aiExplanation,
-              status: "open",
-              severity,
-              sent_at: new Date().toISOString(),
-            });
-            console.log("DEBUG alerts_log insert error:", alertErr);
-
-            const severityLabel = getSeverityTelegramLabel(severity, userLang);
-
-            const fullMessage = aiExplanation
-              ? `${severityLabel}\n${message}\n\n${aiExplanation}`
-              : `${severityLabel}\n${message}`;
-
-            // push_enabled раньше не проверялся здесь вовсе (см. тот же фикс
-            // в lib/alerts.mjs) — тумблер уведомлений в кабинете ни на что не
-            // влиял для этого конкретного алерта (revenue_drop).
-            if (user?.telegram_id && user?.push_enabled !== false) {
-              await sendTelegram(user.telegram_id, fullMessage);
-            }
-            if (user?.email_enabled && user?.email) {
-              await sendEmail(user.email, "RIVANT Alert", fullMessage);
-
-            }
-
-            // Допуслуга "Сповіщення для команди" — раньше эта функция вообще
-            // не вызывалась ни для одного алерта (см. lib/alerts.mjs), из-за
-            // чего подключившие её не получали ничего. revenue_drop — самый
-            // частый тип алерта (Stripe-синк раз в день), поэтому фан-аут
-            // добавлен именно сюда, а не только в Shopify/Meta/Google Ads.
-            const teamIds = await getTeamContacts(business.id);
-            if (teamIds.length) {
-              await Promise.all(teamIds.map((chatId) => sendTelegram(chatId, fullMessage)));
-            }
+            // Раньше здесь вручную дублировались дедуп/insert/отправка
+            // владельцу (своя копия логики sendAlert() из lib/alerts.mjs), а
+            // фан-аут команде передавал в sendTelegram() объект участника
+            // целиком вместо его telegram_id — Telegram API молча отклонял
+            // такой chat_id, и fetch() без проверки .ok это никак не
+            // логировал. Теперь используем ту же sendAlertToBusiness(), что
+            // и Shopify/Meta/Google Ads-синки: один дедуп (24ч по business_id
+            // + type), корректная отправка владельцу и фан-аут команде с
+            // фильтрацией по их categories.
+            await sendAlertToBusiness(
+              business.id,
+              {
+                // push_enabled раньше не проверялся здесь вовсе — тумблер
+                // уведомлений в кабинете ни на что не влиял для этого
+                // конкретного алерта (revenue_drop).
+                telegramId: user?.push_enabled !== false ? user?.telegram_id : null,
+                email: user?.email,
+                emailEnabled: user?.email_enabled,
+                userLang,
+              },
+              {
+                type: "revenue_drop",
+                severity,
+                message,
+                aiExplanation,
+              }
+            );
           }
         }
       }
@@ -702,29 +640,26 @@ if (existingAlerts?.length) continue;
               const buildMsg = PAYMENT_SILENCE_MESSAGE[userLang] || PAYMENT_SILENCE_MESSAGE.EN;
               const message = buildMsg(business.name, Math.round(hoursSinceLastCharge));
 
-              await admin.from("alerts_log").insert({
-                business_id: business.id,
-                type: "payment_silence_stripe",
-                message,
-                ai_explanation: null,
-                status: "open",
-                severity: "high",
-                sent_at: new Date().toISOString(),
-              });
-
-              const severityLabel = getSeverityTelegramLabel("high", userLang);
-              const fullMessage = `${severityLabel}\n${message}`;
-
-              if (user?.telegram_id && user?.push_enabled !== false) {
-                await sendTelegram(user.telegram_id, fullMessage);
-              }
-              if (user?.email_enabled && user?.email) {
-                await sendEmail(user.email, "RIVANT Alert", fullMessage);
-              }
-              const teamIds = await getTeamContacts(business.id);
-              if (teamIds.length) {
-                await Promise.all(teamIds.map((chatId) => sendTelegram(chatId, fullMessage)));
-              }
+              // Тот же фикс, что и для revenue_drop выше: раньше фан-аут
+              // команде передавал участника целиком в sendTelegram(chatId, ...)
+              // вместо его telegram_id — сообщение молча не доходило.
+              // sendAlertToBusiness() пишет в alerts_log сама, поэтому
+              // отдельный insert здесь больше не нужен.
+              await sendAlertToBusiness(
+                business.id,
+                {
+                  telegramId: user?.push_enabled !== false ? user?.telegram_id : null,
+                  email: user?.email,
+                  emailEnabled: user?.email_enabled,
+                  userLang,
+                },
+                {
+                  type: "payment_silence_stripe",
+                  severity: "high",
+                  message,
+                  aiExplanation: null,
+                }
+              );
             }
           }
         }

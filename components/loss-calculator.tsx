@@ -18,6 +18,13 @@ export function LossCalculator() {
   const [marketingChannels, setMarketingChannels] = useState([4]);
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  // Honeypot: реальні люди це поле ніколи не бачать і не заповнюють (сховане
+  // стилями нижче) — той самий патерн, що вже є в components/contact-form.tsx.
+  // Раніше в цьому компоненті такого поля не було взагалі, хоча запит іде в
+  // той самий /api/contact, який honeypot перевіряє (lib/rate-limit.js::
+  // isHoneypotTripped) — саме калькулятор, найпомітніший інтерактивний CTA
+  // лендінгу, лишався незахищеним від скрипт-ботів.
+  const [websiteUrl, setWebsiteUrl] = useState("");
 
   const calculateLoss = () => {
     const r = revenue[0];
@@ -55,6 +62,7 @@ export function LossCalculator() {
           company: "—",
           email,
           source: "loss_calculator",
+          website_url: websiteUrl,
           message: `Estimated monthly loss: ${formatCurrency(estimatedLoss)}\n\nInputs:\n- Monthly Revenue: ${formatCurrency(revenue[0])}\n- Team Size: ${teamSize[0]}\n- Tech Stack Efficiency: ${techEfficiency[0]}%\n- Marketing Channels: ${marketingChannels[0]}`,
         }),
       });
@@ -126,6 +134,19 @@ export function LossCalculator() {
             </p>
           ) : (
             <>
+              {/* Honeypot: видиме ботам, невидиме людям. Не чіпати tabIndex/
+                  autoComplete/position — саме так поле лишається невидимим
+                  і недосяжним для реальної клавіатурної навігації. */}
+              <input
+                type="text"
+                name="website_url"
+                tabIndex={-1}
+                autoComplete="off"
+                aria-hidden="true"
+                value={websiteUrl}
+                onChange={(e) => setWebsiteUrl(e.target.value)}
+                style={{ position: "absolute", left: "-9999px", width: "1px", height: "1px", opacity: 0 }}
+              />
               <input
                 type="email"
                 value={email}

@@ -25,6 +25,20 @@ const admin = createClient(
 // п.1.1: чужой email в body позволял бы, как минимум, подтвердить его
 // существование в базе, а в будущем — стать лазейкой, если роут обрастёт
 // новой логикой для существующих пользователей.
+//
+// ВАЖНО про subscriptions: этот роут больше НЕ создаёт триал. Раньше он
+// заводил subscriptions (plan: trial, current_period_end = +14 дней) сразу
+// при первом же POST без какой-либо сессии — то есть просто
+// POST /api/auth-sync {"email":"victim@example.com"} запускало отсчёт
+// чужого 14-дневного триала прямо сейчас, ещё до того как реальный
+// владелец email вообще прошёл регистрацию. Когда он потом действительно
+// регистрировался, роут находил уже существующую строку users по email и
+// ничего не пересоздавал — человек получал частично или полностью
+// сгоревший бесплатный период и не узнавал об этом. Единственное место,
+// которое теперь заводит триал — GET /api/subscription-status, и делает
+// это только для АВТОРИЗОВАННОГО пользователя (requireUser()), то есть
+// часы триала стартуют в момент первого реального захода в кабинет, а не
+// по произвольному POST-запросу с чужим email в теле.
 export async function POST(req) {
   const { email, language } = await req.json();
   if (!email) return Response.json({ error: "email required" }, { status: 400 });
@@ -44,14 +58,6 @@ export async function POST(req) {
       .single();
     if (error) return Response.json({ error: error.message }, { status: 500 });
     appUser = created;
-
-    const trialEnd = new Date(Date.now() + 14 * 24 * 3600 * 1000).toISOString();
-    await admin.from("subscriptions").insert({
-      user_id: appUser.id,
-      plan: "trial",
-      access_status: "trial",
-      current_period_end: trialEnd,
-    });
 
     return Response.json({ ok: true });
   }

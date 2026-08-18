@@ -33,6 +33,10 @@ const LABELS: Record<ExportLanguage, {
   reportTitle: string;
   generated: string;
   business: string;
+  totalAvgRow: string;
+  summaryTitle: string;
+  avgMargin: string;
+  avgCac: string;
 }> = {
   EN: {
     date: "Date",
@@ -46,6 +50,10 @@ const LABELS: Record<ExportLanguage, {
     reportTitle: "Metrics Report",
     generated: "Generated",
     business: "Business",
+    totalAvgRow: "Total / Average",
+    summaryTitle: "Summary",
+    avgMargin: "Average margin",
+    avgCac: "Average CAC",
   },
   UA: {
     date: "Дата",
@@ -59,6 +67,10 @@ const LABELS: Record<ExportLanguage, {
     reportTitle: "Звіт по метриках",
     generated: "Сформовано",
     business: "Бізнес",
+    totalAvgRow: "Разом / Середнє",
+    summaryTitle: "Підсумок",
+    avgMargin: "Середня маржа",
+    avgCac: "Середній CAC",
   },
   DE: {
     date: "Datum",
@@ -72,8 +84,41 @@ const LABELS: Record<ExportLanguage, {
     reportTitle: "Kennzahlenbericht",
     generated: "Erstellt",
     business: "Unternehmen",
+    totalAvgRow: "Gesamt / Durchschnitt",
+    summaryTitle: "Zusammenfassung",
+    avgMargin: "Durchschnittliche Marge",
+    avgCac: "Durchschnittlicher CAC",
   },
 };
+
+// Общая сводка для обоих экспортов (Excel и PDF) — тот же набор цифр, что
+// уже считается и показывается на Overview дашборда (totalRevenue,
+// totalProfit, avgMargin), и та же идея, что в lib/whatif-report.mjs
+// (computeFacts()) для отчётов по доп. услугам: одна функция считает
+// сводку, и Excel/PDF просто по-разному её отображают — без ручного
+// пересчёта десятков строк тем, кто скачал отчёт.
+function computeSummary(rows: ExportRow[]) {
+  const totalRevenue = rows.reduce((s, r) => s + (r.revenue || 0), 0);
+  const totalExpenses = rows.reduce((s, r) => s + (r.expenses || 0), 0);
+  const totalProfit = rows.reduce((s, r) => s + (r.profit || 0), 0);
+  const totalOrders = rows.reduce((s, r) => s + (r.orders || 0), 0);
+  const avgMarginPct = rows.length
+    ? rows.reduce((s, r) => s + (r.margin_pct || 0), 0) / rows.length
+    : 0;
+  const cacRows = rows.filter((r) => r.cac != null);
+  const avgCac = cacRows.length
+    ? cacRows.reduce((s, r) => s + (r.cac as number), 0) / cacRows.length
+    : null;
+
+  return {
+    totalRevenue: Number(totalRevenue.toFixed(2)),
+    totalExpenses: Number(totalExpenses.toFixed(2)),
+    totalProfit: Number(totalProfit.toFixed(2)),
+    totalOrders,
+    avgMarginPct: Number(avgMarginPct.toFixed(1)),
+    avgCac: avgCac != null ? Number(avgCac.toFixed(2)) : null,
+  };
+}
 
 // jsPDF-локаль для new Date().toLocaleString() в подписи "Generated ..." —
 // тот же принцип, что и в lib/service-report-pdf.mjs (там это уже чинили,
@@ -105,6 +150,21 @@ export async function exportMetricsToExcel(rows: ExportRow[], businessName: stri
     [L.orders]: r.orders,
     [L.cac]: r.cac ?? "",
   }));
+
+  // Итоговая строка (сумма revenue/expenses/profit/orders, среднее по
+  // margin_pct и cac) — раньше экспорт заканчивался на последней дневной
+  // строке, и человек, скачавший отчёт для бухгалтера/инвестора, вручную
+  // пересчитывал эти же цифры, хотя сайт их уже посчитал (Overview).
+  const summary = computeSummary(rows);
+  data.push({
+    [L.date]: L.totalAvgRow,
+    [L.revenue]: summary.totalRevenue,
+    [L.expenses]: summary.totalExpenses,
+    [L.profit]: summary.totalProfit,
+    [L.marginPct]: summary.avgMarginPct,
+    [L.orders]: summary.totalOrders,
+    [L.cac]: summary.avgCac ?? "",
+  });
 
   const ws = XLSX.utils.json_to_sheet(data);
   ws["!cols"] = [{ wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 8 }, { wch: 10 }];
@@ -209,8 +269,32 @@ export async function exportMetricsToPdf(rows: ExportRow[], businessName: string
   doc.setTextColor(120);
   doc.text(`${L.generated} ${new Date().toLocaleString(DATE_LOCALE[language] || "en-US")} · Rivant`, 14, titleY + 6);
 
+  // Сводка над таблицей — тот же визуальный паттерн (двухколоночная
+  // key/value autoTable), что уже используется в lib/service-report-pdf.mjs
+  // для отчётов по доп. услугам ("AI-реконструкция"/"AI-дайджест"). Раньше
+  // основной дашборд-экспорт этой сводки не имел вовсе — только построчная
+  // таблица день-за-днём.
+  const summary = computeSummary(rows);
   autoTable(doc, {
     startY: titleY + 12,
+    head: [[L.summaryTitle, ""]],
+    body: [
+      [L.revenue, `$${summary.totalRevenue.toLocaleString()}`],
+      [L.expenses, `$${summary.totalExpenses.toLocaleString()}`],
+      [L.profit, `$${summary.totalProfit.toLocaleString()}`],
+      [L.avgMargin, `${summary.avgMarginPct}%`],
+      [L.orders, String(summary.totalOrders)],
+      [L.avgCac, summary.avgCac != null ? `$${summary.avgCac}` : "—"],
+    ],
+    headStyles: { fillColor: [37, 99, 235], font: boldFont },
+    styles: { fontSize: 8, font: bodyFont },
+    columnStyles: { 0: { fontStyle: "bold" } },
+  });
+
+  const tableStartY = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY + 8 : titleY + 12;
+
+  autoTable(doc, {
+    startY: tableStartY,
     head: [[L.date, L.revenue, L.expenses, L.profit, L.marginPct, L.orders, L.cac]],
     body: rows.map((r) => [
       r.date,

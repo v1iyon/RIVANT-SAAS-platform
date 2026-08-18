@@ -64,15 +64,30 @@ async function getBusinessId(email: string) {
 // Growth — прогноз на 30 днів, Scale і Trial (повний доступ на час трайлу) — на 90.
 // Рахуємо на бекенді, а не ховаємо на фронті, щоб цифри понад ліміт тарифу
 // взагалі не потрапляли в responce.
-async function getForecastHorizonDays(email: string): Promise<number> {
+//
+// starterHasAccess нижче — той самий список планів, що вже використовує
+// фронт для приховування вкладки "Forecast" (app/dashboard/page.tsx,
+// hasGrowthAccess = ["trial","growth","scale"].includes(plan)). Раніше цей
+// список існував ТІЛЬКИ на фронті: сам запит GET /api/forecast йшов
+// незалежно від того, показана вкладка чи ні (useEffect не перевіряє
+// hasGrowthAccess), і повертав повний прогноз (реальні цифри виручки) будь-
+// якому автентифікованому користувачу — Starter отримував той самий 90-
+// денний прогноз, що й Scale, хоча прогноз навіть не заявлений у фічах
+// тарифу Starter на сторінці тарифів. UI-приховування — не захист, це лише
+// зручність; реальна перевірка мала бути тут, на бекенді.
+async function getSubscriptionPlan(email: string): Promise<string | null> {
   const { data: appUser } = await admin.from("users").select("id").eq("email", email).maybeSingle();
-  if (!appUser) return 90;
-  const { data: sub } = await admin
-    .from("subscriptions")
-    .select("plan")
-    .eq("user_id", appUser.id)
-    .maybeSingle();
-  return sub?.plan === "growth" ? 30 : 90;
+  if (!appUser) return null;
+  const { data: sub } = await admin.from("subscriptions").select("plan").eq("user_id", appUser.id).maybeSingle();
+  return sub?.plan ?? null;
+}
+
+function hasForecastAccess(plan: string | null): boolean {
+  return ["trial", "growth", "scale"].includes(plan || "");
+}
+
+function getForecastHorizonDays(plan: string | null): number {
+  return plan === "growth" ? 30 : 90;
 }
 
 function linearRegression(ys: number[]) {
@@ -233,6 +248,16 @@ export async function GET(req: Request) {
   const businessId = await getBusinessId(email);
   if (!businessId) return Response.json({ sufficient: false, days: 0 });
 
+  // Гейт по тарифу — до любых расчётов и до чтения metrics_computed, чтобы
+  // цифры выручки Starter-аккаунта не попадали в ответ вообще ни в каком
+  // виде. planLocked — отдельный явный флаг для фронта (не путать с
+  // "sufficient: false, days < 3" — там просто мало истории, а здесь
+  // доступа нет вовсе независимо от объёма данных).
+  const plan = await getSubscriptionPlan(email);
+  if (!hasForecastAccess(plan)) {
+    return Response.json({ sufficient: false, planLocked: true, requiredPlan: "growth", days: 0 });
+  }
+
   const { data: rows, error } = await admin
     .from("metrics_computed")
     .select("date, revenue, cost, margin_pct")
@@ -277,7 +302,7 @@ export async function GET(req: Request) {
     return Response.json({ sufficient: false, days, tier });
   }
 
-  const horizonDays = await getForecastHorizonDays(email);
+  const horizonDays = getForecastHorizonDays(plan);
 
   const revenueReg = linearRegression(metricsRows.map((r) => r.revenue));
   const expensesReg = linearRegression(metricsRows.map((r) => r.cost));
