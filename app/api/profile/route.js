@@ -34,12 +34,15 @@ export async function GET(req) {
 
   const { data: appUser } = await admin
     .from("users")
-    .select("full_name, phone, avatar_url, language")
+    .select("full_name, phone, avatar_url, language, onboarding_completed")
     .eq("email", email)
     .maybeSingle();
 
   if (!appUser) {
-    return Response.json({ full_name: null, phone: null, avatar_url: null, language: null });
+    // Строки users ещё нет (не должно происходить в обычном флоу — её
+    // создаёт /api/auth-sync до первого вызова /api/profile). На всякий
+    // случай не показываем тур в этом крайнем случае, а не спамим им.
+    return Response.json({ full_name: null, phone: null, avatar_url: null, language: null, onboarding_completed: true });
   }
 
   return Response.json(appUser, { headers: { "Cache-Control": "no-store, max-age=0" } });
@@ -67,13 +70,14 @@ export async function POST(req) {
   }
 
   const body = await req.json();
-  const { full_name, phone, avatar_url, language } = body || {};
+  const { full_name, phone, avatar_url, language, onboarding_completed } = body || {};
 
   const updates = {};
   if (full_name !== undefined) updates.full_name = full_name;
   if (phone !== undefined) updates.phone = phone;
   if (avatar_url !== undefined) updates.avatar_url = avatar_url;
   if (language !== undefined) updates.language = language;
+  if (onboarding_completed !== undefined) updates.onboarding_completed = !!onboarding_completed;
 
   if (Object.keys(updates).length === 0) {
     return Response.json({ ok: true }); // нечего обновлять
