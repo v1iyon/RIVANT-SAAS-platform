@@ -4,20 +4,31 @@
 // Атомарно резервирует уникальную "сумму с хвостом центов",
 // чтобы два параллельных покупателя одного и того же тарифа
 // никогда не получили одинаковую exact_amount_cents, пока их заказы pending.
+//
+// Цена берётся из таблицы public.plans на сервере — клиенту нельзя
+// доверять сумму напрямую, иначе можно оплатить любой тариф за 1 цент.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const RECEIVING_WALLET = Deno.env.get("POLYGON_RECEIVING_WALLET")!; // один общий адрес
 const ORDER_TTL_MINUTES = 30;
 const MAX_OFFSET_ATTEMPTS = 25;
 
-const corsHeaders = {
+const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*", // tighten to your domain in production
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
+
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json", ...CORS_HEADERS },
+  });
+}
 
 Deno.serve(async (req) => {
   // Браузер перед настоящим запросом сначала посылает "разведочный"
@@ -52,25 +63,40 @@ Deno.serve(async (req) => {
 
     const authUser = authData.user;
 
-    const { base_amount_cents, token = "USDC" } = await req.json();
+    const { plan_id, token = "USDC" } = await req.json();
 
-    if (!Number.isInteger(base_amount_cents) || base_amount_cents <= 0) {
-      return json({ error: "base_amount_cents (int, в центах) обязателен" }, 400);
+    if (!plan_id || typeof plan_id !== "string") {
+      return json({ error: "missing_plan" }, 400);
     }
 
-  const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+    const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+
+    // Цену берём ТОЛЬКО из БД по plan_id — клиент цену не задаёт.
+    const { data: plan, error: planError } = await admin
+      .from("plans")
+      .select("id, display_name, base_amount_cents, is_active")
+      .eq("id", plan_id)
+      .maybeSingle();
+
+    if (planError) throw planError;
+
+    if (!plan || !plan.is_active) {
+      return json({ error: "invalid_plan" }, 400);
+    }
+
+    const base_amount_cents = plan.base_amount_cents;
 
     // Находим соответствующую запись в public.users по auth_user_id.
     // Если её ещё нет (гонка с триггером при только что созданном аккаунте) —
     // пробуем найти по email как запасной вариант.
-    let { data: profile, error: profileError } = await supabase
+    let { data: profile, error: profileError } = await admin
       .from("users")
       .select("id")
       .eq("auth_user_id", authUser.id)
       .maybeSingle();
 
     if (!profile && authUser.email) {
-      const fallback = await supabase
+      const fallback = await admin
         .from("users")
         .select("id")
         .eq("email", authUser.email)
@@ -95,13 +121,14 @@ Deno.serve(async (req) => {
     // orders_pending_amount_unique — просто ретраим на конфликте.
     let lastError: unknown = null;
 
-    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    for (let attempt = 0; attempt < MAX_OFFSET_ATTEMPTS; attempt++) {
       const centsOffset = Math.floor(Math.random() * 100); // 0..99
 
-      const { data, error } = await supabase
+      const { data, error } = await admin
         .from("orders")
         .insert({
           user_id,
+          plan_id: plan.id,
           base_amount_cents,
           cents_offset: centsOffset,
           token,
@@ -145,10 +172,3 @@ Deno.serve(async (req) => {
     return json({ error: "internal_error" }, 500);
   }
 });
-
-function json(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json", ...CORS_HEADERS },
-  });
-}
