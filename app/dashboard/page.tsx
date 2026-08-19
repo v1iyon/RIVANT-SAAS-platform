@@ -532,7 +532,7 @@ function RevenueExpensesChart({ history }: {
           <BarChart3 className="w-5 h-5 text-blue-400" />
           <h3 className="text-lg font-bold text-white">{T.revenueVsExpenses || "Revenue vs Expenses (30 days)"}</h3>
         </div>
-        <div className="flex gap-2 bg-gray-800/50 rounded-lg p-1">
+        <div data-tour="metrics-toggle" className="flex gap-2 bg-gray-800/50 rounded-lg p-1">
           <button onClick={() => setSelectedMetric("revenue")} className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all ${selectedMetric === "revenue" ? "bg-blue-500/30 text-blue-400" : "text-gray-500 hover:text-gray-300"}`}>{T.revenue || "Revenue"}</button>
           <button onClick={() => setSelectedMetric("expenses")} className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all ${selectedMetric === "expenses" ? "bg-rose-500/30 text-rose-400" : "text-gray-500 hover:text-gray-300"}`}>{T.expenses || "Expenses"}</button>
           <button onClick={() => setSelectedMetric("profit")} className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all ${selectedMetric === "profit" ? "bg-green-500/30 text-green-400" : "text-gray-500 hover:text-gray-300"}`}>{T.profit || "Profit"}</button>
@@ -2481,6 +2481,7 @@ if (!subInfo) {
                         {filteredActiveRisksCount > 0 && <span className="ml-1.5 opacity-70">{filteredActiveRisksCount}</span>}
                       </button>
                       <button
+                        data-tour="risks-history"
                         onClick={() => setRisksView("history")}
                         className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                           risksView === "history" ? "bg-blue-600 text-white" : "text-gray-500 hover:text-gray-300"
@@ -2492,7 +2493,7 @@ if (!subInfo) {
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <div className="relative" ref={riskFilterRef}>
+                      <div data-tour="risks-filter" className="relative" ref={riskFilterRef}>
                         <button
                           onClick={() => setRiskFilterOpen((v) => !v)}
                           title={language === "UA" ? "Фільтр" : language === "DE" ? "Filter" : "Filter"}
@@ -2734,7 +2735,7 @@ if (!subInfo) {
 
 
               {activeView === "forecast" && (
-  <div className="space-y-4">
+  <div data-tour="forecast-chart" className="space-y-4">
     {isExpiredTrial ? (
       <div className="text-center py-16 bg-gray-900/30 rounded-xl border border-gray-800">
         <AlertTriangle className="w-10 h-10 mx-auto mb-3 text-gray-600" />
@@ -2928,7 +2929,7 @@ if (!subInfo) {
           )}
 
          {activeView === "integrations" && (
-            <div className="relative space-y-4 -mt-3 lg:-mt-4">
+            <div data-tour="integrations-list" className="relative space-y-4 -mt-3 lg:-mt-4">
               {/* sticky (не absolute) — кружок має лишатись НА МІСЦІ ЕКРАНА поверх
                   карток під час скролу списку інтеграцій, а не прокручуватись
                   разом з ними. Обгортка з h-0 не займає місця в потоці (картки
@@ -3325,7 +3326,7 @@ if (!subInfo) {
                 </div>
               </div>
 
-              <div className="bg-card rounded-xl p-6 border border-border">
+              <div data-tour="settings-security" className="bg-card rounded-xl p-6 border border-border">
                 <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
                   <Shield className="w-4 h-4 text-primary" /> {T.settingsSecurity || "Security"}
                 </h3>

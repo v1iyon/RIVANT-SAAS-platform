@@ -1,101 +1,135 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { X, ChevronLeft, ChevronRight } from "lucide-react";
 
 type Language = "EN" | "UA" | "DE";
 type ViewType = "overview" | "risks" | "forecast" | "integrations" | "settings";
+type Placement = "top" | "bottom" | "left" | "right";
 
 interface Step {
   view: ViewType | null;
+  /**
+   * CSS selector of the real element to spotlight, e.g. `[data-tour="metrics-toggle"]`.
+   * `null` = centered step with no target (welcome / finish screens).
+   */
+  target: string | null;
+  placement?: Placement;
   title: Record<Language, string>;
   desc: Record<Language, string>;
 }
 
-// Поверхностный тур: по одному короткому шагу на каждую вкладку сайдбара
-// (overview / risks / forecast / integrations / settings) + приветствие
-// и финальный экран. Никаких деталей — только "что это и зачем".
+// Тур указывает на реальные элементы интерфейса через data-tour="...".
+// Эти атрибуты нужно проставить на соответствующих узлах в самих
+// компонентах дашборда (см. список в конце файла).
 const STEPS: Step[] = [
   {
     view: "overview",
+    target: null,
     title: {
       EN: "Welcome to RIVANT 👋",
       UA: "Ласкаво просимо до RIVANT 👋",
       DE: "Willkommen bei RIVANT 👋",
     },
     desc: {
-      EN: "A quick 1-minute tour of your dashboard. You can skip it anytime.",
-      UA: "Швидкий тур кабінетом на хвилину. Пропустити можна в будь-який момент.",
-      DE: "Eine kurze 1-minütige Tour durch Ihr Dashboard. Sie können sie jederzeit überspringen.",
+      EN: "A quick 1-minute tour. You can skip it anytime.",
+      UA: "Швидкий тур на хвилину. Пропустити можна в будь-який момент.",
+      DE: "Eine kurze 1-minütige Tour. Sie können jederzeit überspringen.",
     },
   },
   {
     view: "overview",
+    target: '[data-tour="metrics-toggle"]',
+    placement: "bottom",
     title: {
-      EN: "Overview",
-      UA: "Огляд",
-      DE: "Übersicht",
+      EN: "Switch metrics",
+      UA: "Перемикайте метрики",
+      DE: "Kennzahlen wechseln",
     },
     desc: {
-      EN: "Your key metrics — revenue, profit, orders — updated in real time.",
-      UA: "Ваші ключові метрики — виручка, прибуток, замовлення — в реальному часі.",
-      DE: "Ihre wichtigsten Kennzahlen — Umsatz, Gewinn, Bestellungen — in Echtzeit.",
+      EN: "Tap here to swap revenue, profit, orders and more.",
+      UA: "Натисніть, щоб перемкнути виручку, прибуток, замовлення тощо.",
+      DE: "Hier tippen, um Umsatz, Gewinn, Bestellungen zu wechseln.",
     },
   },
   {
     view: "risks",
+    target: '[data-tour="risks-filter"]',
+    placement: "bottom",
     title: {
-      EN: "Risks",
-      UA: "Ризики",
-      DE: "Risiken",
+      EN: "Filter risks",
+      UA: "Фільтруйте ризики",
+      DE: "Risiken filtern",
     },
     desc: {
-      EN: "Issues our AI spots in your business — drops, anomalies, things worth checking.",
-      UA: "Проблеми, які помічає AI: падіння показників, аномалії — те, що варто перевірити.",
-      DE: "Probleme, die unsere KI erkennt — Rückgänge, Anomalien, Dinge, die einen Blick wert sind.",
+      EN: "Narrow down by severity or type right here.",
+      UA: "Звужуйте за важливістю чи типом прямо тут.",
+      DE: "Hier nach Schweregrad oder Typ eingrenzen.",
+    },
+  },
+  {
+    view: "risks",
+    target: '[data-tour="risks-history"]',
+    placement: "top",
+    title: {
+      EN: "Risk history",
+      UA: "Історія ризиків",
+      DE: "Risikoverlauf",
+    },
+    desc: {
+      EN: "Everything the AI has flagged over time lives here.",
+      UA: "Все, що AI помітив з часом, зберігається тут.",
+      DE: "Alles, was die KI im Zeitverlauf erkannt hat.",
     },
   },
   {
     view: "forecast",
+    target: '[data-tour="forecast-chart"]',
+    placement: "top",
     title: {
       EN: "Forecast",
       UA: "Прогноз",
       DE: "Prognose",
     },
     desc: {
-      EN: "Where your business is heading, based on your real data — no guesswork.",
-      UA: "Куди рухається ваш бізнес — на основі реальних даних, без здогадок.",
-      DE: "Wohin sich Ihr Geschäft entwickelt — basierend auf echten Daten, ganz ohne Raten.",
+      EN: "Where things are headed, based on your real data.",
+      UA: "Куди рухається бізнес — на основі реальних даних.",
+      DE: "Wohin es geht — basierend auf echten Daten.",
     },
   },
   {
     view: "integrations",
+    target: '[data-tour="integrations-list"]',
+    placement: "right",
     title: {
       EN: "Integrations",
       UA: "Інтеграції",
       DE: "Integrationen",
     },
     desc: {
-      EN: "Connect Stripe, Shopify, Google Ads and more so RIVANT can pull in your data.",
-      UA: "Підключіть Stripe, Shopify, Google Ads та інше, щоб RIVANT підтягнув ваші дані.",
-      DE: "Verbinden Sie Stripe, Shopify, Google Ads und mehr, damit RIVANT Ihre Daten einbindet.",
+      EN: "Connect Stripe, Shopify, Google Ads and more.",
+      UA: "Підключіть Stripe, Shopify, Google Ads та інше.",
+      DE: "Stripe, Shopify, Google Ads und mehr verbinden.",
     },
   },
   {
     view: "settings",
+    target: '[data-tour="settings-security"]',
+    placement: "left",
     title: {
       EN: "Settings",
       UA: "Налаштування",
       DE: "Einstellungen",
     },
     desc: {
-      EN: "Manage your profile, notifications, language and account security here.",
-      UA: "Тут керуйте профілем, сповіщеннями, мовою та безпекою акаунта.",
-      DE: "Verwalten Sie hier Ihr Profil, Benachrichtigungen, Sprache und Kontosicherheit.",
+      EN: "Profile, notifications, language, security — all here.",
+      UA: "Профіль, сповіщення, мова, безпека — все тут.",
+      DE: "Profil, Benachrichtigungen, Sprache, Sicherheit.",
     },
   },
   {
     view: null,
+    target: null,
     title: {
       EN: "That's it!",
       UA: "Готово!",
@@ -104,7 +138,7 @@ const STEPS: Step[] = [
     desc: {
       EN: "You're all set — go ahead and explore RIVANT.",
       UA: "Все готово — можете досліджувати RIVANT.",
-      DE: "Alles bereit — viel Erfolg beim Erkunden von RIVANT.",
+      DE: "Alles bereit — viel Erfolg beim Erkunden.",
     },
   },
 ];
@@ -122,21 +156,128 @@ interface OnboardingTourProps {
   onFinish: () => void;
 }
 
+interface Rect {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+}
+
+const PAD = 8; // spotlight padding around the target element
+const GAP = 14; // gap between spotlight and popover
+const POPOVER_W = 300;
+
 export function OnboardingTour({ language, onNavigate, onFinish }: OnboardingTourProps) {
   const [step, setStep] = useState(0);
+  const [rect, setRect] = useState<Rect | null>(null);
+  const [ready, setReady] = useState(false); // avoids a flash at 0,0 before first measure
+  const popoverRef = useRef<HTMLDivElement>(null);
+
   const current = STEPS[step];
   const isFirst = step === 0;
   const isLast = step === STEPS.length - 1;
 
   const goTo = (i: number) => {
+    setReady(false);
     setStep(i);
     const view = STEPS[i].view;
     if (view) onNavigate(view);
   };
 
+  // Locate + measure the target element. Retries for a bit in case the
+  // tab we just navigated to is still mounting/animating in.
+  useLayoutEffect(() => {
+    let cancelled = false;
+    let tries = 0;
+
+    const measure = () => {
+      if (cancelled) return;
+      const selector = current.target;
+
+      if (!selector) {
+        setRect(null);
+        setReady(true);
+        return;
+      }
+
+      const el = document.querySelector(selector);
+      if (el) {
+        const r = el.getBoundingClientRect();
+        el.scrollIntoView({ block: "center", behavior: "smooth" });
+        setRect({ top: r.top, left: r.left, width: r.width, height: r.height });
+        setReady(true);
+        return;
+      }
+
+      tries += 1;
+      if (tries < 20) {
+        setTimeout(measure, 50);
+      } else {
+        // couldn't find it — fall back to a centered popover rather than
+        // leaving the tour stuck
+        setRect(null);
+        setReady(true);
+      }
+    };
+
+    measure();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
+
+  // Keep the spotlight glued to the target on resize/scroll.
+  useEffect(() => {
+    if (!current.target) return;
+    const onUpdate = () => {
+      const el = document.querySelector(current.target as string);
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      setRect({ top: r.top, left: r.left, width: r.width, height: r.height });
+    };
+    window.addEventListener("resize", onUpdate);
+    window.addEventListener("scroll", onUpdate, true);
+    return () => {
+      window.removeEventListener("resize", onUpdate);
+      window.removeEventListener("scroll", onUpdate, true);
+    };
+  }, [current.target]);
+
+  const spotlight = rect
+    ? { top: rect.top - PAD, left: rect.left - PAD, width: rect.width + PAD * 2, height: rect.height + PAD * 2 }
+    : null;
+
+  const popoverStyle = getPopoverStyle(spotlight, current.placement);
+
   return (
-    <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="relative bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-[380px] shadow-2xl p-6">
+    <div className="fixed inset-0 z-[200]" style={{ opacity: ready ? 1 : 0, transition: "opacity 150ms" }}>
+      {/* dim everything except the spotlight cutout — no blur */}
+      <div
+        className="absolute inset-0 pointer-events-none transition-all duration-500 ease-out"
+        style={{
+          boxShadow: spotlight
+            ? `0 0 0 9999px rgba(0,0,0,0.55)`
+            : "none",
+          background: spotlight ? "transparent" : "rgba(0,0,0,0.55)",
+          top: spotlight ? spotlight.top : 0,
+          left: spotlight ? spotlight.left : 0,
+          width: spotlight ? spotlight.width : "100%",
+          height: spotlight ? spotlight.height : "100%",
+          borderRadius: spotlight ? 12 : 0,
+          border: spotlight ? "2px solid rgba(59,130,246,0.9)" : "none",
+        }}
+      />
+
+      {/* click-catcher so the rest of the page doesn't receive clicks mid-tour */}
+      <div className="absolute inset-0" onClick={(e) => e.stopPropagation()} />
+
+      {/* floating popover */}
+      <div
+        ref={popoverRef}
+        className="absolute bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl p-5 transition-all duration-500 ease-out"
+        style={{ width: POPOVER_W, ...popoverStyle }}
+      >
         <button
           onClick={onFinish}
           aria-label="close"
@@ -145,8 +286,7 @@ export function OnboardingTour({ language, onNavigate, onFinish }: OnboardingTou
           <X className="w-4 h-4" />
         </button>
 
-        {/* прогресс */}
-        <div className="flex items-center gap-1.5 mb-4">
+        <div className="flex items-center gap-1.5 mb-3">
           {STEPS.map((_, i) => (
             <div
               key={i}
@@ -157,8 +297,8 @@ export function OnboardingTour({ language, onNavigate, onFinish }: OnboardingTou
           ))}
         </div>
 
-        <h3 className="text-lg font-semibold text-white mb-2 pr-6">{current.title[language]}</h3>
-        <p className="text-sm text-gray-400 leading-relaxed mb-6">{current.desc[language]}</p>
+        <h3 className="text-base font-semibold text-white mb-1.5 pr-6">{current.title[language]}</h3>
+        <p className="text-sm text-gray-400 leading-relaxed mb-5">{current.desc[language]}</p>
 
         <div className="flex items-center justify-between gap-2">
           <button
@@ -189,4 +329,60 @@ export function OnboardingTour({ language, onNavigate, onFinish }: OnboardingTou
       </div>
     </div>
   );
+}
+
+// Positions the popover next to the spotlight (or centered, if there's no
+// target), clamped to stay inside the viewport.
+function getPopoverStyle(
+  spotlight: Rect | null,
+  placement: Placement = "bottom"
+): React.CSSProperties {
+  if (!spotlight) {
+    return {
+      top: "50%",
+      left: "50%",
+      transform: "translate(-50%, -50%)",
+    };
+  }
+
+  const vw = typeof window !== "undefined" ? window.innerWidth : 1280;
+  const vh = typeof window !== "undefined" ? window.innerHeight : 800;
+
+  let top = 0;
+  let left = 0;
+
+  switch (placement) {
+    case "bottom":
+      top = spotlight.top + spotlight.height + GAP;
+      left = spotlight.left + spotlight.width / 2 - POPOVER_W / 2;
+      break;
+    case "top":
+      top = spotlight.top - GAP;
+      left = spotlight.left + spotlight.width / 2 - POPOVER_W / 2;
+      break;
+    case "left":
+      top = spotlight.top + spotlight.height / 2;
+      left = spotlight.left - POPOVER_W - GAP;
+      break;
+    case "right":
+      top = spotlight.top + spotlight.height / 2;
+      left = spotlight.left + spotlight.width + GAP;
+      break;
+  }
+
+  // clamp horizontally
+  left = Math.max(12, Math.min(left, vw - POPOVER_W - 12));
+
+  // for top placement we anchor by bottom edge instead of top
+  if (placement === "top") {
+    return {
+      left,
+      top: Math.max(12, top - 220), // 220 ≈ approx popover height, pulls it above target
+    };
+  }
+
+  // clamp vertically (rough popover height estimate ~220px)
+  top = Math.max(12, Math.min(top, vh - 220 - 12));
+
+  return { top, left };
 }
