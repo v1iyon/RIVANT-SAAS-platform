@@ -10,7 +10,7 @@ import {
   LayoutDashboard, AlertTriangle, TrendingUp, Link2, 
   Bell, X, AlertCircle, ArrowUpRight, ArrowDownRight, Trash2,
   TrendingDown, DollarSign, BarChart3, Zap, Package, CreditCard, Truck, Users, Activity,
-  CheckCircle, Wifi, WifiOff, Settings, Link, ChevronLeft, ChevronRight, Filter
+  CheckCircle, Wifi, WifiOff, Settings, Link, ChevronLeft, ChevronRight, Filter, Receipt
 } from "lucide-react";
 
 interface LiveDemoModalProps {
@@ -69,6 +69,32 @@ const RISK_CATEGORIES: { id: Risk["category"]; label: Record<string, string> }[]
   { id: "shipping", label: { UA: "Доставка", EN: "Shipping", DE: "Versand" } },
   { id: "integration", label: { UA: "Синхронізація", EN: "Sync", DE: "Sync" } },
 ];
+
+// Каталог карток дашборда — той самий принцип, що й WIDGET_CATALOG_IDS у
+// реальному кабінеті (app/dashboard/page.tsx): 7 доступних метрик, з яких
+// одночасно активні максимум 4, вибір робиться через "шестерню" над картками.
+const WIDGET_CATALOG_IDS = ["revenue", "profit", "margin", "cac", "orders", "aov", "expenses"] as const;
+type WidgetId = (typeof WIDGET_CATALOG_IDS)[number];
+const DEFAULT_WIDGET_IDS: WidgetId[] = ["revenue", "profit", "margin", "cac"];
+
+const WIDGET_ICONS: Record<WidgetId, React.ComponentType<{ className?: string }>> = {
+  revenue: DollarSign,
+  profit: TrendingUp,
+  margin: Activity,
+  cac: Users,
+  orders: Package,
+  aov: CreditCard,
+  expenses: Receipt,
+};
+
+const METRIC_CARD_THEMES: Record<string, { from: string; border: string; text: string; ticker: string }> = {
+  "bg-blue-500": { from: "from-blue-500/10", border: "border-blue-500/20", text: "text-blue-400", ticker: "bg-blue-500/60" },
+  "bg-green-500": { from: "from-green-500/10", border: "border-green-500/20", text: "text-green-400", ticker: "bg-green-500/60" },
+  "bg-purple-500": { from: "from-purple-500/10", border: "border-purple-500/20", text: "text-purple-400", ticker: "bg-purple-500/60" },
+  "bg-cyan-500": { from: "from-cyan-500/10", border: "border-cyan-500/20", text: "text-cyan-400", ticker: "bg-cyan-500/60" },
+  "bg-pink-500": { from: "from-pink-500/10", border: "border-pink-500/20", text: "text-pink-400", ticker: "bg-pink-500/60" },
+  "bg-red-500": { from: "from-red-500/10", border: "border-red-500/20", text: "text-red-400", ticker: "bg-red-500/60" },
+};
 
 // Названия месяцев для перевода
 const getMonthName = (month: string, t: any): string => {
@@ -317,6 +343,109 @@ function TickerSparkline({ history, color, currentValue, previousValue }: { hist
             />
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+// ========== ЗАГАЛЬНА КАРТКА МЕТРИКИ (Revenue/Profit/Margin/Orders/AOV/Expenses) ==========
+// Той самий принцип, що й MetricCard у app/dashboard/page.tsx: одна картка на
+// колір/тему, використовується для будь-якої метрики з каталогу карток.
+function DemoMetricCard({ title, value, change, color, prefix = "", suffix = "", sparklineData, prevValue }: {
+  title: string; value: number; change: number; color: string; prefix?: string; suffix?: string;
+  sparklineData: number[]; prevValue: number;
+}) {
+  const theme = METRIC_CARD_THEMES[color] || METRIC_CARD_THEMES["bg-blue-500"];
+  return (
+    <div className={`bg-gradient-to-br ${theme.from} to-transparent rounded-xl p-4 border ${theme.border}`}>
+      <div className={`text-xs font-semibold mb-1 uppercase ${theme.text}`}>{title}</div>
+      <AnimatedNumber value={value} prefix={prefix} suffix={suffix} changePercent={change} />
+      <TickerSparkline history={sparklineData} color={theme.ticker} currentValue={value} previousValue={prevValue} />
+    </div>
+  );
+}
+
+// ========== ПАНЕЛЬ НАЛАШТУВАННЯ КАРТОК ("ШЕСТЕРНЯ") ==========
+// Той самий функціонал, що й WidgetPrefsPanel у реальному кабінеті: обираєш
+// рівно 4 картки з 7 доступних метрик, тиснеш "Готово" — Overview
+// перемальовується з новим набором. У демо нічого нікуди не зберігається
+// (немає бекенду), вибір живе лише в стейті модалки на час сесії.
+function DemoWidgetPrefsPanel({
+  open, onClose, activeIds, catalog, onApply, labels,
+}: {
+  open: boolean;
+  onClose: () => void;
+  activeIds: WidgetId[];
+  catalog: { id: WidgetId; label: string; icon: React.ComponentType<{ className?: string }> }[];
+  onApply: (ids: WidgetId[]) => void;
+  labels: { title: string; active: string; available: string; done: string; cancel: string; needMore: (n: number) => string; maxReached: string };
+}) {
+  const [selected, setSelected] = useState<WidgetId[]>(activeIds);
+  useEffect(() => { if (open) setSelected(activeIds); }, [open, activeIds]);
+  if (!open) return null;
+
+  const toggle = (id: WidgetId) => {
+    setSelected((prev) => {
+      if (prev.includes(id)) return prev.filter((x) => x !== id);
+      if (prev.length >= 4) return prev;
+      return [...prev, id];
+    });
+  };
+
+  return (
+    <div className="absolute inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
+      <div className="bg-gray-900 rounded-xl p-6 w-full max-w-md border border-gray-800">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-bold text-white">{labels.title}</h3>
+          <button onClick={onClose} className="p-2 -m-2 text-gray-500 hover:text-white"><X className="w-5 h-5" /></button>
+        </div>
+
+        <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">{labels.active}</p>
+        <div className="flex flex-wrap gap-2 mb-4">
+          {catalog.filter((c) => selected.includes(c.id)).map((c) => (
+            <button
+              key={c.id}
+              onClick={() => toggle(c.id)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm bg-blue-500/20 text-blue-300 border border-blue-500/30"
+            >
+              <c.icon className="w-3.5 h-3.5" />
+              {c.label}
+              <X className="w-3 h-3 ml-1" />
+            </button>
+          ))}
+        </div>
+
+        <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">{labels.available}</p>
+        <div className="flex flex-wrap gap-2 mb-2">
+          {catalog.filter((c) => !selected.includes(c.id)).map((c) => (
+            <button
+              key={c.id}
+              onClick={() => toggle(c.id)}
+              disabled={selected.length >= 4}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm bg-gray-800/60 text-gray-400 border border-gray-700 hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              <c.icon className="w-3.5 h-3.5" />
+              {c.label}
+            </button>
+          ))}
+        </div>
+
+        <p className="text-xs text-gray-600 mb-4">
+          {selected.length < 4 ? labels.needMore(4 - selected.length) : labels.maxReached}
+        </p>
+
+        <div className="flex gap-3">
+          <Button variant="outline" className="flex-1 border-gray-700 text-gray-300 hover:bg-gray-800" onClick={onClose}>
+            {labels.cancel}
+          </Button>
+          <Button
+            className="flex-1 bg-blue-500 hover:bg-blue-600 text-white disabled:opacity-40"
+            disabled={selected.length !== 4}
+            onClick={() => onApply(selected)}
+          >
+            {labels.done}
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -886,6 +1015,11 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
   
   const [activeView, setActiveView] = useState<ViewType>("overview");
   const [risks, setRisks] = useState<Risk[]>([]);
+  // Історія вирішених ризиків — той самий принцип, що й resolvedRisks у
+  // app/dashboard/page.tsx: закриття ризику (X) переносить його в "Історію"
+  // замість того, щоб він просто зникав назавжди.
+  const [resolvedRisks, setResolvedRisks] = useState<Risk[]>([]);
+  const [risksView, setRisksView] = useState<"active" | "history">("active");
   const [alertCount, setAlertCount] = useState(0);
   const [showTelegramPopup, setShowTelegramPopup] = useState(false);
   const [lastNotification, setLastNotification] = useState<Risk | null>(null);
@@ -906,6 +1040,11 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
   const riskFilterRef = useRef<HTMLDivElement | null>(null);
   const riskFilterTouchStartYRef = useRef<number | null>(null);
 
+  // Картки на Огляді — стан для "шестерні" (DemoWidgetPrefsPanel), той самий
+  // принцип, що й widgetIds/widgetPrefsOpen у реальному кабінеті.
+  const [widgetIds, setWidgetIds] = useState<WidgetId[]>(DEFAULT_WIDGET_IDS);
+  const [widgetPrefsOpen, setWidgetPrefsOpen] = useState(false);
+
   const toggleRiskCategory = (cat: Risk["category"]) => {
     setRiskCategoryFilter((prev) => (prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]));
   };
@@ -921,13 +1060,13 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [riskFilterOpen]);
 
-  // Скидаємо фільтр при закритті демо, щоб наступне відкриття завжди
-  // починалось "з чистого аркуша" (те, що в кабінеті робить localStorage,
-  // тут робить сам факт закриття модалки).
+  // Скидаємо фільтр і вкладку "Активні/Історія" при закритті демо, щоб
+  // наступне відкриття завжди починалось "з чистого аркуша".
   useEffect(() => {
     if (!isOpen) {
       setRiskCategoryFilter([]);
       setRiskFilterOpen(false);
+      setRisksView("active");
     }
   }, [isOpen]);
   
@@ -971,6 +1110,7 @@ const [googleAdsExtraValues, setGoogleAdsExtraValues] = useState<Record<string, 
   
   const translateAllRisks = useCallback(() => {
     setRisks(prevRisks => prevRisks.map(risk => translateRisk(risk, T, currency)));
+    setResolvedRisks(prevRisks => prevRisks.map(risk => translateRisk(risk, T, currency)));
     if (lastNotification) setLastNotification(translateRisk(lastNotification, T, currency));
   }, [T, currency, lastNotification]);
   
@@ -1114,14 +1254,29 @@ const [googleAdsExtraValues, setGoogleAdsExtraValues] = useState<Record<string, 
     };
   }, [isOpen]);
   
+  // Закриття ризику (X) тепер переносить його в "Історію" замість того, щоб
+  // видаляти назавжди — той самий принцип, що й resolve-флоу в реальному
+  // кабінеті (PATCH /api/alerts). "Очистити всі" на вкладці "Активні" робить
+  // те саме масово; на вкладці "Історія" trash-кнопка справді видаляє.
   const removeRisk = (id: number) => {
-    setRisks(prev => prev.filter(r => r.id !== id));
-    setAlertCount(prev => prev - 1);
+    setRisks(prev => {
+      const risk = prev.find(r => r.id === id);
+      if (risk) {
+        setResolvedRisks(rprev => [risk, ...rprev].slice(0, MAX_RISKS_STORED));
+      }
+      return prev.filter(r => r.id !== id);
+    });
+    setAlertCount(prev => Math.max(0, prev - 1));
   };
   
   const clearAllRisks = () => {
-    setRisks([]);
-    setAlertCount(0);
+    if (risksView === "active") {
+      setResolvedRisks(prev => [...risks, ...prev].slice(0, MAX_RISKS_STORED));
+      setRisks([]);
+      setAlertCount(0);
+    } else {
+      setResolvedRisks([]);
+    }
   };
   
   const reconnectIntegration = (integrationId: string) => {
@@ -1164,9 +1319,87 @@ const [googleAdsExtraValues, setGoogleAdsExtraValues] = useState<Record<string, 
   const cacMetaChange = ((currentCacMeta - prevCacMeta) / prevCacMeta * 100).toFixed(1);
   const cacGoogleChange = ((currentCacGoogle - prevCacGoogle) / prevCacGoogle * 100).toFixed(1);
 
+  // Похідні метрики для карток "Замовлення" / "Середній чек" / "Витрати" —
+  // рахуються з тих самих revenue/profit-серій (в демо немає окремого
+  // джерела замовлень), щоб "шестерня" мала повний каталог із 7 карток, як
+  // у реальному кабінеті.
+  const AVG_ORDER_VALUE = 45;
+  const ordersQueue = revenueQueue.map((v) => Math.max(1, Math.round(v / AVG_ORDER_VALUE)));
+  const expensesQueue = revenueQueue.map((v, i) => Math.max(0, v - profitQueue[i]));
+  const aovQueue = ordersQueue.map((o, i) => (o ? revenueQueue[i] / o : 0));
+  const currentOrders = Math.max(1, Math.round(currentRevenue / AVG_ORDER_VALUE));
+  const prevOrders = Math.max(1, Math.round(prevRevenue / AVG_ORDER_VALUE));
+  const ordersChange = ((currentOrders - prevOrders) / prevOrders * 100).toFixed(1);
+  const currentExpenses = Math.max(0, currentRevenue - currentProfit);
+  const prevExpenses = Math.max(0, prevRevenue - prevProfit);
+  const expensesChangeVal = prevExpenses ? ((currentExpenses - prevExpenses) / prevExpenses * 100).toFixed(1) : "0.0";
+  const currentAov = currentRevenue / currentOrders;
+  const prevAov = prevRevenue / prevOrders;
+  const aovChange = ((currentAov - prevAov) / prevAov * 100).toFixed(1);
+
+  const widgetLabel = (id: WidgetId): string => {
+    switch (id) {
+      case "revenue": return T.demoRevenue || "Revenue";
+      case "profit": return T.demoProfit || "Profit";
+      case "margin": return T.demoMargin || "Margin";
+      case "cac": return "CAC";
+      case "orders": return language === "UA" ? "Замовлення" : language === "DE" ? "Bestellungen" : "Orders";
+      case "aov": return language === "UA" ? "Середній чек" : language === "DE" ? "Ø Bestellwert" : "Avg. order value";
+      case "expenses": return T.demoExpenses || "Expenses";
+      default: return id;
+    }
+  };
+
+  const widgetCatalogForPanel = WIDGET_CATALOG_IDS.map((id) => ({
+    id, label: widgetLabel(id), icon: WIDGET_ICONS[id],
+  }));
+
+  const renderOverviewWidget = (id: WidgetId) => {
+    switch (id) {
+      case "revenue":
+        return <DemoMetricCard key={id} title={widgetLabel("revenue")} value={convert(currentRevenue)} change={parseFloat(revenueChange)} color="bg-blue-500" prefix={symbol} sparklineData={revenueQueue} prevValue={prevRevenue} />;
+      case "profit":
+        return <DemoMetricCard key={id} title={widgetLabel("profit")} value={convert(currentProfit)} change={parseFloat(profitChange)} color="bg-green-500" prefix={symbol} sparklineData={profitQueue} prevValue={prevProfit} />;
+      case "margin":
+        return <DemoMetricCard key={id} title={widgetLabel("margin")} value={currentMargin} change={parseFloat(marginChange)} color="bg-purple-500" suffix="%" sparklineData={marginQueue} prevValue={prevMargin} />;
+      case "cac":
+        return (
+          <SwipeableCacCard
+            key={id}
+            T={T}
+            language={language}
+            symbol={symbol}
+            panels={[
+              { label: "Meta Ads", value: convert(currentCacMeta), change: parseFloat(cacMetaChange), prev: convert(prevCacMeta), sparklineData: cacMetaQueue },
+              {
+                label: language === "UA" ? "Загальне" : language === "DE" ? "Gesamt" : "Combined",
+                value: convert(currentCac),
+                change: parseFloat(cacChange),
+                prev: convert(prevCac),
+                sparklineData: cacQueue,
+              },
+              { label: "Google Ads", value: convert(currentCacGoogle), change: parseFloat(cacGoogleChange), prev: convert(prevCacGoogle), sparklineData: cacGoogleQueue },
+            ]}
+          />
+        );
+      case "orders":
+        return <DemoMetricCard key={id} title={widgetLabel("orders")} value={currentOrders} change={parseFloat(ordersChange)} color="bg-cyan-500" sparklineData={ordersQueue} prevValue={prevOrders} />;
+      case "aov":
+        return <DemoMetricCard key={id} title={widgetLabel("aov")} value={convert(currentAov)} change={parseFloat(aovChange)} color="bg-pink-500" prefix={symbol} sparklineData={aovQueue} prevValue={prevAov} />;
+      case "expenses":
+        return <DemoMetricCard key={id} title={widgetLabel("expenses")} value={convert(currentExpenses)} change={parseFloat(expensesChangeVal)} color="bg-red-500" prefix={symbol} sparklineData={expensesQueue} prevValue={prevExpenses} />;
+      default:
+        return null;
+    }
+  };
+
   // Фільтруємо ризики за обраними категоріями — порожній масив = показуємо всі,
-  // той самий принцип, що й у app/dashboard/page.tsx.
+  // той самий принцип, що й у app/dashboard/page.tsx. Рахуємо окремо для
+  // "Активні" та "Історія".
   const filteredRisks = risks.filter(
+    (risk) => riskCategoryFilter.length === 0 || riskCategoryFilter.includes(risk.category)
+  );
+  const filteredResolvedRisks = resolvedRisks.filter(
     (risk) => riskCategoryFilter.length === 0 || riskCategoryFilter.includes(risk.category)
   );
   
@@ -1206,6 +1439,14 @@ const [googleAdsExtraValues, setGoogleAdsExtraValues] = useState<Record<string, 
     DE: ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"]
   };
   const months = monthNames[language as keyof typeof monthNames] || monthNames.EN;
+
+  // Підзаголовок під заголовком вкладки — єдиний, використовується в
+  // уніфікованій шапці нижче (одна на всі breakpoint-и).
+  const viewSubtitle =
+    activeView === "overview" ? (T.demoRealTimeMetrics || "Real-time business metrics") :
+    activeView === "risks" ? (T.demoAiRisks || "AI-identified operational risks") :
+    activeView === "forecast" ? (T.demoAiPredictions || "AI-powered 90-day predictions") :
+    activeView === "integrations" ? (T.demoConnectedSources || "Connected data sources") : "";
   
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4" style={{ backgroundColor: "rgba(0,0,0,0.95)", backdropFilter: "blur(8px)" }}>
@@ -1242,79 +1483,96 @@ const [googleAdsExtraValues, setGoogleAdsExtraValues] = useState<Record<string, 
           </div>
           
           {/* Main Content */}
-          <div className="flex-1 p-4 sm:p-6 pb-24 md:pb-6 overflow-auto">
+          <div className="flex-1 p-4 sm:p-6 pb-24 md:pb-6 overflow-auto relative">
             
-            {/* Mobile navigation */}
-            <div className="flex md:hidden items-center justify-between mb-5 pr-11">
-              <h2 className="text-lg font-bold text-white truncate">
-                {sidebarItems.find(i => i.view === activeView)?.shortLabel}
-              </h2>
-              <button onClick={() => setShowTelegramPopup(true)} className="ml-2 p-2 bg-gray-800/30 rounded-lg relative flex-shrink-0">
-                <Bell className="w-5 h-5 text-gray-500" />
-                {alertCount > 0 && <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-blue-500 text-xs flex items-center justify-center text-white font-bold">{alertCount}</span>}
-              </button>
+            {/* Єдина шапка вкладки — одна й та сама на мобільному й десктопі
+                (раніше тут дублювалось: короткий мобільний заголовок ЗДЕСЬ +
+                повний h2-заголовок ще раз всередині кожної вкладки нижче). */}
+            <div className="flex items-center justify-between gap-3 mb-5 pr-11 md:pr-0">
+              <div className="min-w-0">
+                <h2 className="text-lg sm:text-2xl font-bold text-white truncate">
+                  {sidebarItems.find(i => i.view === activeView)?.label}
+                </h2>
+                <p className="text-sm text-gray-500 mt-1 hidden sm:block truncate">{viewSubtitle}</p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {activeView === "overview" && (
+                  <div className="hidden sm:flex items-center gap-2 bg-green-500/10 px-3 py-1.5 rounded-full">
+                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                    <span className="text-sm text-green-400 font-medium">{T.demoLive || "LIVE"}</span>
+                  </div>
+                )}
+                <button onClick={() => setShowTelegramPopup(true)} className="md:hidden p-2 bg-gray-800/30 rounded-lg relative flex-shrink-0">
+                  <Bell className="w-5 h-5 text-gray-500" />
+                  {alertCount > 0 && <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-blue-500 text-xs flex items-center justify-center text-white font-bold">{alertCount}</span>}
+                </button>
+              </div>
             </div>
             
             {/* Overview View */}
             {activeView === "overview" && (
               <div className="space-y-5">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <h2 className="text-2xl font-bold text-white">{T.demoOverview || "Dashboard Overview"}</h2>
-                    <p className="text-sm text-gray-500 mt-1">{T.demoRealTimeMetrics || "Real-time business metrics"}</p>
+                <div className="relative">
+                  <button
+                    onClick={() => setWidgetPrefsOpen(true)}
+                    className="absolute -top-2 -right-2 z-10 w-7 h-7 rounded-full bg-gray-800/90 border border-gray-700 flex items-center justify-center text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+                    aria-label={language === "UA" ? "Налаштувати картки" : language === "DE" ? "Kacheln anpassen" : "Customize cards"}
+                  >
+                    <Settings className="w-3.5 h-3.5" />
+                  </button>
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 items-start">
+                    {widgetIds.map((id) => renderOverviewWidget(id))}
                   </div>
-                  <div className="flex items-center gap-2 bg-green-500/10 px-3 py-1.5 rounded-full">
-                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                    <span className="text-sm text-green-400 font-medium">{T.demoLive || "LIVE"}</span>
-                  </div>
-                </div>
-                
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div className="bg-gradient-to-br from-blue-500/10 to-transparent rounded-xl p-4 border border-blue-500/20">
-                    <div className="text-xs text-blue-400 font-semibold mb-1 uppercase">{T.demoRevenue || "Revenue"}</div>
-                    <AnimatedNumber value={convert(currentRevenue)} prefix={symbol} changePercent={parseFloat(revenueChange)} />
-                    <TickerSparkline history={revenueQueue} color="bg-blue-500/60" currentValue={currentRevenue} previousValue={prevRevenue} />
-                  </div>
-                  <div className="bg-gradient-to-br from-green-500/10 to-transparent rounded-xl p-4 border border-green-500/20">
-                    <div className="text-xs text-green-400 font-semibold mb-1 uppercase">{T.demoProfit || "Profit"}</div>
-                    <AnimatedNumber value={convert(currentProfit)} prefix={symbol} changePercent={parseFloat(profitChange)} />
-                    <TickerSparkline history={profitQueue} color="bg-green-500/60" currentValue={currentProfit} previousValue={prevProfit} />
-                  </div>
-                  <div className="bg-gradient-to-br from-purple-500/10 to-transparent rounded-xl p-4 border border-purple-500/20">
-                    <div className="text-xs text-purple-400 font-semibold mb-1 uppercase">{T.demoMargin || "Margin"}</div>
-                    <AnimatedNumber value={currentMargin} suffix="%" changePercent={parseFloat(marginChange)} />
-                    <TickerSparkline history={marginQueue} color="bg-purple-500/60" currentValue={currentMargin} previousValue={prevMargin} />
-                  </div>
-                  <SwipeableCacCard
-                    T={T}
-                    language={language}
-                    symbol={symbol}
-                    panels={[
-                      { label: "Meta Ads", value: convert(currentCacMeta), change: parseFloat(cacMetaChange), prev: convert(prevCacMeta), sparklineData: cacMetaQueue },
-                      {
-                        label: language === "UA" ? "Загальне" : language === "DE" ? "Gesamt" : "Combined",
-                        value: convert(currentCac),
-                        change: parseFloat(cacChange),
-                        prev: convert(prevCac),
-                        sparklineData: cacQueue,
-                      },
-                      { label: "Google Ads", value: convert(currentCacGoogle), change: parseFloat(cacGoogleChange), prev: convert(prevCacGoogle), sparklineData: cacGoogleQueue },
-                    ]}
-                  />
                 </div>
                 
                 <RevenueExpensesChart />
               </div>
             )}
+
+            <DemoWidgetPrefsPanel
+              open={widgetPrefsOpen}
+              onClose={() => setWidgetPrefsOpen(false)}
+              activeIds={widgetIds}
+              catalog={widgetCatalogForPanel}
+              onApply={(ids) => { setWidgetIds(ids); setWidgetPrefsOpen(false); }}
+              labels={{
+                title: language === "UA" ? "Картки на дашборді" : language === "DE" ? "Dashboard-Kacheln" : "Dashboard cards",
+                active: language === "UA" ? "Активні (максимум 4)" : language === "DE" ? "Aktiv (max. 4)" : "Active (max 4)",
+                available: language === "UA" ? "Доступні" : language === "DE" ? "Verfügbar" : "Available",
+                done: language === "UA" ? "Готово" : language === "DE" ? "Fertig" : "Done",
+                cancel: language === "UA" ? "Скасувати" : language === "DE" ? "Abbrechen" : "Cancel",
+                needMore: (n: number) =>
+                  language === "UA" ? `Виберіть ще ${n}, щоб зберегти` : language === "DE" ? `Wählen Sie noch ${n} aus, um zu speichern` : `Pick ${n} more to save`,
+                maxReached: language === "UA" ? "Уже вибрано 4 — заберіть щось, щоб додати інше" : language === "DE" ? "Bereits 4 ausgewählt — entfernen Sie eine, um eine andere hinzuzufügen" : "4 selected — remove one to add another",
+              }}
+            />
             
-            {/* Risks View */}
+            {/* Risks View — структура ідентична app/dashboard/page.tsx:
+                Активні/Історія зліва, Фільтр + кошик справа. */}
             {activeView === "risks" && (
               <div className="space-y-4">
-                <div className="flex flex-wrap justify-between items-center gap-3">
-                  <div>
-                    <h2 className="text-2xl font-bold text-white">{T.demoRiskDetection || "Risk Detection"}</h2>
-                    <p className="text-sm text-gray-500 mt-1">{T.demoAiRisks || "AI-identified operational risks"}</p>
+                <div className="flex items-center justify-between mb-1 flex-wrap gap-3">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setRisksView("active")}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                        risksView === "active" ? "bg-blue-600 text-white" : "text-gray-500 hover:text-gray-300"
+                      }`}
+                    >
+                      {language === "UA" ? "Активні" : language === "DE" ? "Aktiv" : "Active"}
+                      {filteredRisks.length > 0 && <span className="ml-1.5 opacity-70">{filteredRisks.length}</span>}
+                    </button>
+                    <button
+                      onClick={() => setRisksView("history")}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                        risksView === "history" ? "bg-blue-600 text-white" : "text-gray-500 hover:text-gray-300"
+                      }`}
+                    >
+                      {language === "UA" ? "Історія" : language === "DE" ? "Verlauf" : "History"}
+                      {filteredResolvedRisks.length > 0 && <span className="ml-1.5 opacity-70">{filteredResolvedRisks.length}</span>}
+                    </button>
                   </div>
+
                   <div className="flex items-center gap-2">
                     <div className="relative" ref={riskFilterRef}>
                       <button
@@ -1383,68 +1641,121 @@ const [googleAdsExtraValues, setGoogleAdsExtraValues] = useState<Record<string, 
                       )}
                     </div>
 
-                    <span className="text-sm text-blue-400 bg-blue-500/20 px-4 py-1.5 rounded-full font-semibold">
-                      {filteredRisks.length} {T.demoActiveRisks || "Active Risks"}
-                    </span>
-                    {risks.length > 0 && (
-                      <button onClick={clearAllRisks} className="text-gray-500 hover:text-white/80 px-2">
-                        <Trash2 className="w-4 h-4" />
+                    {risksView === "active" && risks.length > 0 && (
+                      <button
+                        onClick={clearAllRisks}
+                        title={language === "UA" ? "Очистити всі" : language === "DE" ? "Alle löschen" : "Clear all"}
+                        className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-red-400 transition-colors px-2 py-1 rounded-lg hover:bg-red-500/10"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">{language === "UA" ? "Очистити всі" : language === "DE" ? "Alle löschen" : "Clear all"}</span>
+                      </button>
+                    )}
+                    {risksView === "history" && resolvedRisks.length > 0 && (
+                      <button
+                        onClick={clearAllRisks}
+                        title={language === "UA" ? "Очистити історію" : language === "DE" ? "Verlauf löschen" : "Clear history"}
+                        className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-red-400 transition-colors px-2 py-1 rounded-lg hover:bg-red-500/10"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">{language === "UA" ? "Очистити історію" : language === "DE" ? "Verlauf löschen" : "Clear history"}</span>
                       </button>
                     )}
                   </div>
                 </div>
-                <div className="space-y-3">
-                  {filteredRisks.map((risk) => (
-                    <div key={risk.id} className={`bg-gray-900/50 rounded-xl p-4 border transition-all ${lastNotification?.id === risk.id ? "border-blue-500/50 bg-blue-500/10" : "border-gray-800"}`}>
-                      <div className="flex items-start gap-3">
-                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${getSeverityColorClasses(risk.severity).bg}`}>
-                          {getCategoryIcon(risk.category)}
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex items-center justify-between flex-wrap gap-2">
-                            <div className="flex items-center gap-2">
-                              <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${getSeverityColorClasses(risk.severity).bg} ${getSeverityColorClasses(risk.severity).text}`}>{getSeverityLabel(risk.severity, language)}</span>
-                              <span className="text-xs text-gray-500">{risk.time}</span>
-                            </div>
-                            {/* FIX: увеличенная тап-зона крестика удаления риска (p-2 -m-2) */}
-                            <button onClick={() => removeRisk(risk.id)} className="text-gray-500 hover:text-white/60 p-2 -m-2"><X className="w-3.5 h-3.5" /></button>
+
+                {risksView === "active" && (
+                  <div className="space-y-3">
+                    {filteredRisks.map((risk) => (
+                      <div key={risk.id} className={`bg-gray-900/50 rounded-xl p-4 border transition-all ${lastNotification?.id === risk.id ? "border-blue-500/50 bg-blue-500/10" : "border-gray-800"}`}>
+                        <div className="flex items-start gap-3">
+                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${getSeverityColorClasses(risk.severity).bg}`}>
+                            {getCategoryIcon(risk.category)}
                           </div>
-                          <h4 className="font-semibold text-white text-base mt-1">{risk.title}</h4>
-                          <p className="text-sm text-gray-400 mt-0.5">{risk.description}</p>
-                          <Button size="sm" variant="outline" className="mt-3 h-8 text-sm border-gray-700 text-gray-400 hover:bg-gray-800">{risk.action}</Button>
+                          <div className="flex-1">
+                            <div className="flex items-center justify-between flex-wrap gap-2">
+                              <div className="flex items-center gap-2">
+                                <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${getSeverityColorClasses(risk.severity).bg} ${getSeverityColorClasses(risk.severity).text}`}>{getSeverityLabel(risk.severity, language)}</span>
+                                <span className="text-xs text-gray-500">{risk.time}</span>
+                              </div>
+                              {/* FIX: увеличенная тап-зона крестика удаления риска (p-2 -m-2) */}
+                              <button onClick={() => removeRisk(risk.id)} className="text-gray-500 hover:text-white/60 p-2 -m-2"><X className="w-3.5 h-3.5" /></button>
+                            </div>
+                            <h4 className="font-semibold text-white text-base mt-1">{risk.title}</h4>
+                            <p className="text-sm text-gray-400 mt-0.5">{risk.description}</p>
+                            <Button size="sm" variant="outline" className="mt-3 h-8 text-sm border-gray-700 text-gray-400 hover:bg-gray-800">{risk.action}</Button>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
-                  {risks.length === 0 && (
-                    <div className="text-center py-12 text-gray-500">
-                      <CheckCircle className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                      <p className="text-base">{T.demoNoActiveRisks || "No active risks. All systems normal."}</p>
-                    </div>
-                  )}
-                  {risks.length > 0 && filteredRisks.length === 0 && (
-                    <div className="text-center py-12 text-gray-500">
-                      <Filter className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                      <p className="text-base">
-                        {language === "UA" ? "Немає ризиків за обраним фільтром." : language === "DE" ? "Keine Risiken für den gewählten Filter." : "No risks match the selected filter."}
-                      </p>
-                      <button onClick={() => setRiskCategoryFilter([])} className="text-sm text-blue-400 hover:text-blue-300 mt-2">
-                        {language === "UA" ? "Скинути фільтр" : language === "DE" ? "Filter zurücksetzen" : "Reset filter"}
-                      </button>
-                    </div>
-                  )}
-                </div>
+                    ))}
+                    {risks.length === 0 && (
+                      <div className="text-center py-12 text-gray-500">
+                        <CheckCircle className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                        <p className="text-base">{T.demoNoActiveRisks || "No active risks. All systems normal."}</p>
+                      </div>
+                    )}
+                    {risks.length > 0 && filteredRisks.length === 0 && (
+                      <div className="text-center py-12 text-gray-500">
+                        <Filter className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                        <p className="text-base">
+                          {language === "UA" ? "Немає ризиків за обраним фільтром." : language === "DE" ? "Keine Risiken für den gewählten Filter." : "No risks match the selected filter."}
+                        </p>
+                        <button onClick={() => setRiskCategoryFilter([])} className="text-sm text-blue-400 hover:text-blue-300 mt-2">
+                          {language === "UA" ? "Скинути фільтр" : language === "DE" ? "Filter zurücksetzen" : "Reset filter"}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {risksView === "history" && (
+                  <div className="space-y-3">
+                    {filteredResolvedRisks.map((risk) => (
+                      <div key={risk.id} className="bg-gray-900/30 rounded-xl p-4 border border-gray-800 opacity-80">
+                        <div className="flex items-start gap-3">
+                          <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-green-500/10">
+                            <CheckCircle className="w-5 h-5 text-green-500/70" />
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-green-500/10 text-green-500/80">
+                                {language === "UA" ? "Вирішено" : language === "DE" ? "Gelöst" : "Resolved"}
+                              </span>
+                              <span className="text-xs text-gray-500">{risk.time}</span>
+                            </div>
+                            <h4 className="font-semibold text-gray-300 text-base">{risk.title}</h4>
+                            <p className="text-sm text-gray-500 mt-0.5">{risk.description}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {resolvedRisks.length === 0 && (
+                      <div className="text-center py-12 text-gray-500">
+                        <CheckCircle className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                        <p className="text-base">
+                          {language === "UA" ? "Історія поки порожня." : language === "DE" ? "Der Verlauf ist noch leer." : "History is empty so far."}
+                        </p>
+                      </div>
+                    )}
+                    {resolvedRisks.length > 0 && filteredResolvedRisks.length === 0 && (
+                      <div className="text-center py-12 text-gray-500">
+                        <Filter className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                        <p className="text-base">
+                          {language === "UA" ? "Немає записів за обраним фільтром." : language === "DE" ? "Keine Einträge für den gewählten Filter." : "No entries match the selected filter."}
+                        </p>
+                        <button onClick={() => setRiskCategoryFilter([])} className="text-sm text-blue-400 hover:text-blue-300 mt-2">
+                          {language === "UA" ? "Скинути фільтр" : language === "DE" ? "Filter zurücksetzen" : "Reset filter"}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
             
             {/* Forecast View */}
             {activeView === "forecast" && (
               <div className="space-y-4">
-                <div>
-                  <h2 className="text-2xl font-bold text-white">{T.demoCashflowForecast || "Cashflow Forecast"}</h2>
-                  <p className="text-sm text-gray-500 mt-1">{T.demoAiPredictions || "AI-powered 90-day predictions"}</p>
-                </div>
-
                 {/* 1. Метрики */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="bg-gradient-to-br from-blue-500/10 to-transparent rounded-xl p-5 border border-blue-500/20">
@@ -1518,11 +1829,6 @@ const [googleAdsExtraValues, setGoogleAdsExtraValues] = useState<Record<string, 
             {/* Integrations View — приведено к виду реального ЛК (карточка Stripe + "coming soon") */}
             {activeView === "integrations" && (
               <div className="space-y-4">
-                <div>
-                  <h2 className="text-2xl font-bold text-white">{T.demoIntegrations || "Integrations"}</h2>
-                  <p className="text-sm text-gray-500 mt-1">{T.demoConnectedSources || "Connected data sources"}</p>
-                </div>
-
                 <div className="space-y-4">
                   {/* Карточка подключения Stripe */}
                   <div className="bg-gray-900/40 rounded-xl p-5 border border-gray-800">
