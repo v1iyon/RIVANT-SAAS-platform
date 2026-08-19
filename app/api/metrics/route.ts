@@ -10,6 +10,13 @@ const admin = createClient(
   process.env.SUPABASE_SERVICE_KEY!
 );
 
+// Джерела виручки — тримати синхронно з lib REVENUE_SOURCE_PROVIDERS у
+// app/api/integrations-select/route.js (той самий список, дубльований тут
+// навмисно: цей файл — .ts у app/api, той — .js, спільний lib-модуль під
+// обидва раніше не заводили; якщо додасте нове джерело виручки — онови
+// в обох місцях).
+const REVENUE_SOURCE_PROVIDERS = ["stripe", "shopify"];
+
 // Сколько дней истории отдаём по тарифу — держим синхронно с текстом на
 // лендинге ("Зберігання історії за 30/90 днів", "Необмежена історія").
 // Единственное место в коде, где это должно быть определено — раньше было
@@ -40,17 +47,23 @@ export async function GET(req: Request) {
   const businessId = await getPrimaryBusinessId(admin, appUser.id);
   if (!businessId) return Response.json({ hasData: false, rows: [] });
 
-  // Если Stripe отключён — данные не показываем вообще, даже если они
-  // остались в metrics_computed с прошлого раза. Отключение интеграции
-  // должно визуально откатывать дашборд к "как будто не подключали".
-  const { data: stripeIntegration } = await admin
+  // ВАЖЛИВО (фікс під нову тарифну логіку): раніше тут перевірявся ЛИШЕ
+  // Stripe — клієнт, який обрав Shopify єдиним джерелом виручки (Starter/
+  // Growth тепер дозволяють це, див. integrations-select/route.js), назавжди
+  // бачив порожній дашборд навіть після успішного синку: дані вже лежали
+  // в metrics_computed (їх пише upsertShopifyRevenue у shopify-sync.mjs),
+  // просто цей ґейт про них не знав. Тепер дашборд показує дані, якщо
+  // ПІДКЛЮЧЕНЕ будь-яке джерело виручки — Stripe, Shopify, або обидва.
+  // Якщо джерело відключають — дашборд відкочується до "як ніби не
+  // підключали" тільки тоді, коли відключені ВСІ джерела виручки разом.
+  const { data: revenueIntegrations } = await admin
     .from("integrations")
-    .select("status")
+    .select("provider, status")
     .eq("business_id", businessId)
-    .eq("provider", "stripe")
-    .maybeSingle();
+    .in("provider", REVENUE_SOURCE_PROVIDERS)
+    .eq("status", "connected");
 
-  if (!stripeIntegration || stripeIntegration.status !== "connected") {
+  if (!revenueIntegrations || revenueIntegrations.length === 0) {
     return Response.json({ hasData: false, rows: [] });
   }
 

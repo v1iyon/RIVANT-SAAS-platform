@@ -1,3 +1,4 @@
+// app/api/connect-stripe/route.js
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 import { requireUser, UnauthorizedError } from "@/lib/require-user";
@@ -8,6 +9,14 @@ const admin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_KEY
 );
+
+// Плани, які отримують усі провайдери без явного вибору слоту (Scale
+// платить саме за "усі інтеграції одразу", Trial має реально дати
+// спробувати все — інакше плашка "усі інтеграції безкоштовно" на лендингу
+// була б неправдою). Для решти планів (starter/growth) провайдер повинен
+// бути в integrations_selected — це і є той самий слот, який клієнт обрав
+// через /api/integrations-select.
+const UNLIMITED_PLANS = ["scale", "trial"];
 
 function getKey() {
   return crypto.createHash("sha256").update(process.env.ENCRYPTION_KEY || "").digest();
@@ -44,14 +53,6 @@ export async function POST(req) {
       );
     }
 
-    const isValid = await verifyStripeKey(apiKey);
-    if (!isValid) {
-      return Response.json(
-        { error: "Stripe rejected this key. Check it has 'Charges: Read' permission and is not expired." },
-        { status: 400 }
-      );
-    }
-
     const { data: user } = await admin
       .from("users")
       .select("id")
@@ -60,6 +61,47 @@ export async function POST(req) {
 
     if (!user) {
       return Response.json({ error: "Account not found" }, { status: 404 });
+    }
+
+    // ВАЖЛИВО (фікс під нову тарифну логіку — Stripe і Shopify тепер
+    // рівноправні джерела виручки, кожне займає слот інтеграції): раніше
+    // тут не було жодної перевірки плану/слотів — Stripe підключався
+    // будь-кому з бізнес-профілем незалежно від тарифу чи вибору,
+    // зробленого через /api/integrations-select. Клієнт на Starter, який
+    // обрав Shopify єдиним джерелом виручки, міг би все одно підключити
+    // Stripe в обхід вибраного слота (наприклад, прямим запитом до цього
+    // ендпоінта, минаючи UI). Тепер для планів з обмеженою кількістю
+    // слотів (starter/growth) Stripe можна підключити, тільки якщо він є
+    // в integrations_selected — тобто клієнт свідомо обрав саме цей слот.
+    const { data: sub } = await admin
+      .from("subscriptions")
+      .select("plan, integrations_selected")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (!sub) {
+      return Response.json({ error: "No active subscription" }, { status: 403 });
+    }
+
+    if (!UNLIMITED_PLANS.includes(sub.plan)) {
+      const selected = sub.integrations_selected || [];
+      if (!selected.includes("stripe")) {
+        return Response.json(
+          {
+            error: "stripe_not_selected",
+            message: "Оберіть Stripe як джерело виручки в налаштуваннях інтеграцій перед підключенням",
+          },
+          { status: 403 }
+        );
+      }
+    }
+
+    const isValid = await verifyStripeKey(apiKey);
+    if (!isValid) {
+      return Response.json(
+        { error: "Stripe rejected this key. Check it has 'Charges: Read' permission and is not expired." },
+        { status: 400 }
+      );
     }
 
     const { data: business } = await admin
