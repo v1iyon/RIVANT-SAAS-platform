@@ -142,7 +142,22 @@ export async function runDailyReports() {
       // і надіслав звіт одразу, якщо проблема з'явиться пізніше у вікні.
       if (business.digest_frequency === "problems_only" && count === 0) continue;
 
-      await sendDailyReport(business.id, business.name, contact, kind, { revenue, marginPct, count });
+      const { delivered } = await sendDailyReport(business.id, business.name, contact, kind, { revenue, marginPct, count });
+
+      // ВАЖНО (фикс "уведомления не приходят вообще"): дедуп-запись
+      // "звіт вже надіслано сьогодні" пишем ТОЛЬКО если sendDailyReport
+      // реально доставил сообщение хотя бы по одному каналу. Раньше
+      // запись писалась безусловно — если Telegram/email API отвечал
+      // ошибкой (заблокированный бот, протухший BOT_TOKEN и т.п.),
+      // дедуп всё равно фиксировал "отправлено", и следующий часовой
+      // прогон в том же окне (8-11 / 20-23) уже не пытался повторить —
+      // отчёт за день пропадал молча и навсегда. Теперь при неудачной
+      // доставке дедуп НЕ пишется, и следующий прогон в пределах того же
+      // окна попробует снова.
+      if (!delivered) {
+        console.error(`daily-reports: ${kind} report for business ${business.id} not delivered — will retry next hourly run within window`);
+        continue;
+      }
 
       await admin.from("alerts_log").insert({
         business_id: business.id,
