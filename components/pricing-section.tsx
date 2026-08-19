@@ -32,17 +32,17 @@ export function PricingSection() {
   const supabase = createClient();
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
 
+  // Keys here must match public.plans.id exactly — that's what gets sent
+  // to create-order, which looks up the real price server-side.
   const planKeyMap: Record<string, string> = {
     [T.starter ?? "Starter"]: "starter",
     [T.growth ?? "Growth"]: "growth",
     [T.scale ?? "Scale"]: "scale",
   };
 
- const [cryptoOrder, setCryptoOrder] = useState<any>(null);
+  const [cryptoOrder, setCryptoOrder] = useState<any>(null);
 
-const planPrices: Record<string, number> = { starter: 99, growth: 299, scale: 499 };
-
-const handleGetStarted = async (planName: string) => {
+  const handleGetStarted = async (planName: string) => {
     const { data } = await supabase.auth.getSession();
     if (!data.session) {
       window.dispatchEvent(new CustomEvent("rivant:open-signup"));
@@ -51,9 +51,7 @@ const handleGetStarted = async (planName: string) => {
     const planKey = planKeyMap[planName];
     setLoadingPlan(planKey);
     try {
-      const order = await createCryptoOrder({
-  baseAmountCents: planPrices[planKey] * 100,
-});
+      const order = await createCryptoOrder({ planId: planKey });
       setCryptoOrder(order);
     } catch (e) {
       console.error("crypto checkout error:", e);
@@ -61,7 +59,7 @@ const handleGetStarted = async (planName: string) => {
     } finally {
       setLoadingPlan(null);
     }
-};
+  };
 
   const plans: Plan[] = [
     {
@@ -106,12 +104,12 @@ const handleGetStarted = async (planName: string) => {
       const result = await res.json();
 
       if (result.mode === "redirect") {
-        window.location.href = result.url; // напр. business_setup -> calendar booking
+        window.location.href = result.url; // e.g. business_setup -> calendar booking
       } else if (result.mode === "checkout") {
         await loadPaddle();
         openPaddleCheckout({ priceId: result.priceId, email: data.session.user.email!, plan: serviceType });
       } else {
-        // lead_captured — оплата ще не підключена, заявку вже надіслано тобі в Telegram
+        // lead_captured — payment not wired up yet, request already sent to you via Telegram
         window.location.href = "/dashboard?order=received";
       }
     } catch (e) {
@@ -122,10 +120,10 @@ const handleGetStarted = async (planName: string) => {
     }
   };
 
-  // "Налаштування бізнесу" замінено на автоматизовану What-If послугу, а
-  // "Квартальний аудит" — на дешевший щомісячний дайджест того ж движка
-  // (обидва повністю автоматичні, без участі людини). "Сповіщення для
-  // команди" лишається, тепер реально підключене до /api/team/invite.
+  // "Business setup" was replaced with an automated What-If service, and
+  // "Quarterly audit" with a cheaper monthly digest from the same engine
+  // (both fully automated, no human involved). "Team alerts" stays, and is
+  // now actually wired to /api/team/invite.
   const addons = [
     { icon: FileText, key: "whatif_analysis", name: T.whatifAnalysis ?? "AI Historical Analysis", price: 199, priceType: T.oneTime ?? "One-time", description: T.whatifAnalysisDesc ?? "Automated analysis of your last 12 months of data" },
     { icon: Zap, key: "monthly_digest", name: T.monthlyDigest ?? "AI Performance Digest", price: 49, priceType: T.perMonth ?? "Per month", description: T.monthlyDigestDesc ?? "Automated monthly snapshot of your key metrics" },
@@ -166,16 +164,6 @@ const handleGetStarted = async (planName: string) => {
               <div className="mb-6 text-4xl font-bold text-white">
                 {formatPrice(plan.price)}<span className="text-sm text-muted-foreground font-normal">{t.perMonth}</span>
               </div>
-              {/* flex-1 висить лише на списку фіч — саме тут "з'їдається" вся зайва
-                  висота картки, а не під приміткою Growth. Завдяки цьому кнопка
-                  лишається на одній лінії у всіх 3 картках (як і раніше), але
-                  примітка тепер стоїть впритул до кнопки, а не з великим розривом. */}
-              {/* flex-1 тепер на порожньому "спейсері" після списку фіч, а не на
-                  самому списку — завдяки flex items-center текст Growth стає
-                  рівно по центру між останньою фічею і кнопкою, з відступом
-                  зверху й знизу, а не впритул до фічі. На інших картках цей
-                  спейсер просто порожній, але так само розсуває картку до
-                  кнопки на одній лінії, як і раніше. */}
               <div className="mb-2">
                 <ul className="space-y-4">
                   {plan.features.map((f, i) => (

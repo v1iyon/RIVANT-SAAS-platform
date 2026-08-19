@@ -1,25 +1,28 @@
 "use client";
 
-// Вызывает Edge Function create-order и возвращает данные для окна оплаты.
-// user_id больше не передаётся вручную — функция сама определяет пользователя
-// по токену сессии (Authorization: Bearer <access_token>).
+// Calls the create-order Edge Function and returns data for the payment
+// window. The user is resolved server-side from the session token
+// (Authorization: Bearer <access_token>) — never passed manually.
+//
+// The price is looked up server-side from public.plans by plan_id — the
+// client only ever sends which plan was picked, never an amount.
 
 import { createClient } from "@/lib/supabase-browser";
 
 export interface CryptoOrder {
   order_id: string;
-  amount_to_send: string; // например "99.42"
-  token: string;          // "USDC"
-  chain: string;          // "polygon"
+  amount_to_send: string; // e.g. "99.42"
+  token: string; // "USDC"
+  chain: string; // "polygon"
   receiving_wallet: string;
   expires_at: string;
 }
 
 export async function createCryptoOrder({
-  baseAmountCents,
+  planId,
   token = "USDC",
 }: {
-  baseAmountCents: number;
+  planId: string;
   token?: string;
 }): Promise<CryptoOrder> {
   const supabase = createClient();
@@ -29,7 +32,7 @@ export async function createCryptoOrder({
   } = await supabase.auth.getSession();
 
   if (!session) {
-    throw new Error("Вы не авторизованы");
+    throw new Error("not_authenticated");
   }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -41,14 +44,14 @@ export async function createCryptoOrder({
       Authorization: `Bearer ${session.access_token}`,
     },
     body: JSON.stringify({
-      base_amount_cents: baseAmountCents,
+      plan_id: planId,
       token,
     }),
   });
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || "Не удалось создать заказ на оплату");
+    throw new Error(err.error || "order_creation_failed");
   }
 
   return res.json();
