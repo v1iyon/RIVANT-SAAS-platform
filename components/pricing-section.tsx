@@ -34,10 +34,12 @@ export function PricingSection() {
 
   // Keys here must match public.plans.id exactly — that's what gets sent
   // to create-order, which looks up the real price server-side.
+  // Must match public.plans.id exactly ("premium", not "scale" — the
+  // display label is "Scale" but the DB row's id is "premium").
   const planKeyMap: Record<string, string> = {
     [T.starter ?? "Starter"]: "starter",
     [T.growth ?? "Growth"]: "growth",
-    [T.scale ?? "Scale"]: "scale",
+    [T.scale ?? "Scale"]: "premium",
   };
 
   const [cryptoOrder, setCryptoOrder] = useState<any>(null);
