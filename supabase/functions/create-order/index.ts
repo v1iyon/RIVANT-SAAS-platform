@@ -1,115 +1,154 @@
 // supabase/functions/create-order/index.ts
 //
-// Client sends ONLY { plan: "growth" }. The server:
-//   1. Looks up the real price from the `plans` table (never trusts the client)
-//   2. Picks a free cents_offset (1-99) so exact_amount_cents is unique among
-//      pending orders — this is how polygon-webhook later disambiguates which
-//      order a given on-chain transfer is paying for.
-//   3. Writes the order with service_role, bypassing RLS by design.
+// Вызывается фронтендом при открытии окна оплаты.
+// Атомарно резервирует уникальную "сумму с хвостом центов",
+// чтобы два параллельных покупателя одного и того же тарифа
+// никогда не получили одинаковую exact_amount_cents, пока их заказы pending.
 
-import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const PAY_TO_ADDRESS = Deno.env.get("POLYGON_PAY_TO_ADDRESS")!; // your receiving wallet
+const RECEIVING_WALLET = Deno.env.get("POLYGON_RECEIVING_WALLET")!; // один общий адрес
 const ORDER_TTL_MINUTES = 30;
 const MAX_OFFSET_ATTEMPTS = 25;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*", // tighten to your domain in production
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
+
+Deno.serve(async (req) => {
+  // Браузер перед настоящим запросом сначала посылает "разведочный"
+  // OPTIONS-запрос — ему нужно ответить пустым 200 с CORS-заголовками.
+  if (req.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: CORS_HEADERS });
+  }
+
+  if (req.method !== "POST") {
+    return new Response("Method not allowed", { status: 405, headers: CORS_HEADERS });
+  }
+
+  try {
+    // --- Резолвим пользователя из JWT, а не доверяем телу запроса ---
+    const authHeader = req.headers.get("authorization") ?? "";
+    const jwt = authHeader.replace(/^Bearer\s+/i, "");
+
+    if (!jwt) {
+      return json({ error: "Требуется авторизация" }, 401);
+    }
+
+    // anon-клиент нужен именно для валидации токена пользователя,
+    // а не service role — так мы проверяем, что токен реально валиден.
+    const authClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: authHeader } },
+    });
+
+    const { data: authData, error: authError } = await authClient.auth.getUser(jwt);
+    if (authError || !authData?.user) {
+      return json({ error: "Невалидная сессия" }, 401);
+    }
+
+    const authUser = authData.user;
+
+    const { base_amount_cents, token = "USDC" } = await req.json();
+
+    if (!Number.isInteger(base_amount_cents) || base_amount_cents <= 0) {
+      return json({ error: "base_amount_cents (int, в центах) обязателен" }, 400);
+    }
+
+  const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+
+    // Находим соответствующую запись в public.users по auth_user_id.
+    // Если её ещё нет (гонка с триггером при только что созданном аккаунте) —
+    // пробуем найти по email как запасной вариант.
+    let { data: profile, error: profileError } = await supabase
+      .from("users")
+      .select("id")
+      .eq("auth_user_id", authUser.id)
+      .maybeSingle();
+
+    if (!profile && authUser.email) {
+      const fallback = await supabase
+        .from("users")
+        .select("id")
+        .eq("email", authUser.email)
+        .maybeSingle();
+      profile = fallback.data;
+      profileError = fallback.error;
+    }
+
+    if (profileError) throw profileError;
+
+    if (!profile) {
+      return json(
+        { error: "Профиль пользователя ещё не создан, попробуйте через несколько секунд" },
+        409,
+      );
+    }
+
+    const user_id = profile.id;
+
+    // Пытаемся найти свободный "хвост" центов 0..99.
+    // Коллизии по exact_amount_cents исключены уникальным индексом
+    // orders_pending_amount_unique — просто ретраим на конфликте.
+    let lastError: unknown = null;
+
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      const centsOffset = Math.floor(Math.random() * 100); // 0..99
+
+      const { data, error } = await supabase
+        .from("orders")
+        .insert({
+          user_id,
+          base_amount_cents,
+          cents_offset: centsOffset,
+          token,
+          chain: "polygon",
+          receiving_wallet: RECEIVING_WALLET,
+          status: "pending",
+          expires_at: new Date(Date.now() + ORDER_TTL_MINUTES * 60_000).toISOString(),
+        })
+        .select("id, exact_amount_cents, receiving_wallet, token, chain, expires_at")
+        .single();
+
+      if (!error) {
+        return json({
+          order_id: data.id,
+          // Сумму, которую должен отправить пользователь, отдаём в decimal-виде
+          // только на этом последнем шаге форматирования — вся логика внутри в центах.
+          amount_to_send: (data.exact_amount_cents / 100).toFixed(2),
+          token: data.token,
+          chain: data.chain,
+          receiving_wallet: data.receiving_wallet,
+          expires_at: data.expires_at,
+        });
+      }
+
+      // 23505 = unique_violation -> кто-то уже занял этот "хвост", пробуем другой
+      if ((error as { code?: string }).code === "23505") {
+        lastError = error;
+        continue;
+      }
+
+      throw error;
+    }
+
+    console.error("create-order: exhausted attempts", lastError);
+    return json(
+      { error: "Не удалось выделить уникальную сумму, попробуйте ещё раз через минуту" },
+      503,
+    );
+  } catch (err) {
+    console.error("create-order error", err);
+    return json({ error: "internal_error" }, 500);
+  }
+});
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...CORS_HEADERS },
   });
 }
-
-serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
-  if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
-
-  // Authenticate the caller using their own JWT (not service role) so we
-  // know exactly which user this order belongs to.
-  const authHeader = req.headers.get("Authorization");
-  if (!authHeader) return json({ error: "missing_authorization" }, 401);
-
-  const userClient = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!, {
-    global: { headers: { Authorization: authHeader } },
-  });
-  const { data: userData, error: userErr } = await userClient.auth.getUser();
-  if (userErr || !userData?.user) return json({ error: "invalid_session" }, 401);
-  const userId = userData.user.id;
-
-  // Parse body — the ONLY thing we trust from the client is the plan id.
-  let body: { plan?: string };
-  try {
-    body = await req.json();
-  } catch {
-    return json({ error: "invalid_json" }, 400);
-  }
-  const planId = body.plan;
-  if (!planId || typeof planId !== "string") {
-    return json({ error: "missing_plan" }, 400);
-  }
-
-  const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
-
-  // 1. Server-side price lookup — never derived from client input.
-  const { data: plan, error: planErr } = await admin
-    .from("plans")
-    .select("id, base_amount_cents, is_active")
-    .eq("id", planId)
-    .eq("is_active", true)
-    .single();
-
-  if (planErr || !plan) return json({ error: "unknown_plan" }, 400);
-
-  const baseAmountCents = plan.base_amount_cents;
-
-  // 2. Find a free cents_offset among currently-pending orders.
-  //    Retry on unique-constraint collision instead of pre-reading pending
-  //    offsets, to avoid a race between two checkouts picking the same one.
-  const expiresAt = new Date(Date.now() + ORDER_TTL_MINUTES * 60_000).toISOString();
-
-  for (let attempt = 0; attempt < MAX_OFFSET_ATTEMPTS; attempt++) {
-    const centsOffset = 1 + Math.floor(Math.random() * 99); // 1..99
-    const exactAmountCents = baseAmountCents + centsOffset;
-    const exactAmountUsdc = (exactAmountCents / 100).toFixed(6);
-
-    const { data: order, error: insertErr } = await admin
-      .from("orders")
-      .insert({
-        user_id: userId,
-        plan_id: plan.id,
-        base_amount_cents: baseAmountCents,
-        cents_offset: centsOffset,
-        exact_amount_cents: exactAmountCents,
-        exact_amount_usdc: exactAmountUsdc,
-        pay_to_address: PAY_TO_ADDRESS,
-        chain: "polygon",
-        token: "USDC",
-        status: "pending",
-        expires_at: expiresAt,
-      })
-      .select("id, exact_amount_usdc, pay_to_address, chain, token, expires_at")
-      .single();
-
-    if (!insertErr) {
-      return json({ order }, 201);
-    }
-
-    // 23505 = unique_violation on orders_pending_amount_unique -> retry
-    if (insertErr.code !== "23505") {
-      console.error("create-order insert failed", insertErr);
-      return json({ error: "order_creation_failed" }, 500);
-    }
-  }
-
-  // Extremely unlikely with 99 slots per plan, but fail loudly rather than
-  // silently degrading pricing integrity.
-  return json({ error: "no_offset_available_try_again" }, 503);
-});
