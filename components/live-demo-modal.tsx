@@ -10,7 +10,7 @@ import {
   LayoutDashboard, AlertTriangle, TrendingUp, Link2, 
   Bell, X, AlertCircle, ArrowUpRight, ArrowDownRight, Trash2,
   TrendingDown, DollarSign, BarChart3, Zap, Package, CreditCard, Truck, Users, Activity,
-  CheckCircle, Wifi, WifiOff, Settings, Link, ChevronLeft, ChevronRight
+  CheckCircle, Wifi, WifiOff, Settings, Link, ChevronLeft, ChevronRight, Filter
 } from "lucide-react";
 
 interface LiveDemoModalProps {
@@ -54,6 +54,20 @@ const INITIAL_INTEGRATIONS: Integration[] = [
   { id: "meta", name: "Meta Ads", icon: "📱", status: "connected", lastSync: "5 min ago", lastSyncTime: new Date() },
   { id: "google", name: "Google Ads", icon: "🔍", status: "connected", lastSync: "12 min ago", lastSyncTime: new Date() },
   { id: "klaviyo", name: "Klaviyo", icon: "✉️", status: "setup_required", lastSync: "Not connected", lastSyncTime: new Date(0) },
+];
+
+// Категорії для фільтра-воронки на вкладці "Ризики" — той самий принцип, що
+// й у реальному кабінеті (RISK_CATEGORIES в app/dashboard/page.tsx), тільки
+// без localStorage: демо-фільтр скидається при закритті модалки.
+const RISK_CATEGORIES: { id: Risk["category"]; label: Record<string, string> }[] = [
+  { id: "finance", label: { UA: "Виручка", EN: "Revenue", DE: "Umsatz" } },
+  { id: "margin", label: { UA: "Маржа", EN: "Margin", DE: "Marge" } },
+  { id: "ads", label: { UA: "Реклама", EN: "Ads", DE: "Werbung" } },
+  { id: "cac", label: { UA: "CAC", EN: "CAC", DE: "CAC" } },
+  { id: "conversion", label: { UA: "Конверсія", EN: "Conversion", DE: "Konversion" } },
+  { id: "inventory", label: { UA: "Товар", EN: "Product", DE: "Produkt" } },
+  { id: "shipping", label: { UA: "Доставка", EN: "Shipping", DE: "Versand" } },
+  { id: "integration", label: { UA: "Синхронізація", EN: "Sync", DE: "Sync" } },
 ];
 
 // Названия месяцев для перевода
@@ -883,6 +897,39 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
   const lastTemplateTypeRef = useRef<Risk["alertType"] | null>(null);
   const lastAlertIntegrationRef = useRef<string | null>(null);
   const hasInitializedRisksRef = useRef(false);
+
+  // Фільтр-воронка по категоріях, як у реальному кабінеті. На відміну від
+  // dashboard/page.tsx — тут НЕ зберігаємо вибір у localStorage: це демо,
+  // при повторному відкритті фільтр повинен скидатись.
+  const [riskCategoryFilter, setRiskCategoryFilter] = useState<Risk["category"][]>([]);
+  const [riskFilterOpen, setRiskFilterOpen] = useState(false);
+  const riskFilterRef = useRef<HTMLDivElement | null>(null);
+  const riskFilterTouchStartYRef = useRef<number | null>(null);
+
+  const toggleRiskCategory = (cat: Risk["category"]) => {
+    setRiskCategoryFilter((prev) => (prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]));
+  };
+
+  useEffect(() => {
+    if (!riskFilterOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (riskFilterRef.current && !riskFilterRef.current.contains(e.target as Node)) {
+        setRiskFilterOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [riskFilterOpen]);
+
+  // Скидаємо фільтр при закритті демо, щоб наступне відкриття завжди
+  // починалось "з чистого аркуша" (те, що в кабінеті робить localStorage,
+  // тут робить сам факт закриття модалки).
+  useEffect(() => {
+    if (!isOpen) {
+      setRiskCategoryFilter([]);
+      setRiskFilterOpen(false);
+    }
+  }, [isOpen]);
   
   const [integrations, setIntegrations] = useState<Integration[]>(INITIAL_INTEGRATIONS);
   const integrationsRef = useRef(integrations);
@@ -1116,6 +1163,12 @@ const [googleAdsExtraValues, setGoogleAdsExtraValues] = useState<Record<string, 
   const cacChange = ((currentCac - prevCac) / prevCac * 100).toFixed(1);
   const cacMetaChange = ((currentCacMeta - prevCacMeta) / prevCacMeta * 100).toFixed(1);
   const cacGoogleChange = ((currentCacGoogle - prevCacGoogle) / prevCacGoogle * 100).toFixed(1);
+
+  // Фільтруємо ризики за обраними категоріями — порожній масив = показуємо всі,
+  // той самий принцип, що й у app/dashboard/page.tsx.
+  const filteredRisks = risks.filter(
+    (risk) => riskCategoryFilter.length === 0 || riskCategoryFilter.includes(risk.category)
+  );
   
   const sidebarItems = [
     { icon: LayoutDashboard, label: T.demoOverview || "Dashboard Overview", shortLabel: T.overview || "Overview", view: "overview" as ViewType },
@@ -1257,18 +1310,91 @@ const [googleAdsExtraValues, setGoogleAdsExtraValues] = useState<Record<string, 
             {/* Risks View */}
             {activeView === "risks" && (
               <div className="space-y-4">
-                <div className="flex justify-between items-center">
+                <div className="flex flex-wrap justify-between items-center gap-3">
                   <div>
                     <h2 className="text-2xl font-bold text-white">{T.demoRiskDetection || "Risk Detection"}</h2>
                     <p className="text-sm text-gray-500 mt-1">{T.demoAiRisks || "AI-identified operational risks"}</p>
                   </div>
-                  <div className="flex gap-2">
-                    <span className="text-sm text-blue-400 bg-blue-500/20 px-4 py-1.5 rounded-full font-semibold">{risks.length} {T.demoActiveRisks || "Active Risks"}</span>
-                    {risks.length > 0 && <button onClick={clearAllRisks} className="text-gray-500 hover:text-white/80 px-2"><Trash2 className="w-4 h-4" /></button>}
+                  <div className="flex items-center gap-2">
+                    <div className="relative" ref={riskFilterRef}>
+                      <button
+                        onClick={() => setRiskFilterOpen((v) => !v)}
+                        title={language === "UA" ? "Фільтр" : language === "DE" ? "Filter" : "Filter"}
+                        className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${
+                          riskCategoryFilter.length > 0
+                            ? "border-blue-500/40 text-blue-300 bg-blue-500/10"
+                            : "border-gray-800 text-gray-500 hover:text-gray-300 hover:bg-gray-800"
+                        }`}
+                      >
+                        <Filter className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">{language === "UA" ? "Фільтр" : language === "DE" ? "Filter" : "Filter"}</span>
+                        {riskCategoryFilter.length > 0 && (
+                          <span className="ml-0.5 bg-blue-500/30 rounded-full px-1.5 text-[10px]">{riskCategoryFilter.length}</span>
+                        )}
+                      </button>
+
+                      {riskFilterOpen && (
+                        <div
+                          className="absolute right-0 mt-2 w-56 bg-gray-900 border border-gray-800 rounded-xl shadow-xl z-20 p-2 touch-pan-y"
+                          onTouchStart={(e) => {
+                            riskFilterTouchStartYRef.current = e.touches[0].clientY;
+                          }}
+                          onTouchEnd={(e) => {
+                            const startY = riskFilterTouchStartYRef.current;
+                            if (startY == null) return;
+                            const deltaY = e.changedTouches[0].clientY - startY;
+                            if (deltaY > 40) setRiskFilterOpen(false);
+                            riskFilterTouchStartYRef.current = null;
+                          }}
+                        >
+                          <div className="sm:hidden w-9 h-1 rounded-full bg-gray-700 mx-auto mb-2" />
+                          <div className="flex items-center justify-between px-2 py-1 mb-1">
+                            <span className="text-xs font-semibold text-gray-400">
+                              {language === "UA" ? "Показувати сповіщення про" : language === "DE" ? "Benachrichtigungen anzeigen für" : "Show notifications for"}
+                            </span>
+                            {riskCategoryFilter.length > 0 && (
+                              <button
+                                onClick={() => setRiskCategoryFilter([])}
+                                className="text-[11px] text-gray-500 hover:text-red-400"
+                              >
+                                {language === "UA" ? "Скинути" : language === "DE" ? "Zurücksetzen" : "Reset"}
+                              </button>
+                            )}
+                          </div>
+                          {RISK_CATEGORIES.map((cat) => {
+                            const checked = riskCategoryFilter.includes(cat.id);
+                            return (
+                              <label
+                                key={cat.id}
+                                className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-800 cursor-pointer text-sm text-gray-300"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => toggleRiskCategory(cat.id)}
+                                  className="rounded border-gray-700 bg-gray-800 text-blue-600 focus:ring-0 focus:ring-offset-0"
+                                />
+                                <span className="text-gray-500">{getCategoryIcon(cat.id)}</span>
+                                {cat.label[language] || cat.label.EN}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    <span className="text-sm text-blue-400 bg-blue-500/20 px-4 py-1.5 rounded-full font-semibold">
+                      {filteredRisks.length} {T.demoActiveRisks || "Active Risks"}
+                    </span>
+                    {risks.length > 0 && (
+                      <button onClick={clearAllRisks} className="text-gray-500 hover:text-white/80 px-2">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
                 </div>
                 <div className="space-y-3">
-                  {risks.map((risk) => (
+                  {filteredRisks.map((risk) => (
                     <div key={risk.id} className={`bg-gray-900/50 rounded-xl p-4 border transition-all ${lastNotification?.id === risk.id ? "border-blue-500/50 bg-blue-500/10" : "border-gray-800"}`}>
                       <div className="flex items-start gap-3">
                         <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${getSeverityColorClasses(risk.severity).bg}`}>
@@ -1294,6 +1420,17 @@ const [googleAdsExtraValues, setGoogleAdsExtraValues] = useState<Record<string, 
                     <div className="text-center py-12 text-gray-500">
                       <CheckCircle className="w-12 h-12 mx-auto mb-3 opacity-30" />
                       <p className="text-base">{T.demoNoActiveRisks || "No active risks. All systems normal."}</p>
+                    </div>
+                  )}
+                  {risks.length > 0 && filteredRisks.length === 0 && (
+                    <div className="text-center py-12 text-gray-500">
+                      <Filter className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                      <p className="text-base">
+                        {language === "UA" ? "Немає ризиків за обраним фільтром." : language === "DE" ? "Keine Risiken für den gewählten Filter." : "No risks match the selected filter."}
+                      </p>
+                      <button onClick={() => setRiskCategoryFilter([])} className="text-sm text-blue-400 hover:text-blue-300 mt-2">
+                        {language === "UA" ? "Скинути фільтр" : language === "DE" ? "Filter zurücksetzen" : "Reset filter"}
+                      </button>
                     </div>
                   )}
                 </div>
@@ -1448,74 +1585,99 @@ const [googleAdsExtraValues, setGoogleAdsExtraValues] = useState<Record<string, 
   )}
 </div>
 
-<DemoIntegrationCard
-  name="Shopify"
-  placeholder="Client Secret"
-  hint={language === "UA" ? "Shopify Dev Dashboard → ваш застосунок → Settings → Client ID і Client Secret." : language === "DE" ? "Shopify Dev Dashboard → Ihre App → Settings → Client ID und Client Secret." : "Shopify Dev Dashboard → your app → Settings → Client ID and Client Secret."}
-  keyInput={shopifyKeyInput} setKeyInput={setShopifyKeyInput}
-  connected={shopifyConnected} setConnected={setShopifyConnected}
-  keyPreview={shopifyKeyPreview} setKeyPreview={setShopifyKeyPreview}
-  language={language}
-/>
-<DemoIntegrationCard
-  name="Meta Ads"
-  placeholder="EAAG..."
-  hint={language === "UA" ? "Meta Business Suite → System Users → створіть токен з доступом ads_read." : language === "DE" ? "Meta Business Suite → System Users → Token mit ads_read-Zugriff erstellen." : "Meta Business Suite → System Users → create a token with ads_read access."}
-  keyInput={metaKeyInput} setKeyInput={setMetaKeyInput}
-  connected={metaConnected} setConnected={setMetaConnected}
-  keyPreview={metaKeyPreview} setKeyPreview={setMetaKeyPreview}
-  language={language}
-/>
-{/* Google Ads в живому демо оформлено один в один як у особистому
-    кабінеті (кнопка "Підключити через Google" замість ручних полів) —
-    але кнопка нікуди не веде і нічого реально не підключає, а лише
-    імітує миттєве підключення локально, як і решта демо-карток. */}
-<div className="bg-gray-900/40 rounded-xl p-5 border border-gray-800">
-  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-    <div className="min-w-0">
-      <h4 className="font-semibold text-white text-base">Google Ads</h4>
-      <p className="text-sm text-gray-500 mt-1">
-        {googleAdsConnected
-          ? (language === "UA" ? "Підключено, очікуємо першу синхронізацію" : language === "DE" ? "Verbunden, wartet auf erste Synchronisierung" : "Connected, waiting for first sync")
-          : (language === "UA" ? "Підключіть Google Ads, щоб отримувати реальні дані" : language === "DE" ? "Verbinden Sie Google Ads, um echte Daten abzurufen" : "Connect Google Ads to pull real data")}
-      </p>
-    </div>
-    {googleAdsConnected && (
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs px-2 py-1 rounded-full font-semibold bg-green-500/20 text-green-400 flex items-center gap-1 font-mono whitespace-nowrap">
-          <Wifi className="w-3 h-3 shrink-0" />
-          {language === "UA" ? "Підключено" : language === "DE" ? "Verbunden" : "Connected"}
-        </span>
-        <Button
-          size="sm"
-          variant="outline"
-          className="text-red-400 border-red-400/30 hover:bg-red-500/10 shrink-0"
-          onClick={() => setGoogleAdsConnected(false)}
-        >
-          {language === "UA" ? "Відключити" : language === "DE" ? "Trennen" : "Disconnect"}
-        </Button>
-      </div>
-    )}
-  </div>
+{[
+  {
+    key: "shopify" as const,
+    connected: shopifyConnected,
+    node: (
+      <DemoIntegrationCard
+        name="Shopify"
+        placeholder="Client Secret"
+        hint={language === "UA" ? "Shopify Dev Dashboard → ваш застосунок → Settings → Client ID і Client Secret." : language === "DE" ? "Shopify Dev Dashboard → Ihre App → Settings → Client ID und Client Secret." : "Shopify Dev Dashboard → your app → Settings → Client ID and Client Secret."}
+        keyInput={shopifyKeyInput} setKeyInput={setShopifyKeyInput}
+        connected={shopifyConnected} setConnected={setShopifyConnected}
+        keyPreview={shopifyKeyPreview} setKeyPreview={setShopifyKeyPreview}
+        language={language}
+      />
+    ),
+  },
+  {
+    key: "meta" as const,
+    connected: metaConnected,
+    node: (
+      <DemoIntegrationCard
+        name="Meta Ads"
+        placeholder="EAAG..."
+        hint={language === "UA" ? "Meta Business Suite → System Users → створіть токен з доступом ads_read." : language === "DE" ? "Meta Business Suite → System Users → Token mit ads_read-Zugriff erstellen." : "Meta Business Suite → System Users → create a token with ads_read access."}
+        keyInput={metaKeyInput} setKeyInput={setMetaKeyInput}
+        connected={metaConnected} setConnected={setMetaConnected}
+        keyPreview={metaKeyPreview} setKeyPreview={setMetaKeyPreview}
+        language={language}
+      />
+    ),
+  },
+  {
+    key: "google" as const,
+    connected: googleAdsConnected,
+    // Google Ads в живому демо оформлено один в один як у особистому
+    // кабінеті (кнопка "Підключити через Google" замість ручних полів) —
+    // але кнопка нікуди не веде і нічого реально не підключає, а лише
+    // імітує миттєве підключення локально, як і решта демо-карток.
+    node: (
+      <div className="bg-gray-900/40 rounded-xl p-5 border border-gray-800">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="min-w-0">
+            <h4 className="font-semibold text-white text-base">Google Ads</h4>
+            <p className="text-sm text-gray-500 mt-1">
+              {googleAdsConnected
+                ? (language === "UA" ? "Підключено, очікуємо першу синхронізацію" : language === "DE" ? "Verbunden, wartet auf erste Synchronisierung" : "Connected, waiting for first sync")
+                : (language === "UA" ? "Підключіть Google Ads, щоб отримувати реальні дані" : language === "DE" ? "Verbinden Sie Google Ads, um echte Daten abzurufen" : "Connect Google Ads to pull real data")}
+            </p>
+          </div>
+          {googleAdsConnected && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs px-2 py-1 rounded-full font-semibold bg-green-500/20 text-green-400 flex items-center gap-1 font-mono whitespace-nowrap">
+                <Wifi className="w-3 h-3 shrink-0" />
+                {language === "UA" ? "Підключено" : language === "DE" ? "Verbunden" : "Connected"}
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-red-400 border-red-400/30 hover:bg-red-500/10 shrink-0"
+                onClick={() => setGoogleAdsConnected(false)}
+              >
+                {language === "UA" ? "Відключити" : language === "DE" ? "Trennen" : "Disconnect"}
+              </Button>
+            </div>
+          )}
+        </div>
 
-  {!googleAdsConnected && (
-    <>
-      <p className="text-xs text-gray-500 mt-4">
-        {language === "UA"
-          ? "Ви перейдете на сторінку Google, підтвердите доступ до Google Ads і повернетесь сюди — без ручного вводу токенів."
-          : language === "DE"
-          ? "Sie werden zu Google weitergeleitet, bestätigen den Zugriff auf Google Ads und kehren hierher zurück — ganz ohne manuelle Token-Eingabe."
-          : "You'll be redirected to Google, approve access to Google Ads, and land back here — no manual token entry."}
-      </p>
-      <Button
-        onClick={() => setGoogleAdsConnected(true)}
-        className="mt-4 font-semibold px-5 bg-blue-500 hover:bg-blue-600 text-white"
-      >
-        {language === "UA" ? "Підключити через Google" : language === "DE" ? "Über Google verbinden" : "Connect with Google"}
-      </Button>
-    </>
-  )}
-</div>
+        {!googleAdsConnected && (
+          <>
+            <p className="text-xs text-gray-500 mt-4">
+              {language === "UA"
+                ? "Ви перейдете на сторінку Google, підтвердите доступ до Google Ads і повернетесь сюди — без ручного вводу токенів."
+                : language === "DE"
+                ? "Sie werden zu Google weitergeleitet, bestätigen den Zugriff auf Google Ads und kehren hierher zurück — ganz ohne manuelle Token-Eingabe."
+                : "You'll be redirected to Google, approve access to Google Ads, and land back here — no manual token entry."}
+            </p>
+            <Button
+              onClick={() => setGoogleAdsConnected(true)}
+              className="mt-4 font-semibold px-5 bg-blue-500 hover:bg-blue-600 text-white"
+            >
+              {language === "UA" ? "Підключити через Google" : language === "DE" ? "Über Google verbinden" : "Connect with Google"}
+            </Button>
+          </>
+        )}
+      </div>
+    ),
+  },
+]
+  // Підключені інтеграції спливають наверх списку — той самий принцип, що
+  // й integrationsOrder у app/dashboard/page.tsx, тільки рахується на
+  // кожному рендері з локального demo-стану, а не з /api/integrations-status.
+  .sort((a, b) => Number(b.connected) - Number(a.connected))
+  .map((item) => <div key={item.key}>{item.node}</div>)}
 
                   {/* Прочие интеграции — скоро */}
                   <div className="bg-gray-900/20 rounded-xl p-4 border border-gray-800 flex items-center gap-3 opacity-50">
