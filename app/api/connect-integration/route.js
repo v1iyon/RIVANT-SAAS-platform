@@ -12,6 +12,16 @@ const admin = createClient(
 
 const SUPPORTED_PROVIDERS = ["meta_ads", "google_ads", "shopify", "quickbooks", "google_analytics"];
 
+// Той самий принцип, що і в app/api/connect-stripe/route.js: Scale/Trial
+// отримують усе без явного вибору слоту, решта планів (starter/growth)
+// повинні мати провайдера в integrations_selected (обраного через
+// /api/integrations-select) ПЕРЕД тим, як його реально можна підключити
+// ключем. Раніше цей роут не дивився на план/слоти взагалі — будь-який
+// залогінений юзер із бізнес-профілем міг підключити будь-яку кількість
+// Shopify/Meta Ads/Google Ads незалежно від тарифу, в обхід вибраного
+// на /api/integrations-select слоту.
+const UNLIMITED_PLANS = ["scale", "trial"];
+
 // Простая проверка "непустой строки разумной длины" — реальная проверка валидности
 // ключа у каждого провайдера своя (Этап 3, sync-модули), сюда её добавим позже.
 function looksLikeAKey(value) {
@@ -64,6 +74,34 @@ export async function POST(req) {
 
     const { data: user } = await admin.from("users").select("id").eq("email", email).maybeSingle();
     if (!user) return Response.json({ error: "User not found" }, { status: 404 });
+
+    // ВАЖЛИВО (фікс під тарифну логіку зі слотами інтеграцій): підключення
+    // дозволене лише якщо план необмежений (scale/trial) АБО провайдер є
+    // серед обраних слотів клієнта. Це той самий захист, що вже стоїть у
+    // /api/connect-stripe — тут він потрібен так само, бо саме через цей
+    // роут підключаються Shopify/Meta Ads/Google Ads (ручний ввід ключа).
+    const { data: sub } = await admin
+      .from("subscriptions")
+      .select("plan, integrations_selected")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (!sub) {
+      return Response.json({ error: "No active subscription" }, { status: 403 });
+    }
+
+    if (!UNLIMITED_PLANS.includes(sub.plan)) {
+      const selected = sub.integrations_selected || [];
+      if (!selected.includes(provider)) {
+        return Response.json(
+          {
+            error: "provider_not_selected",
+            message: `Оберіть ${provider} у налаштуваннях інтеграцій перед підключенням`,
+          },
+          { status: 403 }
+        );
+      }
+    }
 
     // order+limit — без ORDER BY при дублях businesses (см. race condition
     // в business-profile/route.js) .maybeSingle() падает с ошибкой на 2+
