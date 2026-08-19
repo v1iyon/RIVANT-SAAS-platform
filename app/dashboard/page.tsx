@@ -12,6 +12,7 @@ import { commonError, translateUnknownError } from "@/lib/error-messages";
 import { useCurrency, Currency } from "@/lib/currency";
 import { getSeverityLabel, getSeverityColorClasses } from "@/lib/severity";
 import { TrialPromptModal } from "@/components/dashboard/trial-prompt-modal";
+import { OnboardingTour } from "@/components/dashboard/onboarding-tour";
 import { TeamAccessCard } from "@/components/dashboard/team-access-card";
 import {
   LayoutDashboard,
@@ -1119,6 +1120,7 @@ const [companySaved, setCompanySaved] = useState(false);
   const [broadcastNotif, setBroadcastNotif] = useState<{ id: string; message: string } | null>(null);
 
   const [showExpiredNotice, setShowExpiredNotice] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   useEffect(() => {
   const refreshTelegramStatus = async () => {
@@ -1348,6 +1350,14 @@ useEffect(() => {
         setProfilePhotoUrl(profile.avatar_url);
         setEditPhotoUrl(profile.avatar_url);
       }
+      // Тур по кабинету показываем один раз — только тем, у кого явно
+      // выставлен onboarding_completed=false (новые регистрации, см.
+      // supabase/migrations/0003_onboarding.sql). Существующие пользователи
+      // забэкафилены в true и тур не увидят.
+      if (profile.onboarding_completed === false) {
+        setShowOnboarding(true);
+      }
+
       setProfileEmail(email);
       setProfileSettingsLoaded(true);
       setEditEmail(email);
@@ -2050,6 +2060,19 @@ const getPlanLabel = (plan: string | null | undefined): string => {
     }
   };
 
+  // Общий хендлер и для "Пропустить" (крестик), и для "Готово" на последнем
+  // шаге — в обоих случаях тур больше показываться не должен, поэтому флаг
+  // пишем сразу в users.onboarding_completed (переживает релогин/другое
+  // устройство), а не только в локальный state.
+  const completeOnboarding = () => {
+    setShowOnboarding(false);
+    fetch("/api/profile", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ onboarding_completed: true }),
+    }).catch((e) => console.error("Failed to persist onboarding state", e));
+  };
+
   const T = t as any;
 
   if (!isAuthenticated) {
@@ -2311,6 +2334,14 @@ if (!subInfo) {
           </div>
         </header>
         <TrialPromptModal email={profileEmail} language={language} />
+
+        {showOnboarding && (
+          <OnboardingTour
+            language={language}
+            onNavigate={(view) => setActiveView(view)}
+            onFinish={completeOnboarding}
+          />
+        )}
 
         {showExpiredNotice && (
   <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
