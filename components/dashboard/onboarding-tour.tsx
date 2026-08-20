@@ -6,6 +6,10 @@ import { X, ChevronLeft, ChevronRight } from "lucide-react";
 type Language = "EN" | "UA" | "DE";
 type ViewType = "overview" | "risks" | "forecast" | "integrations" | "settings";
 type Placement = "top" | "bottom" | "left" | "right";
+// Побочный эффект шага — команда родителю открыть/закрыть что-то в UI
+// (панель метрик, дропдаун фильтра), чтобы тур показывал не пустую кнопку,
+// а реально раскрытое содержимое.
+type StepAction = "widgetPrefs" | "riskFilter" | null;
 
 interface Step {
   view: ViewType | null;
@@ -15,13 +19,11 @@ interface Step {
    */
   target: string | null;
   placement?: Placement;
+  action?: StepAction;
   title: Record<Language, string>;
   desc: Record<Language, string>;
 }
 
-// Тур указывает на реальные элементы интерфейса через data-tour="...".
-// Эти атрибуты нужно проставить на соответствующих узлах в самих
-// компонентах дашборда (см. список в конце файла).
 const STEPS: Step[] = [
   {
     view: "overview",
@@ -39,23 +41,25 @@ const STEPS: Step[] = [
   },
   {
     view: "overview",
-    target: '[data-tour="metrics-toggle"]',
+    target: '[data-tour="metrics-gear"]',
     placement: "bottom",
+    action: "widgetPrefs",
     title: {
-      EN: "Switch metrics",
-      UA: "Перемикайте метрики",
-      DE: "Kennzahlen wechseln",
+      EN: "Choose your metrics",
+      UA: "Виберіть свої метрики",
+      DE: "Kennzahlen wählen",
     },
     desc: {
-      EN: "Tap here to swap revenue, profit, orders and more.",
-      UA: "Натисніть, щоб перемкнути виручку, прибуток, замовлення тощо.",
-      DE: "Hier tippen, um Umsatz, Gewinn, Bestellungen zu wechseln.",
+      EN: "Tap the gear to pick which 4 cards you see — revenue, orders, avg. order value, CAC and more.",
+      UA: "Натисніть на шестерню, щоб вибрати, які 4 картки бачити — виручка, замовлення, середній чек, CAC тощо.",
+      DE: "Tippen Sie auf das Zahnrad, um Ihre 4 Kacheln zu wählen — Umsatz, Bestellungen, Ø Bestellwert, CAC und mehr.",
     },
   },
   {
     view: "risks",
     target: '[data-tour="risks-filter"]',
     placement: "bottom",
+    action: "riskFilter",
     title: {
       EN: "Filter risks",
       UA: "Фільтруйте ризики",
@@ -70,7 +74,7 @@ const STEPS: Step[] = [
   {
     view: "risks",
     target: '[data-tour="risks-history"]',
-    placement: "top",
+    placement: "bottom",
     title: {
       EN: "Risk history",
       UA: "Історія ризиків",
@@ -85,7 +89,7 @@ const STEPS: Step[] = [
   {
     view: "forecast",
     target: '[data-tour="forecast-chart"]',
-    placement: "top",
+    placement: "bottom",
     title: {
       EN: "Forecast",
       UA: "Прогноз",
@@ -154,6 +158,11 @@ interface OnboardingTourProps {
   language: Language;
   onNavigate: (view: ViewType) => void;
   onFinish: () => void;
+  /** Called whenever the current step changes, with that step's `action`
+   *  (or null when the step has none). The parent is responsible for
+   *  opening/closing the relevant panel/dropdown and should treat `null`
+   *  as "close whatever the tour previously opened". */
+  onStepAction?: (action: StepAction) => void;
 }
 
 interface Rect {
@@ -166,12 +175,22 @@ interface Rect {
 const PAD = 8; // spotlight padding around the target element
 const GAP = 14; // gap between spotlight and popover
 const POPOVER_W = 300;
+const EDGE = 12; // min distance from viewport edge
+const DEFAULT_POPOVER_H = 190; // best guess before the popover has ever been measured
 
-export function OnboardingTour({ language, onNavigate, onFinish }: OnboardingTourProps) {
+function rectsOverlap(a: { top: number; left: number; width: number; height: number }, b: Rect) {
+  return a.left < b.left + b.width && a.left + a.width > b.left && a.top < b.top + b.height && a.top + a.height > b.top;
+}
+
+const OPPOSITE: Record<Placement, Placement> = { top: "bottom", bottom: "top", left: "right", right: "left" };
+
+export function OnboardingTour({ language, onNavigate, onFinish, onStepAction }: OnboardingTourProps) {
   const [step, setStep] = useState(0);
   const [rect, setRect] = useState<Rect | null>(null);
-  const [ready, setReady] = useState(false); // avoids a flash at 0,0 before first measure
+  const [popoverH, setPopoverH] = useState(DEFAULT_POPOVER_H);
+  const [ready, setReady] = useState(false); // avoids a flash at 0,0 / wrong size before first measure
   const popoverRef = useRef<HTMLDivElement>(null);
+  const targetElRef = useRef<Element | null>(null);
 
   const current = STEPS[step];
   const isFirst = step === 0;
@@ -184,11 +203,39 @@ export function OnboardingTour({ language, onNavigate, onFinish }: OnboardingTou
     if (view) onNavigate(view);
   };
 
+  // Fire the step's side-effect (open a panel/dropdown) whenever we land on
+  // a new step, and clear it on unmount so nothing is left open behind us.
+  useEffect(() => {
+    onStepAction?.(current.action ?? null);
+  }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    return () => {
+      onStepAction?.(null);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Locate + measure the target element. Retries for a bit in case the
-  // tab we just navigated to is still mounting/animating in.
+  // tab we just navigated to (or a panel we just asked the parent to open)
+  // is still mounting/animating in. Once found, a ResizeObserver keeps
+  // tracking it — this is what used to go stale when a block finished
+  // loading (skeleton -> real content) without a window resize/scroll.
   useLayoutEffect(() => {
     let cancelled = false;
     let tries = 0;
+    let ro: ResizeObserver | null = null;
+    targetElRef.current = null;
+
+    const attachObserver = (el: Element) => {
+      ro?.disconnect();
+      ro = new ResizeObserver(() => {
+        if (cancelled) return;
+        const r = el.getBoundingClientRect();
+        setRect({ top: r.top, left: r.left, width: r.width, height: r.height });
+      });
+      ro.observe(el);
+    };
 
     const measure = () => {
       if (cancelled) return;
@@ -202,15 +249,20 @@ export function OnboardingTour({ language, onNavigate, onFinish }: OnboardingTou
 
       const el = document.querySelector(selector);
       if (el) {
+        targetElRef.current = el;
         const r = el.getBoundingClientRect();
         el.scrollIntoView({ block: "center", behavior: "smooth" });
         setRect({ top: r.top, left: r.left, width: r.width, height: r.height });
-        setReady(true);
+        attachObserver(el);
+        // Give the browser a beat to finish the smooth-scroll / any layout
+        // shift from a panel we just opened before revealing the popover,
+        // so it doesn't render at position 0 and jump.
+        requestAnimationFrame(() => requestAnimationFrame(() => !cancelled && setReady(true)));
         return;
       }
 
       tries += 1;
-      if (tries < 20) {
+      if (tries < 30) {
         setTimeout(measure, 50);
       } else {
         // couldn't find it — fall back to a centered popover rather than
@@ -223,15 +275,17 @@ export function OnboardingTour({ language, onNavigate, onFinish }: OnboardingTou
     measure();
     return () => {
       cancelled = true;
+      ro?.disconnect();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
 
-  // Keep the spotlight glued to the target on resize/scroll.
+  // Keep the spotlight glued to the target on page resize/scroll (the
+  // ResizeObserver above handles the target's own size changes).
   useEffect(() => {
     if (!current.target) return;
     const onUpdate = () => {
-      const el = document.querySelector(current.target as string);
+      const el = targetElRef.current || document.querySelector(current.target as string);
       if (!el) return;
       const r = el.getBoundingClientRect();
       setRect({ top: r.top, left: r.left, width: r.width, height: r.height });
@@ -244,17 +298,32 @@ export function OnboardingTour({ language, onNavigate, onFinish }: OnboardingTou
     };
   }, [current.target]);
 
+  // Track the popover's *real* rendered height (varies a lot by language —
+  // Ukrainian/German copy runs longer than English) instead of guessing.
+  useLayoutEffect(() => {
+    const el = popoverRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const h = Math.ceil(entry.contentRect.height);
+        if (h > 0) setPopoverH((prev) => (prev !== h ? h : prev));
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [step]);
+
   const spotlight = rect
     ? { top: rect.top - PAD, left: rect.left - PAD, width: rect.width + PAD * 2, height: rect.height + PAD * 2 }
     : null;
 
-  const popoverStyle = getPopoverStyle(spotlight, current.placement);
+  const popoverStyle = getPopoverStyle(spotlight, current.placement, popoverH);
 
   return (
     <div className="fixed inset-0 z-[200]" style={{ opacity: ready ? 1 : 0, transition: "opacity 150ms" }}>
       {/* dim everything except the spotlight cutout — no blur */}
       <div
-        className="absolute inset-0 pointer-events-none transition-all duration-500 ease-out"
+        className="absolute inset-0 pointer-events-none transition-all duration-300 ease-out"
         style={{
           boxShadow: spotlight
             ? `0 0 0 9999px rgba(0,0,0,0.55)`
@@ -275,7 +344,7 @@ export function OnboardingTour({ language, onNavigate, onFinish }: OnboardingTou
       {/* floating popover */}
       <div
         ref={popoverRef}
-        className="absolute bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl p-5 transition-all duration-500 ease-out"
+        className="absolute bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl p-5 transition-all duration-300 ease-out"
         style={{ width: POPOVER_W, ...popoverStyle }}
       >
         <button
@@ -332,10 +401,14 @@ export function OnboardingTour({ language, onNavigate, onFinish }: OnboardingTou
 }
 
 // Positions the popover next to the spotlight (or centered, if there's no
-// target), clamped to stay inside the viewport.
+// target), preferring `placement` but flipping to whichever side actually
+// fits without overlapping the spotlight or spilling off-screen. Uses the
+// *measured* popover height (popoverH) rather than a guess, since content
+// length varies a lot between EN/UA/DE.
 function getPopoverStyle(
   spotlight: Rect | null,
-  placement: Placement = "bottom"
+  placement: Placement = "bottom",
+  popoverH: number
 ): React.CSSProperties {
   if (!spotlight) {
     return {
@@ -348,41 +421,50 @@ function getPopoverStyle(
   const vw = typeof window !== "undefined" ? window.innerWidth : 1280;
   const vh = typeof window !== "undefined" ? window.innerHeight : 800;
 
-  let top = 0;
-  let left = 0;
+  const place = (p: Placement): { top: number; left: number } => {
+    switch (p) {
+      case "bottom":
+        return {
+          top: spotlight.top + spotlight.height + GAP,
+          left: spotlight.left + spotlight.width / 2 - POPOVER_W / 2,
+        };
+      case "top":
+        return {
+          top: spotlight.top - GAP - popoverH,
+          left: spotlight.left + spotlight.width / 2 - POPOVER_W / 2,
+        };
+      case "left":
+        return {
+          top: spotlight.top + spotlight.height / 2 - popoverH / 2,
+          left: spotlight.left - POPOVER_W - GAP,
+        };
+      case "right":
+        return {
+          top: spotlight.top + spotlight.height / 2 - popoverH / 2,
+          left: spotlight.left + spotlight.width + GAP,
+        };
+    }
+  };
 
-  switch (placement) {
-    case "bottom":
-      top = spotlight.top + spotlight.height + GAP;
-      left = spotlight.left + spotlight.width / 2 - POPOVER_W / 2;
-      break;
-    case "top":
-      top = spotlight.top - GAP;
-      left = spotlight.left + spotlight.width / 2 - POPOVER_W / 2;
-      break;
-    case "left":
-      top = spotlight.top + spotlight.height / 2;
-      left = spotlight.left - POPOVER_W - GAP;
-      break;
-    case "right":
-      top = spotlight.top + spotlight.height / 2;
-      left = spotlight.left + spotlight.width + GAP;
-      break;
+  const clamp = (pos: { top: number; left: number }) => ({
+    top: Math.max(EDGE, Math.min(pos.top, vh - popoverH - EDGE)),
+    left: Math.max(EDGE, Math.min(pos.left, vw - POPOVER_W - EDGE)),
+  });
+
+  const fitsCleanly = (pos: { top: number; left: number }) => {
+    // Fits on-screen without clamping AND doesn't overlap the spotlight.
+    const onScreen =
+      pos.top >= EDGE && pos.left >= EDGE && pos.top + popoverH <= vh - EDGE && pos.left + POPOVER_W <= vw - EDGE;
+    if (!onScreen) return false;
+    return !rectsOverlap({ top: pos.top, left: pos.left, width: POPOVER_W, height: popoverH }, spotlight);
+  };
+
+  // Try the requested placement, then its opposite, then the two remaining
+  // sides, and finally fall back to a clamped version of the first choice.
+  const order: Placement[] = [placement, OPPOSITE[placement], "bottom", "top", "right", "left"];
+  for (const p of order) {
+    const pos = place(p);
+    if (fitsCleanly(pos)) return clamp(pos);
   }
-
-  // clamp horizontally
-  left = Math.max(12, Math.min(left, vw - POPOVER_W - 12));
-
-  // for top placement we anchor by bottom edge instead of top
-  if (placement === "top") {
-    return {
-      left,
-      top: Math.max(12, top - 220), // 220 ≈ approx popover height, pulls it above target
-    };
-  }
-
-  // clamp vertically (rough popover height estimate ~220px)
-  top = Math.max(12, Math.min(top, vh - 220 - 12));
-
-  return { top, left };
+  return clamp(place(placement));
 }
