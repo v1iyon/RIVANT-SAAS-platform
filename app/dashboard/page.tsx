@@ -532,7 +532,7 @@ function RevenueExpensesChart({ history }: {
           <BarChart3 className="w-5 h-5 text-blue-400" />
           <h3 className="text-lg font-bold text-white">{T.revenueVsExpenses || "Revenue vs Expenses (30 days)"}</h3>
         </div>
-        <div data-tour="metrics-toggle" className="flex gap-2 bg-gray-800/50 rounded-lg p-1">
+        <div className="flex gap-2 bg-gray-800/50 rounded-lg p-1">
           <button onClick={() => setSelectedMetric("revenue")} className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all ${selectedMetric === "revenue" ? "bg-blue-500/30 text-blue-400" : "text-gray-500 hover:text-gray-300"}`}>{T.revenue || "Revenue"}</button>
           <button onClick={() => setSelectedMetric("expenses")} className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all ${selectedMetric === "expenses" ? "bg-rose-500/30 text-rose-400" : "text-gray-500 hover:text-gray-300"}`}>{T.expenses || "Expenses"}</button>
           <button onClick={() => setSelectedMetric("profit")} className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all ${selectedMetric === "profit" ? "bg-green-500/30 text-green-400" : "text-gray-500 hover:text-gray-300"}`}>{T.profit || "Profit"}</button>
@@ -848,6 +848,99 @@ function getCategoryIcon(category: string) {
 
 
 
+// ---------------------------------------------------------------------
+// Демо-данные для онбординг-тура. Реальные Stripe/Shopify/Ads-данные
+// синкаются асинхронно и могут не появиться ещё много часов после
+// регистрации — без этого блока новый юзер видел бы пустые карточки,
+// нулевой график и "нет активных ризиків" ровно в тот момент, когда тур
+// рассказывает, как ими пользоваться. Показываем наглядные тестовые
+// цифры, пока идёт тур (showOnboarding === true); в тот же момент, когда
+// тур завершается — react мгновенно переключает всё на настоящее
+// (пустое или уже засинканное) состояние, никакого отдельного экрана
+// "теперь пусто" делать не нужно.
+// ---------------------------------------------------------------------
+const DEMO_METRICS_ROWS: MetricsRow[] = Array.from({ length: 30 }).map((_, i) => {
+  const d = new Date();
+  d.setDate(d.getDate() - (29 - i));
+  const wave = Math.sin(i / 4) * 400 + i * 60;
+  const revenue = Math.round(3200 + wave + (i % 7 === 0 ? 600 : 0));
+  const expenses = Math.round(revenue * (0.58 + Math.sin(i / 6) * 0.05));
+  return {
+    date: d.toISOString().slice(0, 10),
+    revenue,
+    expenses,
+    profit: revenue - expenses,
+    margin_pct: Number((((revenue - expenses) / revenue) * 100).toFixed(1)),
+    orders: Math.round(18 + Math.sin(i / 3) * 6 + i * 0.4),
+    cac: Math.round(22 + Math.sin(i / 5) * 4),
+    cacMeta: Math.round(19 + Math.sin(i / 5) * 3),
+    cacGoogle: Math.round(27 + Math.sin(i / 5) * 5),
+  };
+});
+
+const DEMO_RISKS: Risk[] = [
+  {
+    id: "demo-1",
+    title: "CAC spike on Meta Ads",
+    description: "Cost per acquisition jumped 34% in the last 3 days.",
+    time: new Date().toISOString(),
+    severity: "high",
+    action: "Review your top ad sets and pause underperforming ones.",
+    category: "cac",
+  },
+  {
+    id: "demo-2",
+    title: "Low stock: Classic Tee (M)",
+    description: "Only 4 units left — restock recommended within 5 days.",
+    time: new Date(Date.now() - 3 * 3600 * 1000).toISOString(),
+    severity: "medium",
+    action: "Reorder from your supplier.",
+    category: "inventory",
+  },
+  {
+    id: "demo-3",
+    title: "Margin dip in Shipping",
+    description: "Shipping costs are eating into margin on international orders.",
+    time: new Date(Date.now() - 26 * 3600 * 1000).toISOString(),
+    severity: "low",
+    action: "Compare current carrier rates.",
+    category: "shipping",
+  },
+];
+
+const DEMO_RESOLVED_RISKS: Risk[] = [
+  {
+    id: "demo-resolved-1",
+    title: "Revenue drop resolved",
+    description: "Stripe payouts returned to normal after a processor delay.",
+    time: new Date(Date.now() - 5 * 24 * 3600 * 1000).toISOString(),
+    severity: "high",
+    action: "No action needed.",
+    category: "finance",
+  },
+];
+
+const DEMO_FORECAST = {
+  sufficient: true,
+  days: 30,
+  tier: "high",
+  horizonDays: 30,
+  dailyGrowthPct: 1.8,
+  confidence: 82,
+  revenue7: 26000,
+  revenue14: 54000,
+  revenue21: 84000,
+  revenue30: 118000,
+  revenue60: 240000,
+  revenue90: 365000,
+  expenses7: 15500,
+  expenses14: 32000,
+  expenses21: 49500,
+  expenses30: 69000,
+  expenses60: 140000,
+  expenses90: 213000,
+};
+
 export default function DashboardClient() {
   const router = useRouter();
   const { t, language, setLanguage } = useLanguage();
@@ -860,9 +953,21 @@ export default function DashboardClient() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [activeView, setActiveView] = useState<ViewType>("overview");
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  // Объявлено здесь (а не рядом с остальными "showXyz" стейтами ниже),
+  // потому что демо-данные тура (metricsRows/risks/forecastData ниже)
+  // должны знать его значение уже на этом этапе рендера.
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
-  const [metricsRows, setMetricsRows] = useState<MetricsRow[]>([]);
-  const [metricsLoaded, setMetricsLoaded] = useState(false);
+  const [metricsRowsReal, setMetricsRows] = useState<MetricsRow[]>([]);
+  const [metricsLoadedReal, setMetricsLoaded] = useState(false);
+  // Пока идёт тур для нового юзера, показываем наглядные демо-цифры вместо
+  // пустых/нулевых карточек и графика (реальные данные ещё не синкнулись -
+  // Stripe/Shopify грузятся часами асинхронно). Как только тур завершается
+  // (showOnboarding=false), всё мгновенно переключается на настоящие
+  // metricsRowsReal/metricsLoadedReal — без доп. состояния и без риска
+  // "залипшей" демки после завершения тура.
+  const metricsRows = showOnboarding ? DEMO_METRICS_ROWS : metricsRowsReal;
+  const metricsLoaded = showOnboarding ? true : metricsLoadedReal;
 
   const [widgetIds, setWidgetIds] = useState<WidgetId[]>(DEFAULT_WIDGET_IDS);
   // Поки не отримали відповідь /api/widget-prefs, ми не знаємо — юзер нічого не
@@ -871,11 +976,14 @@ export default function DashboardClient() {
   // після фетча — на дашборді був помітний "стрибок" карток. Тепер картки
   // взагалі не рендеряться, поки прапорець не стане true — тобто юзер відразу
   // бачить фінальний набір (дефолтний або збережений), без проміжного кадру.
-  const [widgetPrefsLoaded, setWidgetPrefsLoaded] = useState(false);
+  const [widgetPrefsLoadedReal, setWidgetPrefsLoaded] = useState(false);
+  const widgetPrefsLoaded = showOnboarding ? true : widgetPrefsLoadedReal;
   const [widgetPrefsOpen, setWidgetPrefsOpen] = useState(false);
 
-const [forecastData, setForecastData] = useState<any>(null);
-const [forecastLoaded, setForecastLoaded] = useState(false);
+const [forecastDataReal, setForecastData] = useState<any>(null);
+const [forecastLoadedReal, setForecastLoaded] = useState(false);
+const forecastData = showOnboarding ? DEMO_FORECAST : forecastDataReal;
+const forecastLoaded = showOnboarding ? true : forecastLoadedReal;
 
   const lastRow = metricsRows[metricsRows.length - 1];
   const prevRow = metricsRows[metricsRows.length - 2];
@@ -935,8 +1043,10 @@ const [forecastLoaded, setForecastLoaded] = useState(false);
   const cacGoogleQueue = buildSparkline(metricsRows, (r) => r.cacGoogle ?? 0);
   const chartHistory = toChartHistory(metricsRows);
 
-  const [risks, setRisks] = useState<Risk[]>([]);
-  const [resolvedRisks, setResolvedRisks] = useState<Risk[]>([]);
+  const [risksReal, setRisks] = useState<Risk[]>([]);
+  const [resolvedRisksReal, setResolvedRisks] = useState<Risk[]>([]);
+  const risks = showOnboarding ? DEMO_RISKS : risksReal;
+  const resolvedRisks = showOnboarding ? DEMO_RESOLVED_RISKS : resolvedRisksReal;
   const [risksView, setRisksView] = useState<"active" | "history">("active");
   // Фільтр-воронка по категоріях алертів (виручка/маржа/реклама/товар/...).
   // Порожній масив = показуємо всі категорії. Зберігаємо вибір у localStorage,
@@ -968,6 +1078,10 @@ const digestRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!riskFilterOpen) return;
     const handleClickOutside = (e: MouseEvent) => {
+      // Пока идёт тур, riskFilterOpen управляется шагами тура (см.
+      // onStepAction в рендере OnboardingTour), а не кликами по странице —
+      // клики по кнопкам самого тура (Next/Back) не должны его закрывать.
+      if (showOnboarding) return;
       if (riskFilterRef.current && !riskFilterRef.current.contains(e.target as Node)) {
         setRiskFilterOpen(false);
       }
@@ -1120,7 +1234,6 @@ const [companySaved, setCompanySaved] = useState(false);
   const [broadcastNotif, setBroadcastNotif] = useState<{ id: string; message: string } | null>(null);
 
   const [showExpiredNotice, setShowExpiredNotice] = useState(false);
-  const [showOnboarding, setShowOnboarding] = useState(false);
 
   useEffect(() => {
   const refreshTelegramStatus = async () => {
@@ -1501,6 +1614,14 @@ if (bizData.business) {
 
  const isExpiredTrial = subInfo?.access_status === "expired";
 const hasGrowthAccess = subInfo ? ["trial", "growth", "scale"].includes(subInfo.plan || "") : false;
+// Только для решения, что рендерить на шагах "Ризики"/"Прогноз" тура: план
+// нового юзера (`subInfo`) иногда ещё не успевает подгрузиться к моменту,
+// когда тур доходит до этих вкладок — без этого юзер видит "Доступно на
+// тарифі Growth" вместо демо-контента посреди своего же онбордингу.
+// Реальные `isExpiredTrial`/`hasGrowthAccess` (StripeConnectCard, настройки
+// и т.д.) этим не затрагиваются.
+const isExpiredTrialForTour = showOnboarding ? false : isExpiredTrial;
+const hasGrowthAccessForTour = showOnboarding ? true : hasGrowthAccess;
 const isBlocked =
   !subInfo ||
   (!subInfo.plan && !isExpiredTrial) ||
@@ -2340,6 +2461,12 @@ if (!subInfo) {
             language={language}
             onNavigate={(view) => setActiveView(view)}
             onFinish={completeOnboarding}
+            onStepAction={(action) => {
+              // Каждый шаг явно говорит, что должно быть открыто — а не
+              // открыто, если пришли не из того шага, где просили.
+              setWidgetPrefsOpen(action === "widgetPrefs");
+              setRiskFilterOpen(action === "riskFilter");
+            }}
           />
         )}
 
@@ -2395,6 +2522,7 @@ if (!subInfo) {
             <div className="space-y-5">
                   <div className="relative">
                     <button
+                      data-tour="metrics-gear"
                       onClick={() => setWidgetPrefsOpen(true)}
                       className="absolute -top-2 -right-2 z-10 w-7 h-7 rounded-full bg-gray-800/90 border border-gray-700 flex items-center justify-center text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
                       aria-label={language === "UA" ? "Налаштувати картки" : language === "DE" ? "Kacheln anpassen" : "Customize cards"}
@@ -2441,7 +2569,7 @@ if (!subInfo) {
 
           {activeView === "risks" && (
             <div className="space-y-4">
-             {isExpiredTrial ? (
+             {isExpiredTrialForTour ? (
   <div className="text-center py-16 bg-gray-900/30 rounded-xl border border-gray-800">
     <AlertTriangle className="w-10 h-10 mx-auto mb-3 text-gray-600" />
     <h3 className="text-white font-semibold mb-1">
@@ -2454,7 +2582,7 @@ if (!subInfo) {
       {language === "UA" ? "Переглянути тарифи" : language === "DE" ? "Tarife ansehen" : "View plans"}
     </Button>
   </div>
-) : !hasGrowthAccess ? (
+) : !hasGrowthAccessForTour ? (
   <div className="text-center py-16 bg-gray-900/30 rounded-xl border border-gray-800">
     <AlertTriangle className="w-10 h-10 mx-auto mb-3 text-gray-600" />
    <h3 className="text-white font-semibold mb-1">
@@ -2736,7 +2864,7 @@ if (!subInfo) {
 
               {activeView === "forecast" && (
   <div data-tour="forecast-chart" className="space-y-4">
-    {isExpiredTrial ? (
+    {isExpiredTrialForTour ? (
       <div className="text-center py-16 bg-gray-900/30 rounded-xl border border-gray-800">
         <AlertTriangle className="w-10 h-10 mx-auto mb-3 text-gray-600" />
         <h3 className="text-white font-semibold mb-1">
@@ -2749,7 +2877,7 @@ if (!subInfo) {
           {language === "UA" ? "Переглянути тарифи" : language === "DE" ? "Tarife ansehen" : "View plans"}
         </Button>
       </div>
-    ) : !hasGrowthAccess ? (
+    ) : !hasGrowthAccessForTour ? (
       <div className="text-center py-16 bg-gray-900/30 rounded-xl border border-gray-800">
         <AlertTriangle className="w-10 h-10 mx-auto mb-3 text-gray-600" />
        <h3 className="text-white font-semibold mb-1">
