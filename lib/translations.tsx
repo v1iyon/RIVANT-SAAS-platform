@@ -919,9 +919,20 @@ function getInitialLanguage(): Language {
   // интерфейс уже был на украинском. Читаем localStorage синхронно прямо в
   // инициализаторе useState, чтобы правильный язык был известен уже на
   // самом первом рендере, без "мигания" EN и без гонки с сетевыми запросами.
-  if (typeof window === "undefined") return "EN";
+  // Маркетинговый сайт (app/page.tsx, navbar, hero и т.д.) — целиком на
+  // украинском и НЕ использует LanguageProvider, т.е. никогда не пишет
+  // "preferredLanguage" в localStorage. Раньше фолбэком тут был "EN":
+  // пользователь, пришедший с украинского лендинга и ни разу явно не
+  // переключавший язык (ни в лендинге — там негде, ни в кабинете), после
+  // регистрации/логина попадал в кабинет на английском, и онбординг-тур
+  // тоже стартовал на английском — резкий разрыв с языком сайта, с которого
+  // он только что пришёл. Дефолтим на "UA", чтобы кабинет по умолчанию
+  // говорил на том же языке, что и сайт. Явный выбор пользователя
+  // (localStorage.preferredLanguage) и language из профиля (см. эффект
+  // ниже, setLanguage(profile.language)) по-прежнему имеют приоритет.
+  if (typeof window === "undefined") return "UA";
   const saved = localStorage.getItem("preferredLanguage") as Language;
-  return saved === "EN" || saved === "UA" || saved === "DE" ? saved : "EN";
+  return saved === "EN" || saved === "UA" || saved === "DE" ? saved : "UA";
 }
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
