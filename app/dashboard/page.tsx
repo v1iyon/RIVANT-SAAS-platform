@@ -878,47 +878,80 @@ const DEMO_METRICS_ROWS: MetricsRow[] = Array.from({ length: 30 }).map((_, i) =>
   };
 });
 
-const DEMO_RISKS: Risk[] = [
-  {
-    id: "demo-1",
-    title: "CAC spike on Meta Ads",
-    description: "Cost per acquisition jumped 34% in the last 3 days.",
-    time: new Date().toISOString(),
-    severity: "high",
-    action: "Review your top ad sets and pause underperforming ones.",
-    category: "cac",
-  },
-  {
-    id: "demo-2",
-    title: "Low stock: Classic Tee (M)",
-    description: "Only 4 units left — restock recommended within 5 days.",
-    time: new Date(Date.now() - 3 * 3600 * 1000).toISOString(),
-    severity: "medium",
-    action: "Reorder from your supplier.",
-    category: "inventory",
-  },
-  {
-    id: "demo-3",
-    title: "Margin dip in Shipping",
-    description: "Shipping costs are eating into margin on international orders.",
-    time: new Date(Date.now() - 26 * 3600 * 1000).toISOString(),
-    severity: "low",
-    action: "Compare current carrier rates.",
-    category: "shipping",
-  },
-];
+// Демо-ризики для туру навмисно повторюють РЕАЛЬНИЙ формат сповіщень AI
+// (див. lib/alerts.mjs: generateAlertExplanation / scripts/sync-stripe-core.mjs:
+// getAIExplanation) — а не якийсь загальний "щось трапилось" текст:
+//   title       = коротка детермінована фраза (як REVENUE_DROP_MESSAGE)
+//   description = 1-3 факт. речення без окликів, з конкретними цифрами,
+//                 що завжди закінчується підказкою "Перевірте: ..." /
+//                 "Check: ..." / "Prüfen Sie: ..." — точно за системним
+//                 промптом generateAlertExplanation.
+// Функції (не статичні об'єкти), бо реальні алерти локалізуються під мову
+// власника (userLang) — демо-версія має так само реагувати на перемикач
+// мови, а не лишатись англійською, коли решта кабінету українською.
+function getDemoRisks(language: Language): Risk[] {
+  const L = (ua: string, en: string, de: string) => (language === "UA" ? ua : language === "DE" ? de : en);
+  return [
+    {
+      id: "demo-1",
+      title: L("CAC на Meta Ads зріс на 34%", "Meta Ads CAC rose 34%", "Meta Ads CAC um 34% gestiegen"),
+      description: L(
+        "Вартість залучення клієнта зросла з $19 до $26 за останні 3 дні, тоді як кількість замовлень не змінилась. Перевірте: чи не зросла ставка на аукціоні, чи не вимкнено найефективніші оголошення.",
+        "Cost per acquisition rose from $19 to $26 over the last 3 days while order volume stayed flat. Check: bid changes on your top campaigns, and whether any high-performing ad sets were paused.",
+        "Die Kundenakquisitionskosten stiegen in den letzten 3 Tagen von $19 auf $26, während das Bestellvolumen unverändert blieb. Prüfen Sie: Gebotsänderungen bei Ihren Top-Kampagnen und ob leistungsstarke Anzeigengruppen pausiert wurden."
+      ),
+      time: new Date().toISOString(),
+      severity: "high",
+      action: "",
+      category: "cac",
+    },
+    {
+      id: "demo-2",
+      title: L("Товар «Classic Tee (M)» закінчується", "Low stock: Classic Tee (M)", "Niedriger Bestand: Classic Tee (M)"),
+      description: L(
+        "Залишилось 4 одиниці при середньому продажу 3 шт/день — товару вистачить приблизно на 1-2 дні. Перевірте: залишки на складі постачальника та дату наступної поставки.",
+        "4 units remain at an average sell-through of 3/day — roughly 1-2 days of stock left. Check: supplier stock levels and your next restock date.",
+        "Es sind noch 4 Einheiten bei einem durchschnittlichen Abverkauf von 3/Tag vorhanden — noch etwa 1-2 Tage Bestand. Prüfen Sie: Lagerbestand beim Lieferanten und das nächste Nachbestelldatum."
+      ),
+      time: new Date(Date.now() - 3 * 3600 * 1000).toISOString(),
+      severity: "medium",
+      action: "",
+      category: "inventory",
+    },
+    {
+      id: "demo-3",
+      title: L("Маржа знижується через доставку", "Margin dip in Shipping", "Margenrückgang bei Versand"),
+      description: L(
+        "Витрати на міжнародну доставку зросли на 12% за тиждень, що зʼїдає маржу на цих замовленнях. Перевірте: поточні тарифи перевізника та чи не змінилась вага чи габарити посилок.",
+        "International shipping costs rose 12% over the past week, eating into margin on those orders. Check: current carrier rates and whether package weight or dimensions changed.",
+        "Die internationalen Versandkosten stiegen in der vergangenen Woche um 12%, was die Marge dieser Bestellungen schmälert. Prüfen Sie: aktuelle Frachtraten und ob sich Gewicht oder Maße der Pakete geändert haben."
+      ),
+      time: new Date(Date.now() - 26 * 3600 * 1000).toISOString(),
+      severity: "low",
+      action: "",
+      category: "shipping",
+    },
+  ];
+}
 
-const DEMO_RESOLVED_RISKS: Risk[] = [
-  {
-    id: "demo-resolved-1",
-    title: "Revenue drop resolved",
-    description: "Stripe payouts returned to normal after a processor delay.",
-    time: new Date(Date.now() - 5 * 24 * 3600 * 1000).toISOString(),
-    severity: "high",
-    action: "No action needed.",
-    category: "finance",
-  },
-];
+function getDemoResolvedRisks(language: Language): Risk[] {
+  const L = (ua: string, en: string, de: string) => (language === "UA" ? ua : language === "DE" ? de : en);
+  return [
+    {
+      id: "demo-resolved-1",
+      title: L("Падіння виручки усунено", "Revenue drop resolved", "Umsatzrückgang behoben"),
+      description: L(
+        "Виплати Stripe відновились до звичайного рівня після затримки на боці процесора.",
+        "Stripe payouts returned to normal after a processor-side delay.",
+        "Die Stripe-Auszahlungen normalisierten sich nach einer Verzögerung beim Zahlungsdienstleister."
+      ),
+      time: new Date(Date.now() - 5 * 24 * 3600 * 1000).toISOString(),
+      severity: "high",
+      action: "",
+      category: "finance",
+    },
+  ];
+}
 
 const DEMO_FORECAST = {
   sufficient: true,
@@ -1045,8 +1078,8 @@ const forecastLoaded = showOnboarding ? true : forecastLoadedReal;
 
   const [risksReal, setRisks] = useState<Risk[]>([]);
   const [resolvedRisksReal, setResolvedRisks] = useState<Risk[]>([]);
-  const risks = showOnboarding ? DEMO_RISKS : risksReal;
-  const resolvedRisks = showOnboarding ? DEMO_RESOLVED_RISKS : resolvedRisksReal;
+  const risks = showOnboarding ? getDemoRisks(language) : risksReal;
+  const resolvedRisks = showOnboarding ? getDemoResolvedRisks(language) : resolvedRisksReal;
   const [risksView, setRisksView] = useState<"active" | "history">("active");
   // Фільтр-воронка по категоріях алертів (виручка/маржа/реклама/товар/...).
   // Порожній масив = показуємо всі категорії. Зберігаємо вибір у localStorage,
@@ -1054,6 +1087,10 @@ const forecastLoaded = showOnboarding ? true : forecastLoadedReal;
   const [riskCategoryFilter, setRiskCategoryFilter] = useState<Risk["category"][]>([]);
   const [riskFilterOpen, setRiskFilterOpen] = useState(false);
   const riskFilterRef = useRef<HTMLDivElement | null>(null);
+  // Управляется исключительно шагом тура "See a live integration"
+  // (action: "integrationsDemo", см. onStepAction ниже) — вне тура
+  // всегда false, и карточка Stripe показывает реальный статус.
+  const [integrationsDemoOpen, setIntegrationsDemoOpen] = useState(false);
   const [sensitivityOpen, setSensitivityOpen] = useState(false);
 const [digestOpen, setDigestOpen] = useState(false);
 const sensitivityRef = useRef<HTMLDivElement | null>(null);
@@ -2401,9 +2438,24 @@ if (!subInfo) {
                 <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
                 <span className="text-sm text-green-400 font-medium">{T.settingsLive || "Live"}</span>
               </div>
-             <DropdownMenu open={notifOpen} onOpenChange={setNotifOpen}>
+             <DropdownMenu
+                open={notifOpen}
+                onOpenChange={(open) => {
+                  // Пока идёт тур, notifOpen управляется шагом тура
+                  // (action: "notificationsBell"), а не собственной логикой
+                  // Radix "клик/фокус вне окна" — иначе клик-перехватчик
+                  // тура тут же закрыл бы дропдаун сразу после открытия.
+                  if (showOnboarding) return;
+                  setNotifOpen(open);
+                }}
+              >
                 <DropdownMenuTrigger asChild>
-                  <Button variant="secondary" size="icon" className="relative bg-gray-800/30 hover:bg-gray-800/50">
+                  <Button
+                    data-tour="notifications-bell"
+                    variant="secondary"
+                    size="icon"
+                    className="relative bg-gray-800/30 hover:bg-gray-800/50"
+                  >
                     <Bell className="w-5 h-5 text-gray-400" />
                     {notificationsEnabled && (
                       <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-yellow-500 text-[10px] font-bold flex items-center justify-center text-white">
@@ -2466,6 +2518,8 @@ if (!subInfo) {
               // открыто, если пришли не из того шага, где просили.
               setWidgetPrefsOpen(action === "widgetPrefs");
               setRiskFilterOpen(action === "riskFilter");
+              setNotifOpen(action === "notificationsBell");
+              setIntegrationsDemoOpen(action === "integrationsDemo");
             }}
           />
         )}
@@ -3114,11 +3168,14 @@ if (!subInfo) {
                 </div>
               )}
 
-              <StripeConnectCard
-  email={profileEmail}
-  locked={isExpiredTrial}
-  onLockedClick={() => router.push("/#pricing")}
-/>
+              <div data-tour="integrations-demo-connected">
+                <StripeConnectCard
+                  email={profileEmail}
+                  locked={isExpiredTrial}
+                  onLockedClick={() => router.push("/#pricing")}
+                  demoConnected={integrationsDemoOpen}
+                />
+              </div>
 
               {(() => {
                 const cardConfigs: Record<string, ReactElement> = {
@@ -3336,7 +3393,7 @@ if (!subInfo) {
                 </div>
               </div>
 
-              <div className="bg-card rounded-xl p-6 border border-border">
+              <div data-tour="settings-notifications" className="bg-card rounded-xl p-6 border border-border">
                 <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
                   <BellRing className="w-4 h-4 text-primary" /> {T.settingsNotifications || "Notification Preferences"}
                 </h3>
@@ -3432,7 +3489,7 @@ if (!subInfo) {
 </div>
                   </div>
 
-                  <div className="flex items-center justify-between gap-3 py-2">
+                  <div data-tour="settings-telegram" className="flex items-center justify-between gap-3 py-2">
                     <div className="flex-1 min-w-0"><p className="font-medium text-foreground">{T.settingsTelegram || "Telegram Notifications"}</p><p className="text-xs text-muted-foreground">{T.settingsTelegramDesc || "Connect Telegram for instant alerts"}</p></div>
                     {hasGrowthAccess ? (
   telegramConnected ? (
@@ -3608,7 +3665,7 @@ if (!subInfo) {
   </Button>
 </div>
 
-              <div className="bg-card rounded-xl p-6 border border-border">
+              <div data-tour="settings-danger-zone" className="bg-card rounded-xl p-6 border border-border">
                 <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 text-primary" /> {T.settingsDangerZone || "Danger Zone"}
                 </h3>

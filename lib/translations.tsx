@@ -119,15 +119,15 @@ export const translations = {
     settingsLive: "Live",
     orderService: "Order Service",
     starterFeatures: [
-    "Stripe integration",
+    "1 integration of your choice (Stripe or Shopify)",
     "Hourly data sync",
     "COGS tracking & margin analytics",
     "Weekly email digest",
     "30-day data history"
   ],
-    growthLockNote: "Your chosen integration is locked in for the current billing period. Switch anytime by upgrading to Scale.",
+    growthLockNote: "Your chosen integrations are locked in for the current billing period. Switch anytime by upgrading to Scale.",
     growthFeatures: [
-    "Stripe + 1 integration of your choice (Shopify, Meta Ads, or Google Ads)",
+    "2 integrations of your choice (must include Stripe or Shopify)",
     "Hourly data sync",
     "COGS tracking & margin analytics",
     "Instant Telegram alerts",
@@ -416,15 +416,15 @@ registerSubtitle: "Start your 14-day free trial"
     settingsLive: "Наживо",
     orderService: "Замовити послугу",
    starterFeatures: [
-    "Інтеграція зі Stripe",
+    "1 інтеграція на вибір (Stripe або Shopify)",
     "Щогодинна синхронізація даних",
     "Облік витрат і розрахунок маржинальності",
     "Щотижневі email-звіти",
     "Зберігання історії за 30 днів"
   ],
-    growthLockNote: "Обрана інтеграція фіксується до кінця поточного billing-періоду. Змінити можна в будь-який момент, перейшовши на Scale.",
+    growthLockNote: "Обрані інтеграції фіксуються до кінця поточного billing-періоду. Змінити можна в будь-який момент, перейшовши на Scale.",
     growthFeatures: [
-    "Stripe + 1 інтеграція на вибір (Shopify, Meta Ads або Google Ads)",
+    "2 інтеграції на вибір (обов'язково Stripe або Shopify)",
     "Щогодинна синхронізація даних",
     "Облік витрат і розрахунок маржинальності",
     "Миттєві сповіщення в Telegram",
@@ -716,15 +716,15 @@ minutes: "Minuten",
     settingsLive: "Live",
     orderService: "Service bestellen",
    starterFeatures: [
-    "Stripe-Integration",
+    "1 Integration nach Wahl (Stripe oder Shopify)",
     "Stündliche Datensynchronisation",
     "Selbstkosten- und Margenanalyse",
     "Wöchentlicher E-Mail-Bericht",
     "30 Tage Datenhistorie"
   ],
-    growthLockNote: "Die gewählte Integration ist für den aktuellen Abrechnungszeitraum fixiert. Ein Wechsel ist jederzeit durch ein Upgrade auf Scale möglich.",
+    growthLockNote: "Die gewählten Integrationen sind für den aktuellen Abrechnungszeitraum fixiert. Ein Wechsel ist jederzeit durch ein Upgrade auf Scale möglich.",
    growthFeatures: [
-    "Stripe + 1 Integration nach Wahl (Shopify, Meta Ads oder Google Ads)",
+    "2 Integrationen nach Wahl (Stripe oder Shopify inklusive)",
     "Stündliche Datensynchronisation",
     "Selbstkosten- und Margenanalyse",
     "Echtzeit-Telegram-Benachrichtigungen",

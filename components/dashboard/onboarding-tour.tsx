@@ -7,9 +7,10 @@ type Language = "EN" | "UA" | "DE";
 type ViewType = "overview" | "risks" | "forecast" | "integrations" | "settings";
 type Placement = "top" | "bottom" | "left" | "right";
 // Побочный эффект шага — команда родителю открыть/закрыть что-то в UI
-// (панель метрик, дропдаун фильтра), чтобы тур показывал не пустую кнопку,
+// (панель метрик, дропдаун фильтра, дропдаун уведомлений, демо-вид
+// подключённой интеграции), чтобы тур показывал не пустую кнопку,
 // а реально раскрытое содержимое.
-type StepAction = "widgetPrefs" | "riskFilter" | null;
+type StepAction = "widgetPrefs" | "riskFilter" | "notificationsBell" | "integrationsDemo" | null;
 
 interface Step {
   view: ViewType | null;
@@ -102,6 +103,22 @@ const STEPS: Step[] = [
     },
   },
   {
+    view: "forecast",
+    target: '[data-tour="notifications-bell"]',
+    placement: "bottom",
+    action: "notificationsBell",
+    title: {
+      EN: "Notifications",
+      UA: "Сповіщення",
+      DE: "Benachrichtigungen",
+    },
+    desc: {
+      EN: "Every risk the AI catches lands here first, written in plain language — tap the bell anytime for a quick digest.",
+      UA: "Кожен ризик, який виявляє AI, спершу з'являється тут — простою мовою. Натискайте на дзвіночок у будь-який момент для швидкого огляду.",
+      DE: "Jedes von der KI erkannte Risiko landet zuerst hier — in einfacher Sprache. Tippen Sie jederzeit auf die Glocke für eine kurze Übersicht.",
+    },
+  },
+  {
     view: "integrations",
     target: '[data-tour="integrations-list"]',
     placement: "right",
@@ -117,18 +134,79 @@ const STEPS: Step[] = [
     },
   },
   {
+    view: "integrations",
+    target: '[data-tour="integrations-demo-connected"]',
+    placement: "bottom",
+    action: "integrationsDemo",
+    title: {
+      EN: "See a live integration",
+      UA: "Подивіться підключену інтеграцію",
+      DE: "Live-Integration ansehen",
+    },
+    desc: {
+      EN: "Here's what Stripe looks like once it's connected — a live sync status and the exact revenue key we're pulling from, no guesswork.",
+      UA: "Ось як виглядає Stripe після підключення — статус синхронізації в реальному часі та точний ключ виручки, який ми тягнемо.",
+      DE: "So sieht Stripe nach der Verbindung aus — Live-Sync-Status und der genaue Umsatzschlüssel, den wir abrufen.",
+    },
+  },
+  {
+    view: "settings",
+    target: '[data-tour="settings-notifications"]',
+    placement: "bottom",
+    title: {
+      EN: "Notifications & digest",
+      UA: "Сповіщення та дайджест",
+      DE: "Benachrichtigungen & Digest",
+    },
+    desc: {
+      EN: "Toggle Push and Email to control where alerts land, set how sensitive they are, and how often you get a summary.",
+      UA: "Перемикачі Push і Email визначають, куди приходять сповіщення; нижче — чутливість алертів і частота дайджесту.",
+      DE: "Push und E-Mail bestimmen, wo Benachrichtigungen ankommen; darunter Empfindlichkeit und Digest-Häufigkeit.",
+    },
+  },
+  {
+    view: "settings",
+    target: '[data-tour="settings-telegram"]',
+    placement: "bottom",
+    title: {
+      EN: "Telegram alerts",
+      UA: "Сповіщення в Telegram",
+      DE: "Telegram-Benachrichtigungen",
+    },
+    desc: {
+      EN: "Tap Connect to link a Telegram bot and get risk alerts instantly, even with the dashboard closed.",
+      UA: "Натисніть «Підключити», щоб прив'язати Telegram-бота й отримувати сповіщення про ризики миттєво, навіть коли дашборд закрито.",
+      DE: "Tippen Sie auf Verbinden, um einen Telegram-Bot zu verknüpfen und Risikowarnungen sofort zu erhalten — auch bei geschlossenem Dashboard.",
+    },
+  },
+  {
     view: "settings",
     target: '[data-tour="settings-security"]',
     placement: "left",
     title: {
-      EN: "Settings",
-      UA: "Налаштування",
-      DE: "Einstellungen",
+      EN: "Two-factor auth & password",
+      UA: "Двофакторна автентифікація та пароль",
+      DE: "Zwei-Faktor-Authentifizierung & Passwort",
     },
     desc: {
-      EN: "Profile, notifications, language, security — all here.",
-      UA: "Профіль, сповіщення, мова, безпека — все тут.",
-      DE: "Profil, Benachrichtigungen, Sprache, Sicherheit.",
+      EN: "Flip the switch to require a code at login, or tap Update next to Change Password to set a new one.",
+      UA: "Увімкніть перемикач, щоб вимагати код при вході, або натисніть «Оновити» біля зміни пароля.",
+      DE: "Aktivieren Sie den Schalter für einen Login-Code oder tippen Sie bei Passwort ändern auf Aktualisieren.",
+    },
+  },
+  {
+    view: "settings",
+    target: '[data-tour="settings-danger-zone"]',
+    placement: "bottom",
+    title: {
+      EN: "Export or delete your data",
+      UA: "Експорт або видалення даних",
+      DE: "Daten exportieren oder löschen",
+    },
+    desc: {
+      EN: "Export downloads everything as JSON, Excel or PDF for a period you choose. Delete account is permanent — there's no undo.",
+      UA: "Експорт вивантажує все у JSON, Excel або PDF за обраний період. Видалення акаунта незворотне — скасувати не можна.",
+      DE: "Export lädt alles als JSON, Excel oder PDF für den gewählten Zeitraum. Konto löschen ist endgültig — keine Rückgängig-Funktion.",
     },
   },
   {
@@ -196,7 +274,12 @@ export function OnboardingTour({ language, onNavigate, onFinish, onStepAction }:
   const isFirst = step === 0;
   const isLast = step === STEPS.length - 1;
 
+  // Guards against a second navigation firing while the current step hasn't
+  // finished drawing yet (rapid double-clicks on Next/Back). Without this,
+  // two overlapping measure() runs can race and the spotlight ends up on
+  // the wrong element for a frame.
   const goTo = (i: number) => {
+    if (!ready) return;
     setReady(false);
     setStep(i);
     const view = STEPS[i].view;
@@ -254,10 +337,7 @@ export function OnboardingTour({ language, onNavigate, onFinish, onStepAction }:
         el.scrollIntoView({ block: "center", behavior: "smooth" });
         setRect({ top: r.top, left: r.left, width: r.width, height: r.height });
         attachObserver(el);
-        // Give the browser a beat to finish the smooth-scroll / any layout
-        // shift from a panel we just opened before revealing the popover,
-        // so it doesn't render at position 0 and jump.
-        requestAnimationFrame(() => requestAnimationFrame(() => !cancelled && setReady(true)));
+        revealWhenMeasured();
         return;
       }
 
@@ -268,8 +348,28 @@ export function OnboardingTour({ language, onNavigate, onFinish, onStepAction }:
         // couldn't find it — fall back to a centered popover rather than
         // leaving the tour stuck
         setRect(null);
-        setReady(true);
+        revealWhenMeasured();
       }
+    };
+
+    // Reveals the step only once BOTH the spotlight position (rect, set just
+    // before this is called) AND the popover's real height for the CURRENT
+    // step's content have been measured. Previously popoverH was updated by
+    // an independent ResizeObserver that could fire either before or after
+    // `ready` flipped to true — that race is exactly what caused the popup
+    // to visibly jump to its correct spot right after appearing. Measuring
+    // here, synchronously with the reveal, removes the race: nothing is
+    // shown until its final position is already known.
+    const revealWhenMeasured = () => {
+      requestAnimationFrame(() => {
+        if (cancelled) return;
+        requestAnimationFrame(() => {
+          if (cancelled) return;
+          const h = popoverRef.current?.getBoundingClientRect().height;
+          if (h) setPopoverH(Math.ceil(h));
+          setReady(true);
+        });
+      });
     };
 
     measure();
@@ -320,7 +420,7 @@ export function OnboardingTour({ language, onNavigate, onFinish, onStepAction }:
   const popoverStyle = getPopoverStyle(spotlight, current.placement, popoverH);
 
   return (
-    <div className="fixed inset-0 z-[200]" style={{ opacity: ready ? 1 : 0, transition: "opacity 150ms" }}>
+    <div className="fixed inset-0 z-[200]" style={{ opacity: ready ? 1 : 0, transition: "opacity 200ms ease-out" }}>
       {/* dim everything except the spotlight cutout — no blur */}
       <div
         className="absolute inset-0 pointer-events-none transition-all duration-300 ease-out"
@@ -341,11 +441,18 @@ export function OnboardingTour({ language, onNavigate, onFinish, onStepAction }:
       {/* click-catcher so the rest of the page doesn't receive clicks mid-tour */}
       <div className="absolute inset-0" onClick={(e) => e.stopPropagation()} />
 
-      {/* floating popover */}
+      {/* floating popover — fades/scales in only once its final position
+          and height are already known (see revealWhenMeasured), so this
+          transform never has to "correct" itself after appearing. */}
       <div
         ref={popoverRef}
         className="absolute bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl p-5 transition-all duration-300 ease-out"
-        style={{ width: POPOVER_W, ...popoverStyle }}
+        style={{
+          width: POPOVER_W,
+          ...popoverStyle,
+          opacity: ready ? 1 : 0,
+          transform: `${popoverStyle.transform ?? ""} ${ready ? "scale(1) translateY(0)" : "scale(0.97) translateY(4px)"}`.trim(),
+        }}
       >
         <button
           onClick={onFinish}
@@ -380,7 +487,8 @@ export function OnboardingTour({ language, onNavigate, onFinish, onStepAction }:
             {!isFirst && (
               <button
                 onClick={() => goTo(step - 1)}
-                className="flex items-center gap-1 text-sm text-gray-300 hover:text-white px-3 py-2 rounded-lg border border-gray-700 hover:bg-gray-800 transition-colors"
+                disabled={!ready}
+                className="flex items-center gap-1 text-sm text-gray-300 hover:text-white px-3 py-2 rounded-lg border border-gray-700 hover:bg-gray-800 transition-colors disabled:opacity-40 disabled:pointer-events-none"
               >
                 <ChevronLeft className="w-4 h-4" />
                 {UI.back[language]}
@@ -388,7 +496,8 @@ export function OnboardingTour({ language, onNavigate, onFinish, onStepAction }:
             )}
             <button
               onClick={() => (isLast ? onFinish() : goTo(step + 1))}
-              className="flex items-center gap-1 text-sm text-white bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg font-medium transition-colors"
+              disabled={!ready}
+              className="flex items-center gap-1 text-sm text-white bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg font-medium transition-colors disabled:opacity-40 disabled:pointer-events-none"
             >
               {isLast ? UI.finish[language] : UI.next[language]}
               {!isLast && <ChevronRight className="w-4 h-4" />}

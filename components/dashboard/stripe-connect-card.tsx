@@ -9,9 +9,18 @@ interface Props {
   email: string;
   locked?: boolean;
   onLockedClick?: () => void;
+  /**
+   * Forces the "connected" visual with demo data, regardless of the real
+   * Stripe status fetched from /api/business-status. Used only by the
+   * onboarding tour's "See a live integration" step (see page.tsx /
+   * onboarding-tour.tsx) — never touches the real API and the Disconnect
+   * button is disabled while this is on, so a tour click can't actually
+   * disconnect the user's real Stripe key.
+   */
+  demoConnected?: boolean;
 }
 
-export function StripeConnectCard({ email, locked = false, onLockedClick }: Props) {
+export function StripeConnectCard({ email, locked = false, onLockedClick, demoConnected = false }: Props) {
   const { language } = useLanguage();
   const [apiKey, setApiKey] = useState("");
   const [status, setStatus] = useState<"checking" | "idle" | "loading" | "connected" | "error">("checking");
@@ -52,6 +61,15 @@ export function StripeConnectCard({ email, locked = false, onLockedClick }: Prop
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     toastTimerRef.current = setTimeout(() => setShowLockedToast(false), 6000);
   };
+
+  // Ничего из реального состояния (status/keyPreview/lastSynced) не
+  // трогаем и не перезаписываем — просто подменяем то, что рендерится,
+  // пока идёт демо-шаг тура. Как только тур уходит с этого шага
+  // (demoConnected снова false), карточка мгновенно возвращается к
+  // настоящему статусу, который всё это время спокойно лежал в стейте.
+  const displayStatus = demoConnected ? "connected" : status;
+  const displayKeyPreview = demoConnected ? "rk_live_••••4242" : keyPreview;
+  const displayLastSynced = demoConnected ? new Date(Date.now() - 3 * 60 * 1000).toISOString() : lastSynced;
 
   const handleConnect = async () => {
     if (locked) {
@@ -134,9 +152,15 @@ export function StripeConnectCard({ email, locked = false, onLockedClick }: Prop
         : "You need an active plan to connect this integration.",
     lockedOk: language === "UA" ? "Гаразд" : language === "DE" ? "OK" : "OK",
     lockedViewPlans: language === "UA" ? "Переглянути тарифи" : language === "DE" ? "Tarife ansehen" : "View plans",
+    demoDisconnectHint:
+      language === "UA"
+        ? "Це демонстраційний вигляд для туру — відключення тут недоступне"
+        : language === "DE"
+        ? "Dies ist die Demo-Ansicht der Tour — Trennen ist hier nicht möglich"
+        : "This is the tour's demo view — disconnecting isn't available here",
   };
 
-  if (status === "checking") {
+  if (displayStatus === "checking") {
     return (
       <div className="bg-gray-900/30 rounded-xl p-5 border border-gray-800">
         <div className="flex items-center justify-between mb-1">
@@ -159,26 +183,33 @@ export function StripeConnectCard({ email, locked = false, onLockedClick }: Prop
         <div className="min-w-0">
           <h4 className="font-semibold text-white">Stripe</h4>
           <p className="text-xs text-gray-500">
-            {status === "connected"
-              ? lastSynced
-                ? `${texts.lastSynced}: ${new Date(lastSynced).toLocaleString()}`
+            {displayStatus === "connected"
+              ? displayLastSynced
+                ? `${texts.lastSynced}: ${new Date(displayLastSynced).toLocaleString()}`
                 : texts.connectedWaiting
               : texts.connectDesc}
           </p>
         </div>
-        {status === "connected" && (
+        {displayStatus === "connected" && (
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs px-2 py-1 rounded-full font-semibold bg-green-500/20 text-green-400 flex items-center gap-1 font-mono whitespace-nowrap">
-              <CheckCircle className="w-3 h-3 shrink-0" /> {texts.connected}{keyPreview ? ` · ${keyPreview}` : ""}
+              <CheckCircle className="w-3 h-3 shrink-0" /> {texts.connected}{displayKeyPreview ? ` · ${displayKeyPreview}` : ""}
             </span>
-            <Button size="sm" variant="outline" className="text-red-400 border-red-400/30 hover:bg-red-500/10 shrink-0" onClick={handleDisconnect}>
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-red-400 border-red-400/30 hover:bg-red-500/10 shrink-0 disabled:opacity-40 disabled:pointer-events-none"
+              onClick={handleDisconnect}
+              disabled={demoConnected}
+              title={demoConnected ? texts.demoDisconnectHint : undefined}
+            >
               {texts.disconnectBtn}
             </Button>
           </div>
         )}
       </div>
 
-      {status !== "connected" && (
+      {displayStatus !== "connected" && (
         <div className="space-y-2">
           <input
             type="text"
