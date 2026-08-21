@@ -21,6 +21,14 @@ interface Step {
   target: string | null;
   placement?: Placement;
   action?: StepAction;
+  /**
+   * Shrinks the popover further on narrow (mobile) viewports, for steps
+   * whose target is a small icon/button sitting right above a lot of other
+   * content (e.g. the metrics gear) — a full-width popover placed "bottom"
+   * there ends up sitting on top of the cards/chart below it instead of
+   * just the small target itself.
+   */
+  compact?: boolean;
   title: Record<Language, string>;
   desc: Record<Language, string>;
 }
@@ -58,7 +66,14 @@ const STEPS: Step[] = [
   {
     view: "overview",
     target: '[data-tour="metrics-gear"]',
-    placement: "bottom",
+    // "bottom" used to place the popover right on top of the metric cards
+    // grid that sits directly under this tiny gear icon — on mobile that
+    // read as the tour "covering everything". The gear scrolls to the
+    // vertical center of the screen before this step opens, so there's
+    // always clear room above it; "top" + `compact` keeps the popover
+    // small and out of the way of the cards below.
+    placement: "top",
+    compact: true,
     title: {
       EN: "Choose your metrics",
       UA: "Виберіть свої метрики",
@@ -360,11 +375,16 @@ const STEPS: Step[] = [
   },
 ];
 
-const UI: Record<"next" | "back" | "skip" | "finish", Record<Language, string>> = {
+const UI: Record<"next" | "back" | "skip" | "finish" | "scrollForMore", Record<Language, string>> = {
   next: { EN: "Next", UA: "Далі", DE: "Weiter" },
   back: { EN: "Back", UA: "Назад", DE: "Zurück" },
   skip: { EN: "Skip", UA: "Пропустити", DE: "Überspringen" },
   finish: { EN: "Get started", UA: "Почати", DE: "Loslegen" },
+  // Shown next to the bouncing chevron when the spotlighted card is taller
+  // than the screen (see `clippedAtBottom`) — the chevron alone reads as
+  // decoration to a lot of people, who then never realize the rest of the
+  // block is still there, one scroll away.
+  scrollForMore: { EN: "Scroll for more", UA: "Прокрутіть, щоб побачити ще", DE: "Scrollen für mehr" },
 };
 
 interface OnboardingTourProps {
@@ -656,8 +676,11 @@ export function OnboardingTour({ language, onNavigate, onFinish, onStepAction }:
   // On narrow (mobile) viewports the fixed 300px popover is nearly as wide
   // as the screen itself, so we shrink it — and shrink it a bit further
   // still, with tighter padding/type, so it reads as a compact hint rather
-  // than another panel competing with whatever it's pointing at.
-  const basePopoverW = isNarrow ? 260 : POPOVER_W;
+  // than another panel competing with whatever it's pointing at. Steps
+  // flagged `compact` (small targets sitting right above other content,
+  // e.g. the metrics gear) shrink further still on mobile, since even the
+  // 260px popover was enough to spill over the cards underneath.
+  const basePopoverW = isNarrow ? (current.compact ? 220 : 260) : POPOVER_W;
   const popoverW = Math.min(basePopoverW, viewportW - EDGE * 2);
 
   const popoverStyle = getPopoverStyle(spotlight, current.placement, popoverH, popoverW);
@@ -689,8 +712,9 @@ export function OnboardingTour({ language, onNavigate, onFinish, onStepAction }:
           className="absolute flex justify-center pointer-events-none"
           style={{ top: spotlight.top + spotlight.height - 14, left: spotlight.left, width: spotlight.width }}
         >
-          <div className="bg-blue-500 text-white rounded-full p-1 shadow-lg animate-bounce">
-            <ChevronDown className="w-3 h-3" />
+          <div className="flex items-center gap-1.5 bg-blue-500 text-white rounded-full pl-2.5 pr-1 py-1 shadow-lg animate-bounce">
+            <span className="text-[10px] font-medium leading-none whitespace-nowrap">{UI.scrollForMore[language]}</span>
+            <ChevronDown className="w-3 h-3 shrink-0" />
           </div>
         </div>
       )}
