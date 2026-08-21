@@ -120,6 +120,7 @@ export function WidgetPrefsPanel({
   return (
     <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm">
       <div
+        data-tour="widget-prefs-content"
         className="bg-gray-900 border border-gray-700 sm:rounded-2xl rounded-t-2xl w-full sm:max-w-[420px] max-h-[85vh] flex flex-col shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >

@@ -2464,7 +2464,7 @@ if (!subInfo) {
                     )}
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-80 bg-gray-900 border-gray-800 p-0" align="end">
+                <DropdownMenuContent data-tour="notifications-content" className="w-80 bg-gray-900 border-gray-800 p-0" align="end">
                   <div className="p-3 border-b border-gray-800">
                     <h3 className="font-medium text-foreground">{getTranslation("notifications", "Notifications")}</h3>
                   </div>
@@ -2574,7 +2574,7 @@ if (!subInfo) {
 
           {activeView === "overview" && (
             <div className="space-y-5">
-                  <div className="relative">
+                  <div data-tour="metrics-overview" className="relative">
                     <button
                       data-tour="metrics-gear"
                       onClick={() => setWidgetPrefsOpen(true)}
@@ -2622,7 +2622,7 @@ if (!subInfo) {
           />
 
           {activeView === "risks" && (
-            <div className="space-y-4">
+            <div data-tour="risks-overview" className="space-y-4">
              {isExpiredTrialForTour ? (
   <div className="text-center py-16 bg-gray-900/30 rounded-xl border border-gray-800">
     <AlertTriangle className="w-10 h-10 mx-auto mb-3 text-gray-600" />
@@ -2694,6 +2694,7 @@ if (!subInfo) {
 
                         {riskFilterOpen && (
                           <div
+                            data-tour="risk-filter-content"
                             className="absolute right-0 mt-2 w-56 bg-gray-900 border border-gray-800 rounded-xl shadow-xl z-20 p-2 touch-pan-y"
                             onTouchStart={(e) => {
                               riskFilterTouchStartYRef.current = e.touches[0].clientY;
@@ -2917,7 +2918,7 @@ if (!subInfo) {
 
 
               {activeView === "forecast" && (
-  <div data-tour="forecast-chart" className="space-y-4">
+  <div className="space-y-4">
     {isExpiredTrialForTour ? (
       <div className="text-center py-16 bg-gray-900/30 rounded-xl border border-gray-800">
         <AlertTriangle className="w-10 h-10 mx-auto mb-3 text-gray-600" />
@@ -2996,7 +2997,7 @@ if (!subInfo) {
                     </div>
                   )}
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div data-tour="forecast-stats" className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="bg-gradient-to-br from-blue-500/10 to-transparent rounded-xl p-5 border border-blue-500/20">
                       <div className="text-sm text-blue-400 font-semibold mb-1">
                         {(T.projectedRevenue || "Projected Revenue")} ({forecastData.horizonDays}{T.forecastDaysUnit || "d"})
@@ -3020,7 +3021,7 @@ if (!subInfo) {
                     </div>
                   </div>
 
-                  <div className="bg-gray-900/30 rounded-xl p-3 sm:p-5 border border-gray-800 overflow-hidden">
+                  <div data-tour="forecast-chart" className="bg-gray-900/30 rounded-xl p-3 sm:p-5 border border-gray-800 overflow-hidden">
                     <h3 className="font-semibold text-white text-base mb-4">
                       {forecastData.horizonDays === 30
                         ? (T.forecastWeeklyTitle || "Next 30 days")
@@ -3091,7 +3092,7 @@ if (!subInfo) {
                     </div>
                   </div>
 
-                  <div className="bg-blue-500/5 rounded-xl p-4 border border-blue-500/20">
+                  <div data-tour="forecast-ai-analysis" className="bg-blue-500/5 rounded-xl p-4 border border-blue-500/20">
                     {forecastData.explanation ? (
                       <p className="text-sm text-gray-300 whitespace-pre-line">{forecastData.explanation}</p>
                     ) : (
@@ -3562,7 +3563,7 @@ if (!subInfo) {
                 </div>
               </div>
 
-<div className="bg-card rounded-xl p-6 border border-border">
+<div data-tour="settings-feedback" className="bg-card rounded-xl p-6 border border-border">
                 <h3 className="font-semibold text-foreground mb-4">
                   {language === "UA" ? "Залишити відгук" : language === "DE" ? "Bewertung abgeben" : "Leave a Review"}
                 </h3>
@@ -3608,7 +3609,7 @@ if (!subInfo) {
                 </Button>
               </div>
 
-<div className="bg-card rounded-xl p-6 border border-border">
+<div data-tour="settings-report-issue" className="bg-card rounded-xl p-6 border border-border">
   <h3 className="font-semibold text-foreground mb-4">
     {language === "UA" ? "Повідомити про проблему" : language === "DE" ? "Problem melden" : "Report an issue"}
   </h3>
