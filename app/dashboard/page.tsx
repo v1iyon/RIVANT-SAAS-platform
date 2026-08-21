@@ -959,7 +959,7 @@ const DEMO_FORECAST = {
   tier: "high",
   horizonDays: 30,
   dailyGrowthPct: 1.8,
-  marginSlope: 0.3,
+  marginSlope: -0.4,
   confidence: 82,
   revenue7: 26000,
   revenue14: 54000,
@@ -973,6 +973,19 @@ const DEMO_FORECAST = {
   expenses30: 69000,
   expenses60: 140000,
   expenses90: 213000,
+};
+
+// Статичний текст "AI analysis" для DEMO_FORECAST — реальний прогноз (див.
+// app/api/forecast/route.ts:generateExplanation) генерується через Claude
+// на льоту з реальних цифр бізнесу, тому під час туру (де ще немає жодних
+// реальних даних) підставляємо заздалегідь написаний текст у тому самому
+// стилі (5-7 речень, прогноз -> тренд виручки -> тренд маржі -> порада ->
+// джерело розрахунку), побудований саме на числах з DEMO_FORECAST вище —
+// щоб пояснення збігалося з цифрами на екрані.
+const DEMO_FORECAST_EXPLANATION: Record<Language, string> = {
+  UA: "RIVANT розраховує отримати $118 000 доходу та $69 000 витрат протягом наступних 30 днів за умови, що поточні тенденції збережуться. Дохід зростає на 1,80% щодня, що свідчить про стійкий висхідний тренд у продажах. Однак маржа скорочується на 0,40 процентного пункту щодня, тобто витрати ростуть швидше за дохід і прибутковість поступово зменшується. Цей розрив між зростанням доходу та падінням маржі потребує уваги до контролю операційних витрат, щоб запобігти подальшому стисненню прибутку. Рекомендується регулярно порівнювати фактичні результати з прогнозом і переглядати бюджет, якщо витрати перевищуватимуть очікувані темпи росту. Розрахунки базуються на лінійній регресії 30 днів історичних даних із коефіцієнтом детермінації R² = 76% для доходу.",
+  EN: "RIVANT projects about $118,000 in revenue and $69,000 in expenses over the next 30 days, assuming current trends hold. Revenue is growing by 1.80% per day, pointing to a steady upward trend in sales. However, margin is shrinking by 0.40 percentage points per day, meaning costs are growing faster than revenue and profitability is gradually eroding. This gap between rising revenue and falling margin calls for closer attention to operating cost control to prevent further profit compression. It's recommended to regularly compare actual results against the forecast and revise the budget if expenses exceed the expected growth rate. Calculations are based on a linear regression of 30 days of historical data with a coefficient of determination R² = 76% for revenue.",
+  DE: "RIVANT prognostiziert für die nächsten 30 Tage rund 118.000 $ Umsatz und 69.000 $ Ausgaben, sofern sich die aktuellen Trends fortsetzen. Der Umsatz wächst täglich um 1,80 %, was auf einen stabilen Aufwärtstrend im Verkauf hindeutet. Die Marge schrumpft jedoch täglich um 0,40 Prozentpunkte — die Kosten wachsen also schneller als der Umsatz, und die Profitabilität nimmt allmählich ab. Diese Lücke zwischen steigendem Umsatz und sinkender Marge erfordert mehr Aufmerksamkeit bei der Kontrolle der Betriebskosten, um eine weitere Gewinnkompression zu vermeiden. Es wird empfohlen, die tatsächlichen Ergebnisse regelmäßig mit der Prognose zu vergleichen und das Budget anzupassen, falls die Ausgaben die erwartete Wachstumsrate übersteigen. Die Berechnung basiert auf einer linearen Regression von 30 Tagen historischer Daten mit einem Bestimmtheitsmaß R² = 76 % für den Umsatz.",
 };
 
 export default function DashboardClient() {
