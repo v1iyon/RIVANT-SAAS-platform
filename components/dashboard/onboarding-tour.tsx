@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { X, ChevronLeft, ChevronRight } from "lucide-react";
+import { X, ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
 
 type Language = "EN" | "UA" | "DE";
 type ViewType = "overview" | "risks" | "forecast" | "integrations" | "settings";
@@ -319,14 +319,14 @@ const STEPS: Step[] = [
     target: '[data-tour="settings-report-issue"]',
     placement: "top",
     title: {
-      EN: "Found a bug? Tell us",
-      UA: "Знайшли баг? Скажіть нам",
-      DE: "Fehler gefunden? Sagen Sie uns Bescheid",
+      EN: "Found a bug — or missing a feature?",
+      UA: "Знайшли баг — чи бракує функції?",
+      DE: "Fehler gefunden — oder fehlt ein Feature?",
     },
     desc: {
-      EN: "Anything broken or confusing — report it here. The more detail, the faster we fix it, so don't hold back.",
-      UA: "Щось зламалось або незрозуміло — повідомте тут. Що детальніше, то швидше ми виправимо, тож не соромтесь.",
-      DE: "Etwas kaputt oder unklar — melden Sie es hier. Je mehr Details, desto schneller beheben wir es — scheuen Sie sich nicht.",
+      EN: "Switch between Bug and Feature request here. Report what's broken, or pitch a feature you'd like to see — either way, the more detail, the faster we act on it.",
+      UA: "Перемикайтесь між «Проблема» і «Пропозиція функції» тут. Повідомте, що зламалось, або запропонуйте функцію, якої бракує — що детальніше, то швидше ми відреагуємо.",
+      DE: "Wechseln Sie hier zwischen Fehler und Funktionsvorschlag. Melden Sie, was kaputt ist, oder schlagen Sie ein gewünschtes Feature vor — je mehr Details, desto schneller reagieren wir.",
     },
   },
   {
@@ -396,6 +396,38 @@ function rectsOverlap(a: { top: number; left: number; width: number; height: num
 }
 
 const OPPOSITE: Record<Placement, Placement> = { top: "bottom", bottom: "top", left: "right", right: "left" };
+
+// How many dots to show at once. With ~17 steps, showing one dot per step
+// used to wrap onto a second row on narrow phones — a wall of tiny dots
+// that reads as "this tour is long" and makes people tap Skip immediately.
+// Instead we show a small sliding window centered on the current step
+// (like a paginator), so it always reads as "a few steps", with the edge
+// dots shrunk down to hint there are more before/after without spelling
+// out exactly how many.
+const DOT_WINDOW = 5;
+
+function StepDots({ step, total }: { step: number; total: number }) {
+  const windowSize = Math.min(DOT_WINDOW, total);
+  const start = Math.max(0, Math.min(step - Math.floor(windowSize / 2), total - windowSize));
+  const indices = Array.from({ length: windowSize }, (_, k) => start + k);
+
+  return (
+    <div className="flex items-center gap-1.5 mb-3 pr-6">
+      {indices.map((i) => {
+        const isActive = i === step;
+        const isEdge = (i === start && start > 0) || (i === start + windowSize - 1 && start + windowSize < total);
+        return (
+          <div
+            key={i}
+            className={`h-1.5 rounded-full transition-all duration-200 ${
+              isActive ? "w-6 bg-blue-500" : isEdge ? "w-1 bg-gray-800" : "w-1.5 bg-gray-700"
+            }`}
+          />
+        );
+      })}
+    </div>
+  );
+}
 
 export function OnboardingTour({ language, onNavigate, onFinish, onStepAction }: OnboardingTourProps) {
   const [step, setStep] = useState(0);
@@ -567,9 +599,12 @@ export function OnboardingTour({ language, onNavigate, onFinish, onStepAction }:
     return () => ro.disconnect();
   }, [step]);
 
+  const viewportW = typeof window !== "undefined" ? window.innerWidth : 1280;
+  const isNarrow = viewportW < 480;
+
   const spotlight = rect
     ? (() => {
-        const vw = typeof window !== "undefined" ? window.innerWidth : 1280;
+        const vw = viewportW;
         const vh = typeof window !== "undefined" ? window.innerHeight : 800;
         const rawTop = rect.top - PAD;
         const rawLeft = rect.left - PAD;
@@ -582,19 +617,48 @@ export function OnboardingTour({ language, onNavigate, onFinish, onStepAction }:
         // region every step — expensive enough on some mobile/desktop GPUs
         // to hang or crash the tab's renderer. Clipping bounds the worst
         // case to the viewport regardless of the real element size.
-        const top = Math.max(rawTop, 0);
         const left = Math.max(rawLeft, 0);
         const right = Math.min(rawRight, vw);
-        const bottom = Math.min(rawBottom, vh);
-        return { top, left, width: Math.max(right - left, 0), height: Math.max(bottom - top, 0) };
+
+        // A target taller than the viewport itself (a mobile bottom sheet
+        // like the widget-prefs panel, or a tall settings card) clips to
+        // top=0/bottom=vh on both ends — the "spotlight" then covers the
+        // *entire* screen, which visually just traces a border around the
+        // whole viewport instead of a sensible sub-area, and leaves nowhere
+        // on-screen to draw the popover without sitting on top of it. When
+        // that happens, reserve a strip at the bottom exactly the size of
+        // the popover (+gaps) so there's always a clean, dedicated spot for
+        // it — the popover's own "bottom" placement below then fits without
+        // any extra logic. `clippedAtBottom` tells the UI to show a hint
+        // that the card continues below what's currently spotlighted.
+        const oversized = rawTop < 0 && rawBottom > vh;
+        const top = Math.max(rawTop, 0);
+        let bottom = Math.min(rawBottom, vh);
+        let clippedAtBottom = false;
+        if (oversized) {
+          const reserved = popoverH + GAP + EDGE;
+          const maxBottom = Math.max(vh - reserved, top + 80);
+          if (bottom > maxBottom) {
+            bottom = maxBottom;
+            clippedAtBottom = true;
+          }
+        }
+        return {
+          top,
+          left,
+          width: Math.max(right - left, 0),
+          height: Math.max(bottom - top, 0),
+          clippedAtBottom,
+        };
       })()
     : null;
 
   // On narrow (mobile) viewports the fixed 300px popover is nearly as wide
-  // as the screen itself, so we shrink it to fit rather than letting it
-  // overflow/overlap the spotlighted element.
-  const viewportW = typeof window !== "undefined" ? window.innerWidth : 1280;
-  const popoverW = Math.min(POPOVER_W, viewportW - EDGE * 2);
+  // as the screen itself, so we shrink it — and shrink it a bit further
+  // still, with tighter padding/type, so it reads as a compact hint rather
+  // than another panel competing with whatever it's pointing at.
+  const basePopoverW = isNarrow ? 260 : POPOVER_W;
+  const popoverW = Math.min(basePopoverW, viewportW - EDGE * 2);
 
   const popoverStyle = getPopoverStyle(spotlight, current.placement, popoverH, popoverW);
 
@@ -617,6 +681,20 @@ export function OnboardingTour({ language, onNavigate, onFinish, onStepAction }:
         }}
       />
 
+      {/* hint that the spotlighted card continues below the visible cutout
+          (see `clippedAtBottom` above) — a small bouncing chevron so people
+          on mobile don't miss the rest of a tall settings/panel block. */}
+      {spotlight?.clippedAtBottom && (
+        <div
+          className="absolute flex justify-center pointer-events-none"
+          style={{ top: spotlight.top + spotlight.height - 14, left: spotlight.left, width: spotlight.width }}
+        >
+          <div className="bg-blue-500 text-white rounded-full p-1 shadow-lg animate-bounce">
+            <ChevronDown className="w-3 h-3" />
+          </div>
+        </div>
+      )}
+
       {/* click-catcher so the rest of the page doesn't receive clicks mid-tour */}
       <div className="absolute inset-0" onClick={(e) => e.stopPropagation()} />
 
@@ -625,7 +703,9 @@ export function OnboardingTour({ language, onNavigate, onFinish, onStepAction }:
           transform never has to "correct" itself after appearing. */}
       <div
         ref={popoverRef}
-        className="absolute bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl p-5 transition-all duration-300 ease-out"
+        className={`absolute bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl transition-all duration-300 ease-out ${
+          isNarrow ? "p-3.5" : "p-5"
+        }`}
         style={{
           width: popoverW,
           ...popoverStyle,
@@ -641,19 +721,10 @@ export function OnboardingTour({ language, onNavigate, onFinish, onStepAction }:
           <X className="w-4 h-4" />
         </button>
 
-        <div className="flex items-center gap-1.5 mb-3 pr-6 flex-wrap">
-          {STEPS.map((_, i) => (
-            <div
-              key={i}
-              className={`h-1.5 rounded-full transition-all ${
-                i === step ? "w-6 bg-blue-500" : "w-1.5 bg-gray-700"
-              }`}
-            />
-          ))}
-        </div>
+        <StepDots step={step} total={STEPS.length} />
 
-        <h3 className="text-base font-semibold text-white mb-1.5 pr-6">{current.title[language]}</h3>
-        <p className="text-sm text-gray-400 leading-relaxed mb-5">{current.desc[language]}</p>
+        <h3 className={`font-semibold text-white mb-1.5 pr-6 ${isNarrow ? "text-sm" : "text-base"}`}>{current.title[language]}</h3>
+        <p className={`text-gray-400 leading-relaxed pr-6 ${isNarrow ? "text-xs mb-3.5" : "text-sm mb-5"}`}>{current.desc[language]}</p>
 
         <div className="flex items-center justify-between gap-2">
           <button
