@@ -568,7 +568,26 @@ export function OnboardingTour({ language, onNavigate, onFinish, onStepAction }:
   }, [step]);
 
   const spotlight = rect
-    ? { top: rect.top - PAD, left: rect.left - PAD, width: rect.width + PAD * 2, height: rect.height + PAD * 2 }
+    ? (() => {
+        const vw = typeof window !== "undefined" ? window.innerWidth : 1280;
+        const vh = typeof window !== "undefined" ? window.innerHeight : 800;
+        const rawTop = rect.top - PAD;
+        const rawLeft = rect.left - PAD;
+        const rawRight = rect.left + rect.width + PAD;
+        const rawBottom = rect.top + rect.height + PAD;
+        // Clip the highlighted rect to the viewport. Some tour targets can be
+        // taller/wider than the screen (a long card list, a full-height
+        // panel). An unclipped spotlight forces the browser to animate a
+        // `box-shadow: 0 0 0 9999px` cutout across that whole oversized
+        // region every step — expensive enough on some mobile/desktop GPUs
+        // to hang or crash the tab's renderer. Clipping bounds the worst
+        // case to the viewport regardless of the real element size.
+        const top = Math.max(rawTop, 0);
+        const left = Math.max(rawLeft, 0);
+        const right = Math.min(rawRight, vw);
+        const bottom = Math.min(rawBottom, vh);
+        return { top, left, width: Math.max(right - left, 0), height: Math.max(bottom - top, 0) };
+      })()
     : null;
 
   // On narrow (mobile) viewports the fixed 300px popover is nearly as wide

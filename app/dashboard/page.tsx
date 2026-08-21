@@ -3113,7 +3113,7 @@ if (!subInfo) {
           )}
 
          {activeView === "integrations" && (
-            <div data-tour="integrations-list" className="relative space-y-4 -mt-3 lg:-mt-4">
+            <div className="relative space-y-4 -mt-3 lg:-mt-4">
               {/* sticky (не absolute) — кружок має лишатись НА МІСЦІ ЕКРАНА поверх
                   карток під час скролу списку інтеграцій, а не прокручуватись
                   разом з ними. Обгортка з h-0 не займає місця в потоці (картки
@@ -3170,13 +3170,15 @@ if (!subInfo) {
                 </div>
               )}
 
-              <div data-tour="integrations-demo-connected">
-                <StripeConnectCard
-                  email={profileEmail}
-                  locked={isExpiredTrial}
-                  onLockedClick={() => router.push("/#pricing")}
-                  demoConnected={integrationsDemoOpen}
-                />
+              <div data-tour="integrations-list">
+                <div data-tour="integrations-demo-connected">
+                  <StripeConnectCard
+                    email={profileEmail}
+                    locked={isExpiredTrial}
+                    onLockedClick={() => router.push("/#pricing")}
+                    demoConnected={integrationsDemoOpen}
+                  />
+                </div>
               </div>
 
               {(() => {
