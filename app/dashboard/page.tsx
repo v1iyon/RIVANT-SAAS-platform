@@ -959,6 +959,7 @@ const DEMO_FORECAST = {
   tier: "high",
   horizonDays: 30,
   dailyGrowthPct: 1.8,
+  marginSlope: 0.3,
   confidence: 82,
   revenue7: 26000,
   revenue14: 54000,
