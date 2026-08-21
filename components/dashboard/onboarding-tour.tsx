@@ -434,6 +434,25 @@ export function OnboardingTour({ language, onNavigate, onFinish, onStepAction }:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Safety net: some Radix components (Popover/DropdownMenu with default
+  // modal={true}) lock `pointer-events: none` on <body> while open and
+  // release it themselves on close. Since the tour opens/closes those
+  // programmatically (not via the user's own click/escape), that release
+  // can race with the tour's own re-render and get stuck, freezing every
+  // click on the page including the tour's own Next/Back/Skip/X buttons.
+  // Force-clear it on every step change and on unmount so a stuck lock
+  // never survives past the step that caused it.
+  useEffect(() => {
+    if (typeof document !== "undefined" && document.body.style.pointerEvents === "none") {
+      document.body.style.pointerEvents = "";
+    }
+    return () => {
+      if (typeof document !== "undefined" && document.body.style.pointerEvents === "none") {
+        document.body.style.pointerEvents = "";
+      }
+    };
+  }, [step]);
+
   // Locate + measure the target element. Retries for a bit in case the
   // tab we just navigated to (or a panel we just asked the parent to open)
   // is still mounting/animating in. Once found, a ResizeObserver keeps
@@ -552,7 +571,13 @@ export function OnboardingTour({ language, onNavigate, onFinish, onStepAction }:
     ? { top: rect.top - PAD, left: rect.left - PAD, width: rect.width + PAD * 2, height: rect.height + PAD * 2 }
     : null;
 
-  const popoverStyle = getPopoverStyle(spotlight, current.placement, popoverH);
+  // On narrow (mobile) viewports the fixed 300px popover is nearly as wide
+  // as the screen itself, so we shrink it to fit rather than letting it
+  // overflow/overlap the spotlighted element.
+  const viewportW = typeof window !== "undefined" ? window.innerWidth : 1280;
+  const popoverW = Math.min(POPOVER_W, viewportW - EDGE * 2);
+
+  const popoverStyle = getPopoverStyle(spotlight, current.placement, popoverH, popoverW);
 
   return (
     <div className="fixed inset-0 z-[200]" style={{ opacity: ready ? 1 : 0, transition: "opacity 200ms ease-out" }}>
@@ -583,7 +608,7 @@ export function OnboardingTour({ language, onNavigate, onFinish, onStepAction }:
         ref={popoverRef}
         className="absolute bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl p-5 transition-all duration-300 ease-out"
         style={{
-          width: POPOVER_W,
+          width: popoverW,
           ...popoverStyle,
           opacity: ready ? 1 : 0,
           transform: `${popoverStyle.transform ?? ""} ${ready ? "scale(1) translateY(0)" : "scale(0.97) translateY(4px)"}`.trim(),
@@ -597,7 +622,7 @@ export function OnboardingTour({ language, onNavigate, onFinish, onStepAction }:
           <X className="w-4 h-4" />
         </button>
 
-        <div className="flex items-center gap-1.5 mb-3">
+        <div className="flex items-center gap-1.5 mb-3 pr-6 flex-wrap">
           {STEPS.map((_, i) => (
             <div
               key={i}
@@ -652,7 +677,8 @@ export function OnboardingTour({ language, onNavigate, onFinish, onStepAction }:
 function getPopoverStyle(
   spotlight: Rect | null,
   placement: Placement = "bottom",
-  popoverH: number
+  popoverH: number,
+  popoverW: number = POPOVER_W
 ): React.CSSProperties {
   if (!spotlight) {
     return {
@@ -670,17 +696,17 @@ function getPopoverStyle(
       case "bottom":
         return {
           top: spotlight.top + spotlight.height + GAP,
-          left: spotlight.left + spotlight.width / 2 - POPOVER_W / 2,
+          left: spotlight.left + spotlight.width / 2 - popoverW / 2,
         };
       case "top":
         return {
           top: spotlight.top - GAP - popoverH,
-          left: spotlight.left + spotlight.width / 2 - POPOVER_W / 2,
+          left: spotlight.left + spotlight.width / 2 - popoverW / 2,
         };
       case "left":
         return {
           top: spotlight.top + spotlight.height / 2 - popoverH / 2,
-          left: spotlight.left - POPOVER_W - GAP,
+          left: spotlight.left - popoverW - GAP,
         };
       case "right":
         return {
@@ -692,23 +718,37 @@ function getPopoverStyle(
 
   const clamp = (pos: { top: number; left: number }) => ({
     top: Math.max(EDGE, Math.min(pos.top, vh - popoverH - EDGE)),
-    left: Math.max(EDGE, Math.min(pos.left, vw - POPOVER_W - EDGE)),
+    left: Math.max(EDGE, Math.min(pos.left, vw - popoverW - EDGE)),
   });
 
   const fitsCleanly = (pos: { top: number; left: number }) => {
     // Fits on-screen without clamping AND doesn't overlap the spotlight.
     const onScreen =
-      pos.top >= EDGE && pos.left >= EDGE && pos.top + popoverH <= vh - EDGE && pos.left + POPOVER_W <= vw - EDGE;
+      pos.top >= EDGE && pos.left >= EDGE && pos.top + popoverH <= vh - EDGE && pos.left + popoverW <= vw - EDGE;
     if (!onScreen) return false;
-    return !rectsOverlap({ top: pos.top, left: pos.left, width: POPOVER_W, height: popoverH }, spotlight);
+    return !rectsOverlap({ top: pos.top, left: pos.left, width: popoverW, height: popoverH }, spotlight);
   };
 
   // Try the requested placement, then its opposite, then the two remaining
-  // sides, and finally fall back to a clamped version of the first choice.
+  // sides.
   const order: Placement[] = [placement, OPPOSITE[placement], "bottom", "top", "right", "left"];
   for (const p of order) {
     const pos = place(p);
     if (fitsCleanly(pos)) return clamp(pos);
   }
-  return clamp(place(placement));
+
+  // Nothing "fits cleanly" (typical on narrow mobile viewports where the
+  // popover is nearly as wide as the screen). Rather than blindly clamping
+  // the originally requested placement — which can land the popover right
+  // on top of the spotlighted element — force it fully above or below,
+  // whichever side has more room, and clamp only horizontally. This never
+  // overlaps the spotlight vertically.
+  const spaceBelow = vh - (spotlight.top + spotlight.height) - GAP;
+  const spaceAbove = spotlight.top - GAP;
+  const top =
+    spaceBelow >= spaceAbove
+      ? Math.min(spotlight.top + spotlight.height + GAP, vh - popoverH - EDGE)
+      : Math.max(spotlight.top - GAP - popoverH, EDGE);
+
+  return clamp({ top, left: place(placement).left });
 }

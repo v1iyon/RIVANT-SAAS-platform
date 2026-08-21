@@ -2439,6 +2439,7 @@ if (!subInfo) {
                 <span className="text-sm text-green-400 font-medium">{T.settingsLive || "Live"}</span>
               </div>
              <DropdownMenu
+                modal={false}
                 open={notifOpen}
                 onOpenChange={(open) => {
                   // Пока идёт тур, notifOpen управляется шагом тура
@@ -2622,7 +2623,7 @@ if (!subInfo) {
           />
 
           {activeView === "risks" && (
-            <div data-tour="risks-overview" className="space-y-4">
+            <div className="space-y-4">
              {isExpiredTrialForTour ? (
   <div className="text-center py-16 bg-gray-900/30 rounded-xl border border-gray-800">
     <AlertTriangle className="w-10 h-10 mx-auto mb-3 text-gray-600" />
@@ -2795,7 +2796,7 @@ if (!subInfo) {
 
                   {risksView === "active" && (
                   <>
-                  <div className="space-y-3 pr-1 pb-6">
+                  <div data-tour="risks-overview" className="space-y-3 pr-1 pb-6">
                     {risks
                       .filter((risk) => riskCategoryFilter.length === 0 || riskCategoryFilter.includes(risk.category))
                       .map((risk) => (
