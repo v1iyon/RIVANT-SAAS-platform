@@ -24,6 +24,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { getUserContact, sendDailyReport } from "../lib/alerts.mjs";
+import { logError } from "../lib/log-error.js";
 
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
@@ -50,7 +51,22 @@ function localDateStr(tz) {
 }
 
 export async function runDailyReports() {
-  const { data: businesses } = await admin.from("businesses").select("id, user_id, name, timezone, digest_frequency");
+  // БАГ, ЩО ЗНАЙДЕНО: раніше тут деструктурувався тільки `data`, а `error`
+  // ігнорувався. Якщо цей запит падав (недоступна колонка, RLS, тимчасовий
+  // збій мережі) — `businesses` ставало undefined, і функція МОВЧКИ
+  // завершувалась на наступному рядку. Жодного логу, жодного разу, ні для
+  // одного бізнесу — саме тому дайджест міг не приходити взагалі, тоді як
+  // алерти (revenue_drop і т.д.) йдуть повністю окремим шляхом через
+  // sendAlertToBusiness() у sync-stripe-core.mjs і збій тут на них не
+  // впливає. Тепер помилка логується через error_logs, як і решта скрипта.
+  const { data: businesses, error: businessesErr } = await admin
+    .from("businesses")
+    .select("id, user_id, name, timezone, digest_frequency");
+  if (businessesErr) {
+    console.error("daily-reports: failed to load businesses:", businessesErr.message);
+    await logError({ source: "daily_reports", message: "Failed to load businesses list", details: businessesErr.message });
+    return;
+  }
   if (!businesses?.length) return;
 
   for (const business of businesses) {
@@ -169,6 +185,7 @@ export async function runDailyReports() {
       });
     } catch (err) {
       console.error(`daily-reports failed for business ${business.id}:`, err.message);
+      await logError({ source: "daily_reports", message: `Failed for business ${business.id}`, details: err.message, businessId: business.id });
     }
   }
 }
