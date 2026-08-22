@@ -1169,7 +1169,15 @@ const digestRef = useRef<HTMLDivElement | null>(null);
   const filteredResolvedRisksCount = resolvedRisks.filter(
     (risk) => riskCategoryFilter.length === 0 || riskCategoryFilter.includes(risk.category)
   ).length;
-  const [alertCount, setAlertCount] = useState(0);
+  const [alertCountReal, setAlertCount] = useState(0);
+  // Раніше бейдж на дзвіночку завжди показував alertCountReal — реальний
+  // лічильник з /api/alerts, який для щойно зареєстрованого акаунту без
+  // підключених інтеграцій дорівнює 0. Але сам список під дзвіночком (та
+  // список ризиків на вкладці) під час онбордингу показує getDemoRisks —
+  // звідси розбіжність "дзвіночок каже 0, а показує 3". Той самий похідний
+  // патерн, що й для `risks`/`forecastData` вище: під час туру беремо
+  // довжину демо-списку, а не реальний лічильник.
+  const alertCount = showOnboarding ? getDemoRisks(language).length : alertCountReal;
   const [alertsLoaded, setAlertsLoaded] = useState(false);
 
   const [notifOpen, setNotifOpen] = useState(false);

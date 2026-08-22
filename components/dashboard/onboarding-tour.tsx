@@ -106,14 +106,14 @@ const STEPS: Step[] = [
     target: '[data-tour="risks-overview"]',
     placement: "top",
     title: {
-      EN: "AI-detected risks",
-      UA: "Ризики, виявлені AI",
-      DE: "KI-erkannte Risiken",
+      EN: "Every risk, caught early",
+      UA: "Кожен ризик — під контролем",
+      DE: "Jedes Risiko früh erkannt",
     },
     desc: {
-      EN: "This is where every operational risk the AI spots shows up — active first, resolved ones in History.",
-      UA: "Тут з'являється кожен виявлений AI операційний ризик — спершу активні, вирішені — в Історії.",
-      DE: "Hier erscheint jedes von der KI erkannte Risiko — zuerst aktive, gelöste unter Verlauf.",
+      EN: "Every operational risk lands here the moment it appears — active ones first, resolved ones in History — so nothing costs you money before you notice it.",
+      UA: "Кожен операційний ризик з'являється тут одразу — спершу активні, вирішені — в Історії, щоб ніщо не встигло непомітно коштувати вам грошей.",
+      DE: "Jedes operative Risiko landet hier, sobald es auftritt — aktive zuerst, gelöste unter Verlauf — damit nichts unbemerkt Geld kostet.",
     },
   },
   {
@@ -126,9 +126,9 @@ const STEPS: Step[] = [
       DE: "Benachrichtigungen",
     },
     desc: {
-      EN: "Tap the bell anytime for a quick digest of what the AI has caught.",
-      UA: "Натискайте на дзвіночок у будь-який момент для швидкого огляду того, що виявив AI.",
-      DE: "Tippen Sie jederzeit auf die Glocke für eine kurze Übersicht dessen, was die KI erkannt hat.",
+      EN: "Tap the bell anytime for a quick digest of what needs your attention.",
+      UA: "Натискайте на дзвіночок у будь-який момент для швидкого огляду того, що потребує вашої уваги.",
+      DE: "Tippen Sie jederzeit auf die Glocke für eine kurze Übersicht dessen, was Ihre Aufmerksamkeit braucht.",
     },
   },
   {
@@ -142,9 +142,9 @@ const STEPS: Step[] = [
       DE: "Benachrichtigungen in einfacher Sprache",
     },
     desc: {
-      EN: "Every risk the AI catches lands here first, written in plain language, with a shortcut to see all of them.",
-      UA: "Кожен ризик, який виявляє AI, спершу з'являється тут — простою мовою, з переходом до перегляду всіх.",
-      DE: "Jedes von der KI erkannte Risiko landet zuerst hier — in einfacher Sprache, mit einem Link zu allen.",
+      EN: "Every risk lands here first, written in plain language — no dashboards to decode, just what changed and why it matters, with a shortcut to see all of them.",
+      UA: "Кожен ризик спершу з'являється тут — простою мовою, без розбору складних дашбордів: що змінилось і чому це важливо, з переходом до перегляду всіх.",
+      DE: "Jedes Risiko landet zuerst hier — in einfacher Sprache statt komplizierter Dashboards: was sich geändert hat und warum es wichtig ist, mit einem Link zu allen.",
     },
   },
   {
@@ -188,9 +188,9 @@ const STEPS: Step[] = [
       DE: "Risikoverlauf",
     },
     desc: {
-      EN: "Everything the AI has flagged over time lives here.",
-      UA: "Все, що AI помітив з часом, зберігається тут.",
-      DE: "Alles, was die KI im Zeitverlauf erkannt hat.",
+      EN: "Everything that's been caught and resolved over time lives here — your track record.",
+      UA: "Все, що було виявлено й вирішено з часом, зберігається тут — ваша історія результатів.",
+      DE: "Alles, was im Laufe der Zeit erkannt und gelöst wurde, finden Sie hier — Ihre Erfolgsbilanz.",
     },
   },
   {
@@ -228,9 +228,9 @@ const STEPS: Step[] = [
     target: '[data-tour="forecast-ai-analysis"]',
     placement: "top",
     title: {
-      EN: "AI analysis",
-      UA: "Аналіз від AI",
-      DE: "KI-Analyse",
+      EN: "What it means for you",
+      UA: "Що це означає для вас",
+      DE: "Was das für Sie bedeutet",
     },
     desc: {
       EN: "A plain-language read of the trend — again, demo data here, but this is exactly what you'll see with your own numbers.",
