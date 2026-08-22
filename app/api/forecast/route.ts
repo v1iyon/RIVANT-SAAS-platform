@@ -229,6 +229,32 @@ function localizedFallbackExplanation(
   return `For the next ${stats.horizonDays} days, expected revenue is about ${symbol}${revenue} and expenses are about ${symbol}${expenses}. Daily revenue is ${stats.dailyGrowthPct >= 0 ? "rising" : "declining"} by about ${trend}%, which should inform sales and cost planning. Review actual results regularly and adjust the plan if they materially differ from this scenario. Confidence is ${stats.confidence}%, so this is a planning guide rather than a guarantee. The forecast uses ${stats.days} days of synchronized data from connected sources.`;
 }
 
+// Той самий фікс, що і в app/api/metrics/route.ts — .limit(2000) без .order()
+// мовчки обрізав expenses для акаунтів з довгою історією (тариф scale не
+// ріже історію взагалі). Пагінація нижче забирає ВСІ рядки за вікно.
+async function fetchAllExpenses(businessId: string, sinceDate: string) {
+  const all: { date: string; amount: number }[] = [];
+  const pageSize = 1000;
+  for (let page = 0; page < 100; page++) {
+    const from = page * pageSize;
+    const { data, error } = await admin
+      .from("expenses")
+      .select("date, amount")
+      .eq("business_id", businessId)
+      .gte("date", sinceDate)
+      .order("date", { ascending: true })
+      .range(from, from + pageSize - 1);
+    if (error) {
+      console.error("fetchAllExpenses error:", error);
+      break;
+    }
+    const pageRows = data || [];
+    all.push(...pageRows);
+    if (pageRows.length < pageSize) break;
+  }
+  return all;
+}
+
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const language = url.searchParams.get("language") || "EN";
@@ -276,12 +302,7 @@ export async function GET(req: Request) {
   const rawRows = rows || [];
   if (rawRows.length) {
     const minDate = rawRows[0].date;
-    const { data: expenseRows } = await admin
-      .from("expenses")
-      .select("date, amount")
-      .eq("business_id", businessId)
-      .gte("date", minDate)
-      .limit(2000);
+    const expenseRows = await fetchAllExpenses(businessId, minDate);
     const extraByDate: Record<string, number> = {};
     for (const e of expenseRows || []) {
       extraByDate[e.date] = (extraByDate[e.date] || 0) + (Number(e.amount) || 0);

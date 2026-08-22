@@ -72,6 +72,22 @@ const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUP
 const SHOPIFY_API_VERSION = "2024-01";
 const LOW_STOCK_THRESHOLD = 20;
 
+// ФІКС: раніше всі дати тут рахувались по UTC (new Date(...).toISOString().
+// slice(0,10)), тоді як sync-stripe-core.mjs уже давно перейшов на локальну
+// дату бізнеса (див. коментар на початку того файлу — саме ця розбіжність
+// колись ламала дайджест/бота). Для shopify-authoritative бізнесів (дефолтний
+// revenue_mode: "replace") це та сама проблема: замовлення під кінець/початок
+// локального дня потрапляли не в той стовпчик графіка. Тепер Shopify рахує
+// дати так само, як Stripe — по timezone бізнесу.
+function localDateStr(tz, dateInput) {
+  const d = typeof dateInput === "string" || typeof dateInput === "number" ? new Date(dateInput) : dateInput;
+  try {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: tz || "UTC" }).format(d);
+  } catch {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: "UTC" }).format(d);
+  }
+}
+
 function normalizeShopDomain(raw) {
   let domain = (raw || "").trim().replace(/^https?:\/\//, "").replace(/\/$/, "");
   if (!domain) return null;
@@ -228,11 +244,11 @@ const LOW_STOCK_MESSAGE = {
 // рефандів (на відміну від total_price, який лишається "як було виставлено
 // на момент замовлення"). Скасовані замовлення (cancelled_at заповнений)
 // прибираємо повністю — це не дохід.
-function computeRevenueByDate(orders) {
+function computeRevenueByDate(orders, tz) {
   const byDate = {};
   for (const order of orders) {
     if (order.cancelled_at) continue;
-    const date = new Date(order.created_at).toISOString().slice(0, 10);
+    const date = localDateStr(tz, order.created_at);
     const amount = Number(order.current_total_price) || 0;
     byDate[date] = (byDate[date] || 0) + amount;
   }
@@ -319,7 +335,7 @@ async function fetchVariantCost(shopDomain, token, variantId) {
 // Себестоимость по всем заказам окна синка. Каждый уникальный variant_id
 // запрашивается у Shopify максимум один раз за прогон (кэш в variantCostCache),
 // даже если товар встречается в нескольких заказах.
-async function computeCogsByDate(shopDomain, token, orders) {
+async function computeCogsByDate(shopDomain, token, orders, tz) {
   const uniqueVariantIds = [
     ...new Set(
       orders.flatMap((o) => (o.line_items || []).map((li) => li.variant_id).filter(Boolean))
@@ -335,7 +351,7 @@ async function computeCogsByDate(shopDomain, token, orders) {
 
   const byDate = {};
   for (const order of orders) {
-    const date = new Date(order.created_at).toISOString().slice(0, 10);
+    const date = localDateStr(tz, order.created_at);
     let orderCogs = 0;
     for (const li of order.line_items || []) {
       const unitCost = li.variant_id ? variantCostCache.get(li.variant_id) : null;
@@ -405,9 +421,18 @@ async function main(businessId) {
       });
       const orders = await fetchShopifyOrders(shopDomain, token, sinceIso);
 
+      // Локальна дата бізнеса — той самий підхід, що вже застосований у
+      // sync-stripe-core.mjs, щоб дати з обох джерел завжди збігались.
+      const { data: bizRow } = await admin
+        .from("businesses")
+        .select("timezone")
+        .eq("id", integ.business_id)
+        .maybeSingle();
+      const bizTimezone = bizRow?.timezone || "UTC";
+
       const byDate = {};
       for (const order of orders) {
-        const date = new Date(order.created_at).toISOString().slice(0, 10);
+        const date = localDateStr(bizTimezone, order.created_at);
         const shipping =
           Number(order.total_shipping_price_set?.shop_money?.amount) ||
           (order.shipping_lines || []).reduce((sum, l) => sum + (Number(l.price) || 0), 0);
@@ -425,7 +450,7 @@ async function main(businessId) {
         });
       }
 
-      const cogsByDate = await computeCogsByDate(shopDomain, token, orders);
+      const cogsByDate = await computeCogsByDate(shopDomain, token, orders, bizTimezone);
       for (const [date, amount] of Object.entries(cogsByDate)) {
         await upsertExpense({
           businessId: integ.business_id,
@@ -441,11 +466,11 @@ async function main(businessId) {
       // підключенні) чи "add" (окремий потік грошей) — див. коментар біля
       // upsertShopifyRevenue вище.
       const revenueMode = integ.config?.revenue_mode === "add" ? "add" : "replace";
-      const revenueByDate = computeRevenueByDate(orders);
+      const revenueByDate = computeRevenueByDate(orders, bizTimezone);
       const ordersCountByDate = {};
       for (const order of orders) {
         if (order.cancelled_at) continue;
-        const date = new Date(order.created_at).toISOString().slice(0, 10);
+        const date = localDateStr(bizTimezone, order.created_at);
         ordersCountByDate[date] = (ordersCountByDate[date] || 0) + 1;
       }
       for (const [date, revenue] of Object.entries(revenueByDate)) {

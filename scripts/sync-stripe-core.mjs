@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { decrypt } from "../lib/crypto.js";
 import { logError } from "../lib/log-error.js";
-import { sendAlertToBusiness, hasRecentAlert, resolveSensitivityMultiplier } from "../lib/alerts.mjs";
+import { sendAlertToBusiness, hasRecentAlert, resolveSensitivityMultiplier, getUserContact } from "../lib/alerts.mjs";
 
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
@@ -43,6 +43,38 @@ Vorherige 24 Stunden: Umsatz $${y.revenue}, Kosten $${y.cost}, Marge ${y.margin_
 Schreibe EINEN Satz (max. 30 Wörter) auf Deutsch, professioneller Geschäftston, keine Füllwörter. Format:
 "[Kennzahl] [gesunken/gestiegen] um ${Math.abs(changePct).toFixed(0)}% in den letzten 24 Stunden (von $${y.revenue} auf $${t.revenue}), Marge [unverändert/niedriger/höher] bei ${t.margin_pct}%. Prüfen Sie: [2-3 konkrete Punkte]."
 Antworte NUR mit diesem Satz, ohne Anführungszeichen oder Erklärungen.`,
+};
+
+const SYNC_FAILURE_MESSAGE = {
+  UA: () => `Не вдалося синхронізувати Stripe`,
+  EN: () => `Failed to sync Stripe`,
+  DE: () => `Stripe Synchronisierung fehlgeschlagen`,
+};
+
+function getSyncFailureReason(error) {
+  const message = String(error?.message || "").toLowerCase();
+  if (message.includes("401") || message.includes("invalid api key") || message.includes("authentication")) return "access_denied";
+  if (message.includes("429") || message.includes("rate limit")) return "rate_limited";
+  if (message.includes("timeout") || message.includes("network")) return "connection_failed";
+  return "connection_failed";
+}
+
+const SYNC_FAILURE_EXPLANATION = {
+  UA: {
+    access_denied: "Перевірте API-ключ Stripe у налаштуваннях інтеграції — можливо, він відкликаний або застарів.",
+    rate_limited: "Stripe тимчасово обмежив кількість запитів — синхронізація відновиться на наступному прогоні.",
+    connection_failed: "Тимчасова помилка з'єднання зі Stripe — перевірте статус інтеграції.",
+  },
+  EN: {
+    access_denied: "Check the Stripe API key in integration settings — it may be revoked or expired.",
+    rate_limited: "Stripe temporarily rate-limited requests — sync will resume on the next run.",
+    connection_failed: "Temporary connection issue with Stripe — check the integration status.",
+  },
+  DE: {
+    access_denied: "Prüfen Sie den Stripe-API-Schlüssel in den Integrationseinstellungen — er könnte widerrufen oder abgelaufen sein.",
+    rate_limited: "Stripe hat Anfragen vorübergehend limitiert — die Synchronisierung wird beim nächsten Lauf fortgesetzt.",
+    connection_failed: "Vorübergehendes Verbindungsproblem mit Stripe — prüfen Sie den Integrationsstatus.",
+  },
 };
 
 const REVENUE_DROP_MESSAGE = {
@@ -174,13 +206,23 @@ async function main(businessId, options = {}) {
   const sinceDaysOverride = options.sinceDays || null;
   let query = admin
     .from("integrations")
-    .select("id, business_id, api_key_encrypted")
+    .select("id, business_id, api_key_encrypted, config")
     .eq("provider", "stripe")
     .eq("status", "connected");
   if (businessId) query = query.eq("business_id", businessId);
   const { data: integrations, error: fetchErr } = await query;
 
-
+  // ФІКС: раніше `error` тут ігнорувався — якщо цей запит падав (мережевий
+  // збій, тимчасова недоступність Supabase, RLS), `integrations` ставало
+  // null, і код мовчки вирішував "інтеграцій немає", хоча насправді впав
+  // сам запит. Жодного логу, Stripe-синк тихо нічого не робив для ВСІХ
+  // бізнесів у цьому прогоні. Той самий паттерн, що вже був у
+  // shopify-sync.mjs / meta-ads-sync.mjs / google-ads-sync.mjs — тепер і тут.
+  if (fetchErr) {
+    console.error("Failed to fetch stripe integrations:", fetchErr.message);
+    await logError({ source: "stripe", message: "Failed to fetch stripe integrations list", details: fetchErr.message });
+    return;
+  }
   if (!integrations?.length) {
     console.log("No connected Stripe integrations, nothing to sync.");
     return;
@@ -665,9 +707,12 @@ async function main(businessId, options = {}) {
         }
       }
 
+      // status: "connected" тут явно (а не тільки last_synced_at) — щоб
+      // інтеграція, яка раніше впала в "error" (див. catch нижче), сама
+      // "одужувала" на першому ж успішному прогоні, без ручного втручання.
       await admin
         .from("integrations")
-        .update({ last_synced_at: new Date().toISOString() })
+        .update({ last_synced_at: new Date().toISOString(), status: "connected" })
         .eq("id", integ.id);
 
       console.log(`Synced business ${business.id}: ${Object.keys(byDate).length} day(s) updated`);
@@ -679,6 +724,35 @@ async function main(businessId, options = {}) {
         details: err.message,
         businessId: integ.business_id,
       });
+
+      // ФІКС: раніше збій тут (протух API-ключ, Stripe відкликав доступ,
+      // таймаут тощо) лишався видимим ЛИШЕ в error_logs (бачить тільки
+      // адмін вручну). Інтеграція продовжувала показуватись "connected" у
+      // кабінеті, власник ніколи не дізнавався, що Stripe-дані з якогось
+      // моменту перестали оновлюватись. Shopify/Meta Ads/Google Ads-синки
+      // вже роблять обидві ці речі при збої — тепер робить і Stripe.
+      const reason = getSyncFailureReason(err);
+      await admin
+        .from("integrations")
+        .update({ status: "error", config: { ...(integ.config || {}), sync_error_reason: reason } })
+        .eq("id", integ.id);
+
+      const { data: failedBusiness } = await admin
+        .from("businesses")
+        .select("user_id")
+        .eq("id", integ.business_id)
+        .maybeSingle();
+      if (failedBusiness?.user_id) {
+        const contact = await getUserContact(failedBusiness.user_id);
+        const msg = (SYNC_FAILURE_MESSAGE[contact.userLang] || SYNC_FAILURE_MESSAGE.EN)();
+        const explanation = (SYNC_FAILURE_EXPLANATION[contact.userLang] || SYNC_FAILURE_EXPLANATION.EN)[reason];
+        await sendAlertToBusiness(integ.business_id, contact, {
+          type: "sync_failure_stripe",
+          severity: "high",
+          message: msg,
+          aiExplanation: explanation,
+        });
+      }
     }
   }
 }

@@ -30,6 +30,37 @@ const HISTORY_DAYS_BY_PLAN: Record<string, number> = {
 };
 const DEFAULT_HISTORY_DAYS = 30;
 
+// ФІКС: раніше тут був .limit(2000) без .order() — для акаунтів з довгою
+// історією (тариф "scale" не ріже історію взагалі, HISTORY_DAYS_BY_PLAN
+// вище) кількість рядків у expenses (shipping+cogs+2 рекламних джерела ≈
+// до 4 записів/день) реально перевищує 2000 вже за ~1.5 року. Понад ліміт
+// рядки мовчки не потрапляли у вибірку (і порядок повернення без order()
+// взагалі не гарантований) — прибуток/маржа за частину періоду тихо
+// занижували реальні витрати. Пагінація нижче забирає ВСІ рядки за вікно.
+async function fetchAllExpenses(businessId: string, sinceDate: string) {
+  const all: { date: string; amount: number; category: string | null; source: string | null }[] = [];
+  const pageSize = 1000;
+  for (let page = 0; page < 100; page++) {
+    // safety cap: 100k rows — захист від нескінченного циклу, не реальний ліміт
+    const from = page * pageSize;
+    const { data, error } = await admin
+      .from("expenses")
+      .select("date, amount, category, source")
+      .eq("business_id", businessId)
+      .gte("date", sinceDate)
+      .order("date", { ascending: true })
+      .range(from, from + pageSize - 1);
+    if (error) {
+      console.error("fetchAllExpenses error:", error);
+      break;
+    }
+    const pageRows = data || [];
+    all.push(...pageRows);
+    if (pageRows.length < pageSize) break;
+  }
+  return all;
+}
+
 export async function GET(req: Request) {
   // email больше не берём из query — раньше это отдавало полный дашборд
   // (выручку, расходы, CAC) чужого бизнеса любому, кто знает email жертвы.
@@ -111,13 +142,8 @@ export async function GET(req: Request) {
   // advertising — пишет shopify-sync.mjs / meta-ads-sync.mjs раз в час).
   // Без этого шага expenses копится в базе, но дашборд его никогда не видел.
   const minDate = rows[0].date;
-  const { data: expenseRows } = await admin
-    .from("expenses")
-    .select("date, amount, category, source")
-    .eq("business_id", businessId)
-    .gte("date", minDate)
-    .limit(2000);
-    const extraByDate: Record<string, { total: number; advertising: number; meta_ads: number; google_ads: number }> = {};
+  const expenseRows = await fetchAllExpenses(businessId, minDate);
+  const extraByDate: Record<string, { total: number; advertising: number; meta_ads: number; google_ads: number }> = {};
   for (const e of expenseRows || []) {
     if (!extraByDate[e.date]) extraByDate[e.date] = { total: 0, advertising: 0, meta_ads: 0, google_ads: 0 };
     const amount = Number(e.amount) || 0;
