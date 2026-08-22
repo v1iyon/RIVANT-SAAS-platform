@@ -157,9 +157,9 @@ const STEPS: Step[] = [
       DE: "Risiken filtern",
     },
     desc: {
-      EN: "Tap here to narrow risks down by severity or type.",
-      UA: "Натисніть тут, щоб звузити ризики за важливістю чи типом.",
-      DE: "Tippen Sie hier, um Risiken nach Schweregrad oder Typ einzugrenzen.",
+      EN: "Tap here to narrow risks down by type — revenue, product, sync, and more.",
+      UA: "Натисніть тут, щоб звузити ризики за типом — виручка, товар, синхронізація тощо.",
+      DE: "Tippen Sie hier, um Risiken nach Typ einzugrenzen — Umsatz, Produkt, Synchronisierung und mehr.",
     },
   },
   {
@@ -213,14 +213,14 @@ const STEPS: Step[] = [
     target: '[data-tour="forecast-chart"]',
     placement: "bottom",
     title: {
-      EN: "90-day forecast",
-      UA: "Прогноз на 90 днів",
-      DE: "90-Tage-Prognose",
+      EN: "30-day forecast",
+      UA: "Прогноз на 30 днів",
+      DE: "30-Tage-Prognose",
     },
     desc: {
-      EN: "This demo shows what the chart looks like with a few months of history — yours will fill in as data comes in.",
-      UA: "Це демо показує, як виглядає графік з кількамісячною історією — ваш заповниться, коли накопичаться дані.",
-      DE: "Diese Demo zeigt das Diagramm mit einigen Monaten Historie — Ihres füllt sich, sobald Daten eingehen.",
+      EN: "This demo shows what the chart looks like with a few weeks of history — yours will fill in as data comes in.",
+      UA: "Це демо показує, як виглядає графік з кількатижневою історією — ваш заповниться, коли накопичаться дані.",
+      DE: "Diese Demo zeigt das Diagramm mit einigen Wochen Historie — Ihres füllt sich, sobald Daten eingehen.",
     },
   },
   {
@@ -233,9 +233,9 @@ const STEPS: Step[] = [
       DE: "Was das für Sie bedeutet",
     },
     desc: {
-      EN: "A plain-language read of the trend — again, demo data here, but this is exactly what you'll see with your own numbers.",
-      UA: "Пояснення тренду простою мовою — тут демо-дані, але це саме те, що ви побачите зі своїми цифрами.",
-      DE: "Eine Erklärung des Trends in einfacher Sprache — hier Demo-Daten, aber genauso sieht es mit Ihren eigenen Zahlen aus.",
+      EN: "A plain-language read of the trend — exactly what you'll see with your own numbers.",
+      UA: "Пояснення тренду простою мовою — саме те, що ви побачите зі своїми цифрами.",
+      DE: "Eine Erklärung des Trends in einfacher Sprache — genauso sieht es mit Ihren eigenen Zahlen aus.",
     },
   },
   {
