@@ -232,7 +232,11 @@ async function loadUserContext(ctx, next) {
 bot.use(loadUserContext);
 
 function isBlocked(ctx) {
-  return !ctx.rivant.subscription || ctx.rivant.subscription.access_status === "blocked";
+  const sub = ctx.rivant.subscription;
+  if (!sub) return true;
+  if (sub.access_status === "blocked") return true;
+  if (sub.current_period_end && new Date(sub.current_period_end) < new Date()) return true;
+  return false;
 }
 
 async function requireAccess(ctx) {
