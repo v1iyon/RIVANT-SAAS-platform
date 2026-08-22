@@ -505,16 +505,29 @@ export function OnboardingTour({ language, onNavigate, onFinish, onStepAction }:
     let cancelled = false;
     let tries = 0;
     let ro: ResizeObserver | null = null;
+    let mo: MutationObserver | null = null;
     targetElRef.current = null;
 
     const attachObserver = (el: Element) => {
       ro?.disconnect();
-      ro = new ResizeObserver(() => {
+      mo?.disconnect();
+      const remeasure = () => {
         if (cancelled) return;
         const r = el.getBoundingClientRect();
         setRect({ top: r.top, left: r.left, width: r.width, height: r.height });
-      });
+      };
+      ro = new ResizeObserver(remeasure);
       ro.observe(el);
+      // Radix popovers (notifications bell dropdown, risk filter panel, ...)
+      // are positioned by floating-ui via an inline `style` (transform/top/
+      // left) that's applied ASYNCHRONOUSLY after the node mounts — it can
+      // shift position without changing size at all, which a ResizeObserver
+      // never sees. That's what made the spotlight sit slightly off from
+      // the actual panel on some phones (measured before floating-ui's
+      // final position landed, then never corrected). Watching `style`
+      // catches that repositioning too.
+      mo = new MutationObserver(remeasure);
+      mo.observe(el, { attributes: true, attributeFilter: ["style"] });
     };
 
     const measure = () => {
@@ -530,11 +543,20 @@ export function OnboardingTour({ language, onNavigate, onFinish, onStepAction }:
       const el = document.querySelector(selector);
       if (el) {
         targetElRef.current = el;
-        const r = el.getBoundingClientRect();
         el.scrollIntoView({ block: "center", behavior: "smooth" });
-        setRect({ top: r.top, left: r.left, width: r.width, height: r.height });
-        attachObserver(el);
-        revealWhenMeasured();
+        // Two rAFs (not zero) so any Radix/floating-ui positioning pass
+        // that runs right after this element mounts has already landed
+        // before we take the first measurement — see attachObserver above
+        // for why a later correction alone isn't enough (no resize fires).
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            if (cancelled) return;
+            const r = el.getBoundingClientRect();
+            setRect({ top: r.top, left: r.left, width: r.width, height: r.height });
+            attachObserver(el);
+            revealWhenMeasured();
+          });
+        });
         return;
       }
 
@@ -573,6 +595,7 @@ export function OnboardingTour({ language, onNavigate, onFinish, onStepAction }:
     return () => {
       cancelled = true;
       ro?.disconnect();
+      mo?.disconnect();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);

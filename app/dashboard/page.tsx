@@ -2500,11 +2500,11 @@ if (!subInfo) {
                     )}
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent data-tour="notifications-content" className="w-80 bg-gray-900 border-gray-800 p-0" align="end">
+                <DropdownMenuContent className="w-80 bg-gray-900 border-gray-800 p-0" align="end">
                   <div className="p-3 border-b border-gray-800">
                     <h3 className="font-medium text-foreground">{getTranslation("notifications", "Notifications")}</h3>
                   </div>
-                  <div className="max-h-80 overflow-auto">
+                  <div data-tour="notifications-content" className="max-h-80 overflow-auto">
                     {risks.slice(0, 3).map((alert) => {
                       const sev = getSeverityColorClasses(alert.severity);
                       return (
