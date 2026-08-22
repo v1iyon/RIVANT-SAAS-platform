@@ -506,6 +506,7 @@ export function OnboardingTour({ language, onNavigate, onFinish, onStepAction }:
     let tries = 0;
     let ro: ResizeObserver | null = null;
     let mo: MutationObserver | null = null;
+    let animCleanup: (() => void) | null = null;
     targetElRef.current = null;
 
     const attachObserver = (el: Element) => {
@@ -544,19 +545,43 @@ export function OnboardingTour({ language, onNavigate, onFinish, onStepAction }:
       if (el) {
         targetElRef.current = el;
         el.scrollIntoView({ block: "center", behavior: "smooth" });
-        // Two rAFs (not zero) so any Radix/floating-ui positioning pass
-        // that runs right after this element mounts has already landed
-        // before we take the first measurement — see attachObserver above
-        // for why a later correction alone isn't enough (no resize fires).
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            if (cancelled) return;
-            const r = el.getBoundingClientRect();
-            setRect({ top: r.top, left: r.left, width: r.width, height: r.height });
-            attachObserver(el);
-            revealWhenMeasured();
-          });
-        });
+
+        const doMeasure = () => {
+          if (cancelled) return;
+          const r = el.getBoundingClientRect();
+          setRect({ top: r.top, left: r.left, width: r.width, height: r.height });
+          attachObserver(el);
+          revealWhenMeasured();
+        };
+
+        // Several targets (the notifications dropdown, risk filter panel)
+        // enter with a CSS `animate-in zoom-in-95` scale/fade animation.
+        // Measuring while that's still running captures a box mid-scale —
+        // visibly narrower/shorter than the settled panel, which is exactly
+        // the crooked, not-quite-matching outline from the screenshots.
+        // Wait for the entrance animation to actually finish (`animationend`)
+        // before taking the real measurement; targets that don't animate at
+        // all (plain divs, buttons) just hit the fallback timeout instead.
+        let settled = false;
+        const onAnimEnd = (e: Event) => {
+          if (settled || e.target !== el) return;
+          settled = true;
+          el.removeEventListener("animationend", onAnimEnd);
+          clearTimeout(fallback);
+          doMeasure();
+        };
+        const fallback = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          el.removeEventListener("animationend", onAnimEnd);
+          doMeasure();
+        }, 260);
+        el.addEventListener("animationend", onAnimEnd);
+        animCleanup = () => {
+          settled = true;
+          el.removeEventListener("animationend", onAnimEnd);
+          clearTimeout(fallback);
+        };
         return;
       }
 
@@ -596,6 +621,7 @@ export function OnboardingTour({ language, onNavigate, onFinish, onStepAction }:
       cancelled = true;
       ro?.disconnect();
       mo?.disconnect();
+      animCleanup?.();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);

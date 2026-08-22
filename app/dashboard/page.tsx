@@ -2831,11 +2831,15 @@ if (!subInfo) {
 
                   {risksView === "active" && (
                   <>
-                  <div data-tour="risks-overview" className="space-y-3 pr-1 pb-6">
+                  <div className="space-y-3 pr-1 pb-6">
                     {risks
                       .filter((risk) => riskCategoryFilter.length === 0 || riskCategoryFilter.includes(risk.category))
-                      .map((risk) => (
-                      <div key={risk.id} className="bg-gray-900/50 rounded-xl p-4 border border-gray-800">
+                      .map((risk, riskIdx) => (
+                      <div
+                        key={risk.id}
+                        data-tour={riskIdx === 0 ? "risks-overview" : undefined}
+                        className="bg-gray-900/50 rounded-xl p-4 border border-gray-800"
+                      >
                         <div className="flex items-start gap-3">
                           <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
                             risk.severity === "high" || risk.severity === "critical" ? "bg-red-500/20" : risk.severity === "medium" ? "bg-yellow-500/20" : "bg-blue-500/20"
@@ -3432,11 +3436,12 @@ if (!subInfo) {
                 </div>
               </div>
 
-              <div data-tour="settings-notifications" className="bg-card rounded-xl p-6 border border-border">
+              <div className="bg-card rounded-xl p-6 border border-border">
                 <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
                   <BellRing className="w-4 h-4 text-primary" /> {T.settingsNotifications || "Notification Preferences"}
                 </h3>
                 <div className="space-y-4">
+                <div data-tour="settings-notifications" className="space-y-4">
                 <div className="flex items-center justify-between gap-3 py-2">
                     <div className="flex-1 min-w-0"><p className="font-medium text-foreground">{T.settingsPush || "Push Notifications"}</p><p className="text-xs text-muted-foreground">{T.settingsPushDesc || "Receive alerts in dashboard"}</p></div>
                     <div className="shrink-0 bg-secondary/40 rounded-full p-1">
@@ -3526,6 +3531,8 @@ if (!subInfo) {
     </div>
   )}
 </div>
+                  </div>
+
                   </div>
 
                   <div data-tour="settings-telegram" className="flex items-center justify-between gap-3 py-2">
