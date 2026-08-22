@@ -1203,6 +1203,32 @@ const [googleAdsExtraValues, setGoogleAdsExtraValues] = useState<Record<string, 
           setRisks(preloaded);
           setAlertCount(preloaded.length);
           lastTemplateTypeRef.current = "low_stock"; // чтобы эти же типы не выпали первыми в живой ротации
+
+          // Так же кладём немного "вирішених" сповіщень у вкладку "Історія" —
+          // інакше відвідувач демо бачить порожню історію, поки сам щось не
+          // закриє, і не розуміє, як реально виглядає цей екран у вже
+          // працюючому кабінеті клієнта. Три різні категорії для наочності.
+          const rawResolvedPreloaded: Risk[] = [
+            {
+              id: now - 2 * 24 * 3600 * 1000,
+              title: "", description: "",
+              time: new Date(now - 2 * 24 * 3600 * 1000).toLocaleDateString([], { month: "short", day: "numeric" }),
+              severity: "high", action: "", category: "ads", alertType: "revenue_drop",
+            },
+            {
+              id: now - 4 * 24 * 3600 * 1000,
+              title: "", description: "",
+              time: new Date(now - 4 * 24 * 3600 * 1000).toLocaleDateString([], { month: "short", day: "numeric" }),
+              severity: "medium", action: "", category: "cac", alertType: "cac_increase",
+            },
+            {
+              id: now - 6 * 24 * 3600 * 1000,
+              title: "", description: "",
+              time: new Date(now - 6 * 24 * 3600 * 1000).toLocaleDateString([], { month: "short", day: "numeric" }),
+              severity: "high", action: "", category: "margin", alertType: "profit_drop",
+            },
+          ];
+          setResolvedRisks(rawResolvedPreloaded.map(r => translateRisk(r, T, currency)));
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
       }, [isOpen]);
@@ -1813,7 +1839,7 @@ const [googleAdsExtraValues, setGoogleAdsExtraValues] = useState<Record<string, 
                   </div>
                 </div>
 
-                {/* 3. AI текст */}
+                {/* 3. AI текст — короткі пункти (як було) */}
                 <div className="bg-blue-500/5 rounded-xl p-4 border border-blue-500/20">
                   <p className="text-sm text-gray-400">{T.demoForecastBasedOn || "Based on historical data and market trends, our AI model predicts:"}</p>
                   <ul className="mt-2 space-y-1 text-sm text-gray-300">
@@ -1822,6 +1848,23 @@ const [googleAdsExtraValues, setGoogleAdsExtraValues] = useState<Record<string, 
                     <li>• {T.demoForecastSeasonalPeak || "Seasonal peak predicted in September (+12% vs August)"}</li>
                     <li>• {T.demoForecastAdSpend || "Recommended ad spend increase of 8% for Q3"}</li>
                   </ul>
+                </div>
+
+                {/* 4. "Що це означає для вас" — розгорнутий абзац у тому ж стилі,
+                    що й реальний AI-аналіз у кабінеті (forecast-ai-analysis),
+                    і DEMO_FORECAST_EXPLANATION з онбординг-туру: прогноз ->
+                    тренд виручки -> тренд маржі -> порада -> джерело розрахунку. */}
+                <div data-tour="forecast-ai-analysis" className="bg-blue-500/5 rounded-xl p-4 border border-blue-500/20">
+                  <h3 className="font-semibold text-white text-sm mb-2">
+                    {language === "UA" ? "Що це означає для вас" : language === "DE" ? "Was das für Sie bedeutet" : "What it means for you"}
+                  </h3>
+                  <p className="text-sm text-gray-300 whitespace-pre-line">
+                    {language === "UA"
+                      ? `RIVANT прогнозує ${symbol}${Math.round(convert(892400)).toLocaleString()} виручки та ${symbol}${Math.round(convert(654200)).toLocaleString()} витрат за поточний квартал, якщо нинішні тенденції збережуться — це +18% і +8% порівняно з минулим кварталом, з упевненістю 94% та 91% відповідно. Зростання виручки випереджає зростання витрат, тому операційна маржа має покращитися приблизно на 2,3 відсоткового пункту, що рухає прибутковість у правильному напрямку. Очікуйте сезонний пік у вересні — приблизно на 12% вище серпня, ймовірно пов'язаний із вашою рекламною активністю у Q3. Варто збільшити рекламний бюджет приблизно на 8% напередодні цього піку, щоб покрити додатковий попит, не втративши в запасах чи логістиці. Як завжди, щотижня звіряйте фактичні результати з цим прогнозом і коригуйте бюджет, якщо витрати почнуть випереджати очікуваний темп росту. Розрахунки базуються на квартальному тренді за підключеними джерелами доходів і витрат.`
+                      : language === "DE"
+                      ? `RIVANT prognostiziert für das laufende Quartal einen Umsatz von ${symbol}${Math.round(convert(892400)).toLocaleString()} und Ausgaben von ${symbol}${Math.round(convert(654200)).toLocaleString()}, sofern sich die aktuellen Trends fortsetzen — das entspricht +18 % bzw. +8 % gegenüber dem letzten Quartal, mit einer Konfidenz von 94 % bzw. 91 %. Da das Umsatzwachstum das Kostenwachstum weiterhin übertrifft, dürfte sich die operative Marge um rund 2,3 Prozentpunkte verbessern — ein Schritt in die richtige Richtung. Rechnen Sie im September mit einem saisonalen Höhepunkt, etwa 12 % über August, vermutlich getrieben durch Ihre Q3-Kampagnen. Es lohnt sich, die Werbeausgaben vor diesem Höhepunkt um rund 8 % zu erhöhen, um die zusätzliche Nachfrage zu bedienen, ohne bei Lager oder Versand ins Hintertreffen zu geraten. Vergleichen Sie wie gewohnt wöchentlich die tatsächlichen Ergebnisse mit dieser Prognose und passen Sie das Budget an, falls die Ausgaben schneller wachsen als erwartet. Die Berechnung basiert auf dem quartalsweisen Trend über Ihre verbundenen Umsatz- und Kostenquellen.`
+                      : `RIVANT projects ${symbol}${Math.round(convert(892400)).toLocaleString()} in revenue and ${symbol}${Math.round(convert(654200)).toLocaleString()} in expenses for the current quarter, assuming today's trends hold — that's +18% and +8% versus last quarter, with 94% and 91% confidence respectively. Revenue growth continues to outpace cost growth, so operating margin is expected to improve by roughly 2.3 percentage points, moving profitability in the right direction. Look for a seasonal peak in September, about 12% above August, likely tied to your Q3 campaign push. It's worth increasing ad spend by around 8% ahead of that peak to capture the extra demand without under-delivering on stock or fulfillment. As always, compare actual results against this forecast each week and adjust budget if expenses start outrunning the projected growth rate. Calculations are based on your trailing quarterly trend across connected revenue and expense sources.`}
+                  </p>
                 </div>
               </div>
             )}
