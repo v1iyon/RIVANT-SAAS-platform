@@ -417,34 +417,25 @@ function rectsOverlap(a: { top: number; left: number; width: number; height: num
 
 const OPPOSITE: Record<Placement, Placement> = { top: "bottom", bottom: "top", left: "right", right: "left" };
 
-// How many dots to show at once. With ~17 steps, showing one dot per step
-// used to wrap onto a second row on narrow phones — a wall of tiny dots
-// that reads as "this tour is long" and makes people tap Skip immediately.
-// Instead we show a small sliding window centered on the current step
-// (like a paginator), so it always reads as "a few steps", with the edge
-// dots shrunk down to hint there are more before/after without spelling
-// out exactly how many.
-const DOT_WINDOW = 5;
-
-function StepDots({ step, total }: { step: number; total: number }) {
-  const windowSize = Math.min(DOT_WINDOW, total);
-  const start = Math.max(0, Math.min(step - Math.floor(windowSize / 2), total - windowSize));
-  const indices = Array.from({ length: windowSize }, (_, k) => start + k);
-
+// A thin, continuous progress bar reads as "almost there" at any step count,
+// where a wall of per-step dots (or even a sliding window of them) still
+// telegraphs "this is a long tour" and invites an immediate Skip. This is
+// the same pattern used for onboarding in most polished mobile products
+// (Duolingo lessons, Stripe/Linear setup flows) — one clean signal of
+// progress, a tiny numeric label for people who want the exact count, done.
+function ProgressBar({ step, total, isNarrow }: { step: number; total: number; isNarrow: boolean }) {
+  const pct = Math.round(((step + 1) / total) * 100);
   return (
-    <div className="flex items-center gap-1.5 mb-3 pr-6">
-      {indices.map((i) => {
-        const isActive = i === step;
-        const isEdge = (i === start && start > 0) || (i === start + windowSize - 1 && start + windowSize < total);
-        return (
-          <div
-            key={i}
-            className={`h-1.5 rounded-full transition-all duration-200 ${
-              isActive ? "w-6 bg-blue-500" : isEdge ? "w-1 bg-gray-800" : "w-1.5 bg-gray-700"
-            }`}
-          />
-        );
-      })}
+    <div className={`flex items-center gap-2 pr-6 ${isNarrow ? "mb-2.5" : "mb-4"}`}>
+      <div className="flex-1 h-1 rounded-full bg-gray-800 overflow-hidden">
+        <div
+          className="h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-400 transition-[width] duration-500"
+          style={{ width: `${pct}%`, transitionTimingFunction: "cubic-bezier(0.16, 1, 0.3, 1)" }}
+        />
+      </div>
+      <span className={`text-gray-600 font-medium tabular-nums shrink-0 ${isNarrow ? "text-[10px]" : "text-[11px]"}`}>
+        {step + 1}/{total}
+      </span>
     </div>
   );
 }
@@ -680,27 +671,30 @@ export function OnboardingTour({ language, onNavigate, onFinish, onStepAction }:
   // flagged `compact` (small targets sitting right above other content,
   // e.g. the metrics gear) shrink further still on mobile, since even the
   // 260px popover was enough to spill over the cards underneath.
-  const basePopoverW = isNarrow ? (current.compact ? 220 : 260) : POPOVER_W;
+  const basePopoverW = isNarrow ? (current.compact ? 200 : 240) : POPOVER_W;
   const popoverW = Math.min(basePopoverW, viewportW - EDGE * 2);
 
   const popoverStyle = getPopoverStyle(spotlight, current.placement, popoverH, popoverW);
 
   return (
-    <div className="fixed inset-0 z-[200]" style={{ opacity: ready ? 1 : 0, transition: "opacity 200ms ease-out" }}>
-      {/* dim everything except the spotlight cutout — no blur */}
+    <div className="fixed inset-0 z-[200]" style={{ opacity: ready ? 1 : 0, transition: "opacity 250ms cubic-bezier(0.16, 1, 0.3, 1)" }}>
+      {/* dim everything except the spotlight cutout, with a soft two-layer
+          glow around the cutout (thin crisp ring + diffuse blue halo)
+          instead of a flat hard border — reads as a deliberate highlight
+          rather than a debug outline. No blur on the cutout itself. */}
       <div
-        className="absolute inset-0 pointer-events-none transition-all duration-300 ease-out"
+        className="absolute inset-0 pointer-events-none transition-all duration-500"
         style={{
+          transitionTimingFunction: "cubic-bezier(0.16, 1, 0.3, 1)",
           boxShadow: spotlight
-            ? `0 0 0 9999px rgba(0,0,0,0.55)`
+            ? `0 0 0 9999px rgba(8,10,16,0.68), 0 0 0 1.5px rgba(96,165,250,0.95), 0 0 0 5px rgba(59,130,246,0.18), 0 0 24px 2px rgba(59,130,246,0.25)`
             : "none",
-          background: spotlight ? "transparent" : "rgba(0,0,0,0.55)",
+          background: spotlight ? "transparent" : "rgba(8,10,16,0.68)",
           top: spotlight ? spotlight.top : 0,
           left: spotlight ? spotlight.left : 0,
           width: spotlight ? spotlight.width : "100%",
           height: spotlight ? spotlight.height : "100%",
-          borderRadius: spotlight ? 12 : 0,
-          border: spotlight ? "2px solid rgba(59,130,246,0.9)" : "none",
+          borderRadius: spotlight ? 14 : 0,
         }}
       />
 
@@ -727,54 +721,62 @@ export function OnboardingTour({ language, onNavigate, onFinish, onStepAction }:
           transform never has to "correct" itself after appearing. */}
       <div
         ref={popoverRef}
-        className={`absolute bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl transition-all duration-300 ease-out ${
-          isNarrow ? "p-3.5" : "p-5"
+        className={`absolute bg-gray-900 border border-gray-800 ring-1 ring-white/[0.04] shadow-2xl transition-all ${
+          isNarrow ? "p-2.5 rounded-xl" : "p-5 rounded-2xl"
         }`}
         style={{
           width: popoverW,
           ...popoverStyle,
+          transitionDuration: "420ms",
+          transitionTimingFunction: "cubic-bezier(0.16, 1, 0.3, 1)",
           opacity: ready ? 1 : 0,
-          transform: `${popoverStyle.transform ?? ""} ${ready ? "scale(1) translateY(0)" : "scale(0.97) translateY(4px)"}`.trim(),
+          transform: `${popoverStyle.transform ?? ""} ${ready ? "scale(1) translateY(0)" : "scale(0.96) translateY(6px)"}`.trim(),
         }}
       >
         <button
           onClick={onFinish}
           aria-label="close"
-          className="absolute top-3 right-3 text-gray-500 hover:text-gray-300 p-1 rounded-lg hover:bg-gray-800 transition-colors"
+          className={`absolute text-gray-500 hover:text-gray-300 rounded-lg hover:bg-gray-800 transition-colors ${
+            isNarrow ? "top-2 right-2 p-0.5" : "top-3 right-3 p-1"
+          }`}
         >
-          <X className="w-4 h-4" />
+          <X className={isNarrow ? "w-3.5 h-3.5" : "w-4 h-4"} />
         </button>
 
-        <StepDots step={step} total={STEPS.length} />
+        <ProgressBar step={step} total={STEPS.length} isNarrow={isNarrow} />
 
-        <h3 className={`font-semibold text-white mb-1.5 pr-6 ${isNarrow ? "text-sm" : "text-base"}`}>{current.title[language]}</h3>
-        <p className={`text-gray-400 leading-relaxed pr-6 ${isNarrow ? "text-xs mb-3.5" : "text-sm mb-5"}`}>{current.desc[language]}</p>
+        <h3 className={`font-semibold text-white pr-6 ${isNarrow ? "text-xs mb-1" : "text-base mb-1.5"}`}>{current.title[language]}</h3>
+        <p className={`text-gray-400 leading-relaxed pr-6 ${isNarrow ? "text-[11px] mb-2.5" : "text-sm mb-5"}`}>{current.desc[language]}</p>
 
         <div className="flex items-center justify-between gap-2">
           <button
             onClick={onFinish}
-            className="text-xs text-gray-500 hover:text-gray-300 px-2 py-2 transition-colors"
+            className={`text-gray-500 hover:text-gray-300 transition-colors ${isNarrow ? "text-[11px] px-1 py-1.5" : "text-xs px-2 py-2"}`}
           >
             {UI.skip[language]}
           </button>
-          <div className="flex items-center gap-2">
+          <div className={`flex items-center ${isNarrow ? "gap-1.5" : "gap-2"}`}>
             {!isFirst && (
               <button
                 onClick={() => goTo(step - 1)}
                 disabled={!ready}
-                className="flex items-center gap-1 text-sm text-gray-300 hover:text-white px-3 py-2 rounded-lg border border-gray-700 hover:bg-gray-800 transition-colors disabled:opacity-40 disabled:pointer-events-none"
+                className={`flex items-center gap-1 text-gray-300 hover:text-white rounded-lg border border-gray-700 hover:bg-gray-800 transition-colors disabled:opacity-40 disabled:pointer-events-none ${
+                  isNarrow ? "text-xs px-2 py-1.5" : "text-sm px-3 py-2"
+                }`}
               >
-                <ChevronLeft className="w-4 h-4" />
+                <ChevronLeft className={isNarrow ? "w-3.5 h-3.5" : "w-4 h-4"} />
                 {UI.back[language]}
               </button>
             )}
             <button
               onClick={() => (isLast ? onFinish() : goTo(step + 1))}
               disabled={!ready}
-              className="flex items-center gap-1 text-sm text-white bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg font-medium transition-colors disabled:opacity-40 disabled:pointer-events-none"
+              className={`flex items-center gap-1 text-white bg-blue-600 hover:bg-blue-700 rounded-lg font-medium transition-colors disabled:opacity-40 disabled:pointer-events-none ${
+                isNarrow ? "text-xs px-2.5 py-1.5" : "text-sm px-4 py-2"
+              }`}
             >
               {isLast ? UI.finish[language] : UI.next[language]}
-              {!isLast && <ChevronRight className="w-4 h-4" />}
+              {!isLast && <ChevronRight className={isNarrow ? "w-3.5 h-3.5" : "w-4 h-4"} />}
             </button>
           </div>
         </div>

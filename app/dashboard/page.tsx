@@ -1029,7 +1029,11 @@ export default function DashboardClient() {
 
 const [forecastDataReal, setForecastData] = useState<any>(null);
 const [forecastLoadedReal, setForecastLoaded] = useState(false);
-const forecastData = showOnboarding ? DEMO_FORECAST : forecastDataReal;
+// DEMO_FORECAST сам по собі не містить `explanation` — без цього поля блок
+// нижче (forecastData.explanation ? ... : bullets) під час туру завжди падав
+// у короткий bullet-list фолбек замість написаного заздалегідь тексту з
+// DEMO_FORECAST_EXPLANATION. Підмішуємо explanation тут, за поточною мовою.
+const forecastData = showOnboarding ? { ...DEMO_FORECAST, explanation: DEMO_FORECAST_EXPLANATION[language] } : forecastDataReal;
 const forecastLoaded = showOnboarding ? true : forecastLoadedReal;
 
   const lastRow = metricsRows[metricsRows.length - 1];
@@ -1489,9 +1493,26 @@ useEffect(() => {
       setNotificationsEnabled(prefs.push_enabled);
       setEmailAlerts(prefs.email_enabled);
       const profile = await profilePromise;
+      // Раньше это условие слепо доверяло users.language из БД и
+      // ПЕРЕЗАПИСЫВАЛО им язык браузера, если они не совпадали — специально
+      // для входа с НОВОГО устройства (там localStorage пуст, аккаунт должен
+      // "подтянуть" свой язык). Но тот же код срабатывал и для человека,
+      // который только что сам явно выбрал UA на лендинге и тут же
+      // зарегистрировался: если в БД к этому моменту language ещё не успел
+      // стать 'UA' (гонка при записи в /api/auth-sync, реплика и т.п.),
+      // эффект тут же переключал уже правильно выбранный UA обратно —
+      // отсюда "UA мелькнул, потом снова EN" при регистрации/онбординге.
+      // Явный локальный выбор (localStorage.preferredLanguage уже стоит в
+      // ЭТОМ браузере) теперь имеет приоритет и не может быть перезаписан
+      // значением из аккаунта — а подтягивание языка аккаунта на новом
+      // устройстве (где localStorage ещё пуст) продолжает работать как и
+      // раньше.
+      const hasExplicitLocalLanguage =
+        typeof window !== "undefined" && !!localStorage.getItem("preferredLanguage");
       if (
         (profile.language === "EN" || profile.language === "UA" || profile.language === "DE") &&
-        profile.language !== language
+        profile.language !== language &&
+        !hasExplicitLocalLanguage
       ) {
         setLanguage(profile.language);
       }
