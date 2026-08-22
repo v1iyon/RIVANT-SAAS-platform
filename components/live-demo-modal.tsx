@@ -1839,25 +1839,13 @@ const [googleAdsExtraValues, setGoogleAdsExtraValues] = useState<Record<string, 
                   </div>
                 </div>
 
-                {/* 3. AI текст — короткі пункти (як було) */}
-                <div className="bg-blue-500/5 rounded-xl p-4 border border-blue-500/20">
-                  <p className="text-sm text-gray-400">{T.demoForecastBasedOn || "Based on historical data and market trends, our AI model predicts:"}</p>
-                  <ul className="mt-2 space-y-1 text-sm text-gray-300">
-                    <li>• {T.demoForecastRevenueGrowth || "18% revenue growth projected over next 90 days"}</li>
-                    <li>• {T.demoForecastMarginImprovement || "Operating margin expected to improve by 2.3%"}</li>
-                    <li>• {T.demoForecastSeasonalPeak || "Seasonal peak predicted in September (+12% vs August)"}</li>
-                    <li>• {T.demoForecastAdSpend || "Recommended ad spend increase of 8% for Q3"}</li>
-                  </ul>
-                </div>
-
-                {/* 4. "Що це означає для вас" — розгорнутий абзац у тому ж стилі,
-                    що й реальний AI-аналіз у кабінеті (forecast-ai-analysis),
-                    і DEMO_FORECAST_EXPLANATION з онбординг-туру: прогноз ->
-                    тренд виручки -> тренд маржі -> порада -> джерело розрахунку. */}
+                {/* 3. AI текст — короткий заголовок + розгорнутий абзац у тому ж
+                    стилі, що й реальний AI-аналіз у кабінеті
+                    (forecast-ai-analysis) і DEMO_FORECAST_EXPLANATION з
+                    онбординг-туру: прогноз -> тренд виручки -> тренд маржі ->
+                    порада -> джерело розрахунку. */}
                 <div data-tour="forecast-ai-analysis" className="bg-blue-500/5 rounded-xl p-4 border border-blue-500/20">
-                  <h3 className="font-semibold text-white text-sm mb-2">
-                    {language === "UA" ? "Що це означає для вас" : language === "DE" ? "Was das für Sie bedeutet" : "What it means for you"}
-                  </h3>
+                  <p className="text-sm text-gray-400 mb-2">{T.demoForecastBasedOn || "Based on historical data and market trends, our AI model predicts:"}</p>
                   <p className="text-sm text-gray-300 whitespace-pre-line">
                     {language === "UA"
                       ? `RIVANT прогнозує ${symbol}${Math.round(convert(892400)).toLocaleString()} виручки та ${symbol}${Math.round(convert(654200)).toLocaleString()} витрат за поточний квартал, якщо нинішні тенденції збережуться — це +18% і +8% порівняно з минулим кварталом, з упевненістю 94% та 91% відповідно. Зростання виручки випереджає зростання витрат, тому операційна маржа має покращитися приблизно на 2,3 відсоткового пункту, що рухає прибутковість у правильному напрямку. Очікуйте сезонний пік у вересні — приблизно на 12% вище серпня, ймовірно пов'язаний із вашою рекламною активністю у Q3. Варто збільшити рекламний бюджет приблизно на 8% напередодні цього піку, щоб покрити додатковий попит, не втративши в запасах чи логістиці. Як завжди, щотижня звіряйте фактичні результати з цим прогнозом і коригуйте бюджет, якщо витрати почнуть випереджати очікуваний темп росту. Розрахунки базуються на квартальному тренді за підключеними джерелами доходів і витрат.`
