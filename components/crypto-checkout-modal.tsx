@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase-browser";
 import { useOrderStatus } from "@/lib/use-order-status";
 import { Copy, Check, X } from "lucide-react";
@@ -48,47 +48,6 @@ const TEXT: Record<Locale, {
   },
 };
 
-// Собирает ссылку для iframe Transak.
-//
-// Environment больше не захардкожен: берём из
-// NEXT_PUBLIC_TRANSAK_ENVIRONMENT. По умолчанию — "PRODUCTION" (безопасный
-// дефолт для боевого запуска: если переменную забыли выставить, лучше
-// случайно получить прод, чем случайно застрять на staging и не увидеть
-// реальных платежей). Явно укажи "STAGING" в .env для локальной разработки:
-//
-//   NEXT_PUBLIC_TRANSAK_ENVIRONMENT=STAGING   # локально / preview
-//   NEXT_PUBLIC_TRANSAK_ENVIRONMENT=PRODUCTION # прод (или просто не задавать)
-function buildTransakUrl(opts: {
-  fiatCurrency: string;
-  cryptoCurrencyCode: string;
-  network: string;
-  fiatAmount: string;
-  walletAddress: string;
-  partnerOrderId: string;
-}) {
-  const environment =
-    process.env.NEXT_PUBLIC_TRANSAK_ENVIRONMENT === "STAGING" ? "STAGING" : "PRODUCTION";
-
-  const base =
-    environment === "PRODUCTION"
-      ? "https://global.transak.com"
-      : "https://global-stg.transak.com";
-
-  const params = new URLSearchParams({
-    apiKey: process.env.NEXT_PUBLIC_TRANSAK_API_KEY ?? "",
-    fiatCurrency: opts.fiatCurrency,
-    cryptoCurrencyCode: opts.cryptoCurrencyCode,
-    network: opts.network,
-    defaultFiatAmount: opts.fiatAmount,
-    walletAddress: opts.walletAddress,
-    disableWalletAddressForm: "true",
-    partnerOrderId: opts.partnerOrderId,
-    themeColor: "0A0A0A",
-  });
-
-  return `${base}?${params.toString()}`;
-}
-
 interface CryptoCheckoutModalProps {
   orderId: string;
   amountToSend: string;
@@ -111,7 +70,7 @@ export function CryptoCheckoutModal({
   onSuccess,
 }: CryptoCheckoutModalProps) {
   const supabase = createClient();
-  const { status } = useOrderStatus(orderId, supabase);
+  const { status, isPaid } = useOrderStatus(orderId, supabase);
   const [copiedAmount, setCopiedAmount] = useState(false);
   const [copiedAddress, setCopiedAddress] = useState(false);
   const [locale, setLocale] = useState<Locale>(initialLocale);
@@ -119,8 +78,8 @@ export function CryptoCheckoutModal({
   const t = TEXT[locale];
 
   useEffect(() => {
-    if (status === "success") onSuccess();
-  }, [status, onSuccess]);
+    if (isPaid) onSuccess();
+  }, [isPaid, onSuccess]);
 
   const copy = async (text: string, which: "amount" | "address") => {
     await navigator.clipboard.writeText(text);
@@ -134,19 +93,6 @@ export function CryptoCheckoutModal({
   };
 
   const isExpired = status === "expired";
-
-  const transakUrl = useMemo(
-    () =>
-      buildTransakUrl({
-        fiatCurrency: "USD",
-        cryptoCurrencyCode: token,
-        network: chain,
-        fiatAmount: amountToSend,
-        walletAddress: receivingWallet,
-        partnerOrderId: orderId,
-      }),
-    [token, chain, amountToSend, receivingWallet, orderId]
-  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
@@ -216,13 +162,6 @@ export function CryptoCheckoutModal({
                 </button>
               </div>
             </div>
-
-            <iframe
-              src={transakUrl}
-              allow="camera;microphone;payment"
-              className="mb-4 h-[500px] w-full rounded-lg border border-white/10"
-              title="Transak"
-            />
 
             <div className="flex items-center justify-center gap-2 text-sm text-slate-400">
               <span className="h-2 w-2 animate-pulse rounded-full bg-blue-500" />

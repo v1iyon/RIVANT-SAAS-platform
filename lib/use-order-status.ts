@@ -2,15 +2,23 @@
 //
 // Использование в компоненте окна оплаты:
 //
-//   const { order, status } = useOrderStatus(orderId, supabase);
+//   const { order, status, isPaid } = useOrderStatus(orderId, supabase);
 //   useEffect(() => {
-//     if (status === "success") closePaymentModal();
-//   }, [status]);
+//     if (isPaid) closePaymentModal();
+//   }, [isPaid]);
+//
+// ВАЖНО: polygon-webhook пишет в orders.status значение "paid" (см.
+// supabase/functions/polygon-webhook/index.ts), а не "success". Раньше
+// здесь ждали только "success", из-за чего крипто-модалка не закрывалась
+// автоматически по статусу заказа — реального автозакрытия добивались
+// только окольным Realtime-слушателем на subscriptions в PaymentModal.
+// Это чинится тут, на фронте, а не в polygon-webhook, чтобы не трогать
+// уже задеплоенный крипто-бэкенд.
 
 import { useEffect, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type OrderStatus = "pending" | "success" | "expired" | "fraud_flagged";
+export type OrderStatus = "pending" | "paid" | "success" | "expired" | "fraud_flagged";
 
 export interface OrderRow {
   id: string;
@@ -64,5 +72,12 @@ export function useOrderStatus(orderId: string | null, supabase: SupabaseClient)
     };
   }, [orderId, supabase]);
 
-  return { order, status: order?.status ?? "pending" };
+  const status = order?.status ?? "pending";
+
+  return {
+    order,
+    status,
+    // Normalized flag: true for either spelling a backend might use.
+    isPaid: status === "paid" || status === "success",
+  };
 }
