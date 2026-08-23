@@ -1,29 +1,24 @@
 // supabase/functions/kofi-webhook/index.ts
 //
-// Принимает POST-запрос от Ko-fi (application/x-www-form-urlencoded),
-// проверяет verification_token, парсит JSON из поля `data`,
-// матчит покупателя по email и делает upsert подписки.
+// Принимает POST от Ko-fi (application/x-www-form-urlencoded), проверяет
+// verification_token, парсит JSON из поля `data`, находит пользователя по
+// email в public.users и активирует подписку в public.subscriptions +
+// синхронизирует public.users.has_active_subscription/subscription_expires_at.
+//
+// ВАЖНО: эта функция НЕ трогает public.orders (та таблица заточена под
+// крипто-чекаут: tx_hash/chain/token) — Ko-fi платежи в неё не пишутся.
 //
 // Deploy:
 //   supabase functions deploy kofi-webhook --no-verify-jwt
-//   (--no-verify-jwt обязателен: Ko-fi не отправляет Supabase JWT)
 //
-// Secrets:
+// Secrets (уже установлен, см. предыдущий шаг):
 //   supabase secrets set KOFI_VERIFICATION_TOKEN=xxxxx
-//   (SUPABASE_URL и SUPABASE_SERVICE_ROLE_KEY подставляются автоматически)
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 
 // ---------------------------------------------------------------
-// Типы payload'а, который Ko-fi кладёт внутрь строкового поля `data`
-// (см. https://ko-fi.com/manage/webhooks)
+// Payload от Ko-fi (см. https://ko-fi.com/manage/webhooks)
 // ---------------------------------------------------------------
-interface KofiShopItem {
-  direct_link_code: string;
-  variation_name: string;
-  quantity: number;
-}
-
 interface KofiPayload {
   verification_token: string;
   message_id: string;
@@ -32,25 +27,28 @@ interface KofiPayload {
   is_public: boolean;
   from_name: string;
   message: string | null;
-  amount: string; // строка вида "99.00"
+  amount: string; // строка вида "299.00"
   url: string;
   email: string;
   currency: string;
   kofi_transaction_id: string;
-  shop_items: KofiShopItem[] | null;
+  shop_items: { direct_link_code: string; variation_name: string; quantity: number }[] | null;
   tier_name: string | null; // для Membership/Subscription
   is_subscription_payment: boolean;
   is_first_subscription_payment: boolean;
 }
 
 // ---------------------------------------------------------------
-// Маппинг Ko-fi Tier -> внутренний plan_type
-// Названия Tier должны точно совпадать с тем, что настроено в Ko-fi Shop.
+// Маппинг Ko-fi Tier -> plans.id из вашей БД.
+// ВНИМАНИЕ: тир в Ko-fi называется "Scale", но в таблице `plans`
+// его id — "premium" (несовпадение видно на самой странице:
+// display_name="Premium", а на сайте показывается как "Scale").
+// Если переименуете тир в Ko-fi — поправьте ключ слева.
 // ---------------------------------------------------------------
-const TIER_TO_PLAN: Record<string, { plan_type: "starter" | "growth" | "scale"; amount: number }> = {
-  "Starter": { plan_type: "starter", amount: 99 },
-  "Growth": { plan_type: "growth", amount: 299 },
-  "Scale": { plan_type: "scale", amount: 499 },
+const TIER_TO_PLAN_ID: Record<string, { plan_id: string; amount_cents: number }> = {
+  "Starter": { plan_id: "starter", amount_cents: 9900 },
+  "Growth": { plan_id: "growth", amount_cents: 29900 },
+  "Scale": { plan_id: "premium", amount_cents: 49900 },
 };
 
 const SUBSCRIPTION_DAYS = 30;
@@ -62,22 +60,17 @@ function jsonResponse(body: Record<string, unknown>, status: number): Response {
   });
 }
 
-// Определяем plan_type: сначала пробуем tier_name (Membership), затем shop_items (разовая покупка)
-function resolvePlan(payload: KofiPayload): { plan_type: "starter" | "growth" | "scale"; amount: number } | null {
-  if (payload.tier_name && TIER_TO_PLAN[payload.tier_name]) {
-    return TIER_TO_PLAN[payload.tier_name];
+function resolvePlan(payload: KofiPayload): { plan_id: string; amount_cents: number } | null {
+  if (payload.tier_name && TIER_TO_PLAN_ID[payload.tier_name]) {
+    return TIER_TO_PLAN_ID[payload.tier_name];
   }
-
   if (payload.shop_items && payload.shop_items.length > 0) {
-    const code = payload.shop_items[0].variation_name;
-    if (code && TIER_TO_PLAN[code]) {
-      return TIER_TO_PLAN[code];
-    }
+    const name = payload.shop_items[0].variation_name;
+    if (name && TIER_TO_PLAN_ID[name]) return TIER_TO_PLAN_ID[name];
   }
-
-  // fallback: матчим по сумме, если названия тарифов не пришли
-  const amount = parseFloat(payload.amount);
-  const byAmount = Object.values(TIER_TO_PLAN).find((t) => t.amount === Math.round(amount));
+  // fallback: по сумме, если имя тира не пришло
+  const amountCents = Math.round(parseFloat(payload.amount) * 100);
+  const byAmount = Object.values(TIER_TO_PLAN_ID).find((t) => t.amount_cents === amountCents);
   return byAmount ?? null;
 }
 
@@ -96,19 +89,12 @@ Deno.serve(async (req: Request) => {
   }
 
   // ---------------------------------------------------------------
-  // 1. Парсим application/x-www-form-urlencoded, достаём поле `data`
+  // 1. Парсим form-urlencoded, достаём поле `data`
   // ---------------------------------------------------------------
   let rawData: string | null;
   try {
-    const contentType = req.headers.get("content-type") ?? "";
-    if (contentType.includes("application/x-www-form-urlencoded")) {
-      const form = await req.formData();
-      rawData = form.get("data") as string | null;
-    } else {
-      // На случай если Ko-fi (или тестовый curl) пришлёт multipart/form-data
-      const form = await req.formData();
-      rawData = form.get("data") as string | null;
-    }
+    const form = await req.formData();
+    rawData = form.get("data") as string | null;
   } catch (err) {
     console.error("Failed to parse form body:", err);
     return jsonResponse({ error: "Invalid request body" }, 400);
@@ -127,14 +113,13 @@ Deno.serve(async (req: Request) => {
   }
 
   // ---------------------------------------------------------------
-  // 2. Строгая сверка verification_token (защита от посторонних запросов)
+  // 2. Строгая сверка verification_token
   // ---------------------------------------------------------------
   if (payload.verification_token !== KOFI_VERIFICATION_TOKEN) {
     console.warn("Invalid Ko-fi verification_token received");
     return jsonResponse({ error: "Unauthorized" }, 401);
   }
 
-  // Игнорируем не-платёжные типы (например, обычный публичный донат без Tier)
   const relevantTypes = ["Subscription", "Shop Order", "Donation"];
   if (!relevantTypes.includes(payload.type)) {
     return jsonResponse({ message: "Ignored: unsupported type" }, 200);
@@ -145,89 +130,85 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: "Missing buyer email" }, 400);
   }
 
-  const plan = resolvePlan(payload);
-  if (!plan) {
-    console.warn("Could not resolve plan for payload:", payload.tier_name, payload.amount);
-    return jsonResponse({ error: "Unrecognized tier/amount" }, 422);
-  }
-
-  // ---------------------------------------------------------------
-  // 3. Supabase client с service_role — обходит RLS
-  // ---------------------------------------------------------------
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
     auth: { persistSession: false },
   });
 
-  // Находим user_id по email через защищённую SECURITY DEFINER функцию
-  // (auth.users не открыт напрямую через PostgREST — см. миграцию 0001)
-  const { data: foundUserId, error: userError } = await supabase.rpc(
-    "get_user_id_by_email",
-    { p_email: email },
-  );
+  // ---------------------------------------------------------------
+  // 3. Идемпотентность: если этот kofi_transaction_id уже обработан — выходим.
+  //    (Ko-fi ретраит вебхук, если не получил 200 вовремя.)
+  // ---------------------------------------------------------------
+  const { error: dedupeError } = await supabase
+    .from("kofi_transactions")
+    .insert({
+      kofi_transaction_id: payload.kofi_transaction_id,
+      email,
+      raw_payload: payload,
+    });
+
+  if (dedupeError) {
+    if (dedupeError.code === "23505") {
+      // unique_violation — уже обработали этот платёж ранее
+      console.log(`Duplicate Ko-fi transaction ${payload.kofi_transaction_id}, skipping`);
+      return jsonResponse({ message: "Already processed" }, 200);
+    }
+    console.error("Failed to log kofi transaction:", dedupeError);
+    return jsonResponse({ error: "Internal error" }, 500);
+  }
+
+  // ---------------------------------------------------------------
+  // 4. Определяем тариф
+  // ---------------------------------------------------------------
+  const plan = resolvePlan(payload);
+  if (!plan) {
+    console.warn("Could not resolve plan for tier_name:", payload.tier_name, "amount:", payload.amount);
+    await supabase.from("error_logs").insert({
+      source: "kofi-webhook",
+      message: "Unrecognized Ko-fi tier/amount",
+      details: JSON.stringify({ tier_name: payload.tier_name, amount: payload.amount, email }),
+      resolved: false,
+    });
+    return jsonResponse({ error: "Unrecognized tier/amount" }, 422);
+  }
+
+  // ---------------------------------------------------------------
+  // 5. Находим пользователя по email в public.users
+  // ---------------------------------------------------------------
+  const { data: userRow, error: userError } = await supabase
+    .from("users")
+    .select("id")
+    .ilike("email", email)
+    .maybeSingle();
 
   if (userError) {
     console.error("Error looking up user by email:", userError);
     return jsonResponse({ error: "Internal lookup error" }, 500);
   }
 
-  if (!foundUserId) {
-    // Платёж пришёл, но пользователь ещё не регистрировался в приложении —
-    // сохраняем как pending заказ без user_id, чтобы не потерять данные.
-    await supabase.from("orders").insert({
-      user_id: null,
-      email,
-      amount: parseFloat(payload.amount),
-      currency: payload.currency,
-      plan_type: plan.plan_type,
-      status: "pending",
-      provider: "kofi",
-      provider_txn_id: payload.kofi_transaction_id,
-      raw_payload: payload,
+  if (!userRow) {
+    console.warn(`No matching user for email ${email}`);
+    await supabase.from("error_logs").insert({
+      source: "kofi-webhook",
+      message: "Ko-fi payment received but no matching user found",
+      details: JSON.stringify({ email, plan_id: plan.plan_id, kofi_transaction_id: payload.kofi_transaction_id }),
+      resolved: false,
     });
-    console.warn(`No matching user for email ${email}; order stored as pending`);
-    return jsonResponse({ message: "Order stored, awaiting user match" }, 200);
+    return jsonResponse({ message: "No matching user, logged for manual review" }, 200);
   }
 
-  const userId = foundUserId as string;
+  const userId = userRow.id as string;
   const periodEnd = new Date(Date.now() + SUBSCRIPTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
   // ---------------------------------------------------------------
-  // 4. Идемпотентная запись заказа (upsert по provider_txn_id)
-  // ---------------------------------------------------------------
-  const { data: orderRow, error: orderError } = await supabase
-    .from("orders")
-    .upsert(
-      {
-        user_id: userId,
-        email,
-        amount: parseFloat(payload.amount),
-        currency: payload.currency,
-        plan_type: plan.plan_type,
-        status: "success",
-        provider: "kofi",
-        provider_txn_id: payload.kofi_transaction_id,
-        raw_payload: payload,
-      },
-      { onConflict: "provider,provider_txn_id" },
-    )
-    .select("id")
-    .single();
-
-  if (orderError) {
-    console.error("Failed to upsert order:", orderError);
-    return jsonResponse({ error: "Failed to record order" }, 500);
-  }
-
-  // ---------------------------------------------------------------
-  // 5. Upsert подписки: активируем и продлеваем на +30 дней от текущего момента
+  // 6. Upsert public.subscriptions (уникальный user_id уже гарантирован)
   // ---------------------------------------------------------------
   const { error: subError } = await supabase.from("subscriptions").upsert(
     {
       user_id: userId,
-      plan_type: plan.plan_type,
+      plan: plan.plan_id,
       access_status: "active",
       current_period_end: periodEnd,
-      last_order_id: orderRow.id,
+      provider_subscription_id: payload.kofi_transaction_id,
     },
     { onConflict: "user_id" },
   );
@@ -237,6 +218,30 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: "Failed to activate subscription" }, 500);
   }
 
-  console.log(`Subscription activated for user ${userId}, plan=${plan.plan_type}, until=${periodEnd}`);
+  // ---------------------------------------------------------------
+  // 7. Синхронизируем публичный флаг доступа в public.users
+  //    (в БД нет триггера, который делает это автоматически — см. проверку)
+  // ---------------------------------------------------------------
+  const { error: usersError } = await supabase
+    .from("users")
+    .update({
+      has_active_subscription: true,
+      subscription_expires_at: periodEnd,
+    })
+    .eq("id", userId);
+
+  if (usersError) {
+    console.error("Failed to sync users.has_active_subscription:", usersError);
+    // Подписка уже активирована, поэтому не возвращаем 500 (Ko-fi начнёт ретраить
+    // и создаст новый platform-level конфликт) — просто логируем для ручного фикса.
+    await supabase.from("error_logs").insert({
+      source: "kofi-webhook",
+      message: "Subscription activated but failed to sync users flag",
+      details: JSON.stringify({ user_id: userId, error: usersError.message }),
+      resolved: false,
+    });
+  }
+
+  console.log(`Subscription activated: user=${userId}, plan=${plan.plan_id}, until=${periodEnd}`);
   return jsonResponse({ message: "Subscription activated" }, 200);
 });
