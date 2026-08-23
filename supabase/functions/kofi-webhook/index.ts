@@ -63,6 +63,22 @@ const DIRECT_LINK_CODE_TO_PLAN_ID: Record<string, string> = {
   "ed50f0bf6a": "premium",
 };
 
+// ---------------------------------------------------------------
+// Допуслуги (addon-товары) — отдельная ветка от тарифов Starter/Growth/Scale
+// выше. Названия service_type/addon_type взяты 1-в-1 из PRICE_TO_ADDON в
+// app/api/webhooks/paddle/route.js, чтобы cron/process-service-orders,
+// cron/addon-expiry и api/team/invite узнавали эти записи без изменений.
+// ---------------------------------------------------------------
+type AddonMapping =
+  | { kind: "order"; service_type: string }
+  | { kind: "subscription"; addon_type: string };
+
+const DIRECT_LINK_CODE_TO_ADDON: Record<string, AddonMapping> = {
+  "41ec6cf444": { kind: "order", service_type: "whatif_analysis" }, // AI Historical Analysis — разовая
+  "cfa88bffb3": { kind: "subscription", addon_type: "monthly_digest" }, // AI Performance Digest — ежемесячная
+  "a6db84895c": { kind: "subscription", addon_type: "team_alerts" }, // Team Alert Access — ежемесячная
+};
+
 const SUBSCRIPTION_DAYS = 30;
 
 // Только эти типы событий Ko-fi считаем платежом за тариф. "Donation"
@@ -182,6 +198,128 @@ Deno.serve(async (req: Request) => {
     }
     console.error("Failed to log kofi transaction:", dedupeError);
     return jsonResponse({ error: "Internal error" }, 500);
+  }
+
+  // ---------------------------------------------------------------
+  // 3.5. Допуслуга? (AI Historical Analysis / Performance Digest / Team
+  // Alert Access) — проверяем ДО resolvePlan(), это отдельная ветка,
+  // которая не пересекается с тарифами Starter/Growth/Scale.
+  // ---------------------------------------------------------------
+  const addonItemCode = payload.shop_items?.[0]?.direct_link_code;
+  const addonMapping = addonItemCode ? DIRECT_LINK_CODE_TO_ADDON[addonItemCode] : undefined;
+
+  if (addonMapping) {
+    // Находим юзера по email (та же логика, что и для тарифов ниже).
+    const { data: addonUserRow, error: addonUserError } = await supabase
+      .from("users")
+      .select("id")
+      .ilike("email", email)
+      .maybeSingle();
+
+    if (addonUserError) {
+      console.error("Error looking up user by email (addon):", addonUserError);
+      return jsonResponse({ error: "Internal lookup error" }, 500);
+    }
+
+    if (!addonUserRow) {
+      console.warn(`No matching user for addon email ${email}`);
+      await supabase.from("error_logs").insert({
+        source: "kofi-webhook",
+        message: "Ko-fi addon payment received but no matching user found",
+        details: JSON.stringify({ email, addon: addonMapping, kofi_transaction_id: payload.kofi_transaction_id }),
+        resolved: false,
+      });
+      return jsonResponse({ message: "No matching user, logged for manual review" }, 200);
+    }
+
+    const addonUserId = addonUserRow.id as string;
+
+    // У Ko-fi (в отличие от Paddle custom_data) нет способа передать
+    // business_id прямо в чекауте — резолвим по users->businesses. Если у
+    // юзера ровно один бизнес, берём его; если 0 или больше 1 — не гадаем,
+    // логируем для ручной разборки в админке.
+    const { data: userBusinesses, error: businessesError } = await supabase
+      .from("businesses")
+      .select("id")
+      .eq("user_id", addonUserId);
+
+    if (businessesError) {
+      console.error("Error looking up businesses for addon:", businessesError);
+      return jsonResponse({ error: "Internal lookup error" }, 500);
+    }
+
+    if (!userBusinesses || userBusinesses.length !== 1) {
+      console.warn(`Ambiguous business_id for addon: user=${addonUserId}, count=${userBusinesses?.length ?? 0}`);
+      await supabase.from("error_logs").insert({
+        source: "kofi-webhook",
+        message: "Ko-fi addon payment: could not resolve a single business_id for user",
+        details: JSON.stringify({
+          user_id: addonUserId,
+          business_count: userBusinesses?.length ?? 0,
+          addon: addonMapping,
+          kofi_transaction_id: payload.kofi_transaction_id,
+        }),
+        resolved: false,
+      });
+      return jsonResponse({ message: "Ambiguous business, logged for manual review" }, 200);
+    }
+
+    const businessId = userBusinesses[0].id as string;
+
+    if (addonMapping.kind === "order") {
+      // Разовая допуслуга — создаём заказ, cron/process-service-orders его
+      // подхватит и сгенерирует отчёт, как и для Paddle-заказов.
+      // paddle_transaction_id в service_orders — nullable, для Kofi-заказов
+      // намеренно не заполняем (сама транзакция уже сохранена в
+      // kofi_transactions.raw_payload, этого достаточно для трассировки).
+      const { error: orderError } = await supabase.from("service_orders").insert({
+        business_id: businessId,
+        user_id: addonUserId,
+        service_type: addonMapping.service_type,
+        status: "pending",
+      });
+
+      if (orderError) {
+        console.error("Failed to insert service_orders (kofi addon):", orderError);
+        await supabase.from("error_logs").insert({
+          source: "kofi-webhook",
+          message: "Failed to create service_order for Ko-fi addon payment",
+          details: JSON.stringify({ business_id: businessId, addon: addonMapping, error: orderError.message }),
+          resolved: false,
+        });
+        return jsonResponse({ error: "Failed to create service order" }, 500);
+      }
+    } else {
+      // Ежемесячная допуслуга — та же модель "ручное продление раз в 30
+      // дней", что уже используется для тарифов Starter/Growth/Scale выше
+      // (Ko-fi Shop-ссылки не дают настоящей авто-рекуррентности).
+      // paddle_subscription_id в addon_subscriptions — nullable, для Kofi
+      // не заполняем по той же причине, что и выше.
+      const addonPeriodEnd = new Date(Date.now() + SUBSCRIPTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+      const { error: addonSubError } = await supabase.from("addon_subscriptions").upsert(
+        {
+          business_id: businessId,
+          addon_type: addonMapping.addon_type,
+          status: "active",
+          current_period_end: addonPeriodEnd,
+        },
+        { onConflict: "business_id,addon_type" },
+      );
+
+      if (addonSubError) {
+        console.error("Failed to upsert addon_subscriptions (kofi addon):", addonSubError);
+        await supabase.from("error_logs").insert({
+          source: "kofi-webhook",
+          message: "Failed to activate addon_subscription for Ko-fi addon payment",
+          details: JSON.stringify({ business_id: businessId, addon: addonMapping, error: addonSubError.message }),
+          resolved: false,
+        });
+        return jsonResponse({ error: "Failed to activate addon subscription" }, 500);
+      }
+    }
+
+    console.log(`Addon activated via Ko-fi: business=${businessId}, addon=${JSON.stringify(addonMapping)}`);
+    return jsonResponse({ message: "Addon activated" }, 200);
   }
 
   // ---------------------------------------------------------------
