@@ -1,243 +1,379 @@
 "use client";
 
-// components/PaymentModal.tsx
+// frontend/PaymentModal.tsx
 //
-// Payment flow via our own Polygon wallet listener:
-//   - Clicking a plan calls `create-order`, which reserves a unique
-//     salted amount and returns { order_id, amount_to_send, token,
-//     chain, receiving_wallet, expires_at }.
-//   - We show that wallet address + exact amount right here in the modal
-//     (with copy buttons) instead of opening any external checkout page.
-//   - The user sends the payment manually from their own wallet.
-//   - Confirmation is exclusively the on-chain webhook (polygon-webhook)
-//     watching the receiving wallet, surfaced via useOrderStatus
-//     (Realtime + polling fallback).
+// Модалка оплаты тарифа: открывает Ko-fi Tier в новой вкладке,
+// показывает лоадер ожидания вебхука и слушает public.subscriptions
+// через Supabase Realtime — как только webhook активирует подписку,
+// окно закрывается само.
+//
+// Использование:
+//   <PaymentModal
+//     isOpen={isOpen}
+//     onClose={() => setIsOpen(false)}
+//     locale="ru"                 // 'ru' | 'uk' | 'en'
+//     planType="premium"          // 'growth' | 'premium' | 'enterprise'
+//     userId={user.id}
+//     kofiLinks={{
+//       growth: "https://ko-fi.com/yourpage/tiers/growth-id",
+//       premium: "https://ko-fi.com/yourpage/tiers/premium-id",
+//       enterprise: "https://ko-fi.com/yourpage/tiers/enterprise-id",
+//     }}
+//     onActivated={() => router.push('/dashboard')}
+//   />
 
-import { useState, useCallback, useEffect } from "react";
-import { createClient } from "@supabase/supabase-js";
-import { useOrderStatus } from "@/hooks/useOrderStatus";
+import { useEffect, useRef, useState } from "react";
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-);
+// ---------------------------------------------------------------
+// i18n словарь
+// ---------------------------------------------------------------
+type Locale = "ru" | "uk" | "en";
+type PlanType = "growth" | "premium" | "enterprise";
 
-export interface PlanOption {
-  id: string; // must match public.plans.id, e.g. "starter" | "growth" | "premium"
-  label: string;
-  priceDisplay: string; // e.g. "$99/mo" — purely cosmetic, real price is server-side
-}
+const PLAN_LABELS: Record<PlanType, { ru: string; uk: string; en: string; price: string }> = {
+  growth: { ru: "Growth", uk: "Growth", en: "Growth", price: "$99" },
+  premium: { ru: "Premium", uk: "Premium", en: "Premium", price: "$299" },
+  enterprise: { ru: "Enterprise", uk: "Enterprise", en: "Enterprise", price: "$499" },
+};
 
+const DICT: Record<Locale, {
+  title: (plan: string, price: string) => string;
+  redirected: string;
+  waitingTitle: string;
+  waitingBody: string;
+  reopenLink: string;
+  successTitle: string;
+  successBody: string;
+  errorTitle: string;
+  errorBody: string;
+  close: string;
+}> = {
+  ru: {
+    title: (plan, price) => `Оплата тарифа ${plan} — ${price}`,
+    redirected: "Мы открыли страницу оплаты Ko-fi в новой вкладке.",
+    waitingTitle: "Ожидаем подтверждения платежа",
+    waitingBody:
+      "Ожидаем автоматического подтверждения платежа от процессора… Пожалуйста, не закрывайте эту страницу.",
+    reopenLink: "Не открылась вкладка? Открыть ссылку заново",
+    successTitle: "Подписка активирована!",
+    successBody: "Оплата подтверждена, доступ открыт.",
+    errorTitle: "Что-то пошло не так",
+    errorBody: "Проверьте соединение или повторите попытку позже.",
+    close: "Закрыть",
+  },
+  uk: {
+    title: (plan, price) => `Оплата тарифу ${plan} — ${price}`,
+    redirected: "Ми відкрили сторінку оплати Ko-fi у новій вкладці.",
+    waitingTitle: "Очікуємо підтвердження платежу",
+    waitingBody:
+      "Очікуємо автоматичного підтвердження платежу від процесора… Будь ласка, не закривайте цю сторінку.",
+    reopenLink: "Вкладка не відкрилась? Відкрити посилання ще раз",
+    successTitle: "Підписку активовано!",
+    successBody: "Оплату підтверджено, доступ відкрито.",
+    errorTitle: "Щось пішло не так",
+    errorBody: "Перевірте з'єднання або спробуйте пізніше.",
+    close: "Закрити",
+  },
+  en: {
+    title: (plan, price) => `${plan} plan checkout — ${price}`,
+    redirected: "We opened the Ko-fi checkout page in a new tab.",
+    waitingTitle: "Waiting for payment confirmation",
+    waitingBody:
+      "Waiting for automatic payment confirmation from the processor… Please don't close this page.",
+    reopenLink: "Tab didn't open? Open the link again",
+    successTitle: "Subscription activated!",
+    successBody: "Payment confirmed, your access is now open.",
+    errorTitle: "Something went wrong",
+    errorBody: "Check your connection or try again later.",
+    close: "Close",
+  },
+};
+
+// ---------------------------------------------------------------
+// Пропсы
+// ---------------------------------------------------------------
 interface PaymentModalProps {
-  plan: PlanOption;
-  open: boolean;
+  isOpen: boolean;
   onClose: () => void;
-  onPaid?: () => void;
+  locale: Locale;
+  planType: PlanType;
+  userId: string;
+  kofiLinks: Record<PlanType, string>;
+  onActivated?: () => void;
+  supabaseUrl?: string;
+  supabaseAnonKey?: string;
 }
 
-type FlowState = "idle" | "creating_order" | "awaiting_payment" | "paid" | "error" | "timed_out";
+type Phase = "redirecting" | "waiting" | "success" | "error";
 
-const TEXT = {
-  waiting: {
-    ua: "Очікуємо підтвердження оплати від процесингу... Будь ласка, не закривайте цю сторінку.",
-    en: "Waiting for payment confirmation from the processor... Please don't close this page.",
-    ru: "Ожидаем подтверждения оплаты от процессинга... Пожалуйста, не закрывайте эту страницу.",
-  },
-  paidTitle: { ua: "Оплату підтверджено", en: "Payment confirmed", ru: "Оплата подтверждена" },
-  continue: { ua: "Продовжити", en: "Continue", ru: "Продолжить" },
-  timedOutTitle: { ua: "Час очікування вийшов", en: "Payment window expired", ru: "Время ожидания истекло" },
-  timedOutBody: {
-    ua: "Сесія оплати завершилась до підтвердження платежу.",
-    en: "The checkout session timed out before payment was confirmed.",
-    ru: "Сессия оплаты завершилась до подтверждения платежа.",
-  },
-  tryAgain: { ua: "Спробувати ще раз", en: "Try again", ru: "Попробовать снова" },
-  errorTitle: { ua: "Щось пішло не так", en: "Something went wrong", ru: "Что-то пошло не так" },
-  popupBlocked: {
-    ua: "Браузер заблокував вікно оплати. Дозвольте спливаючі вікна для цього сайту та спробуйте ще раз.",
-    en: "Your browser blocked the payment tab. Please allow pop-ups for this site and try again.",
-    ru: "Браузер заблокировал окно оплаты. Разрешите всплывающие окна для этого сайта и попробуйте снова.",
-  },
-  errorBody: {
-    ua: "Не вдалося створити замовлення на оплату. Спробуйте ще раз.",
-    en: "We couldn't start the checkout. Please try again.",
-    ru: "Не удалось создать заказ на оплату. Попробуйте ещё раз.",
-  },
-} as const;
+export default function PaymentModal({
+  isOpen,
+  onClose,
+  locale,
+  planType,
+  userId,
+  kofiLinks,
+  onActivated,
+  supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL,
+  supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+}: PaymentModalProps) {
+  const [phase, setPhase] = useState<Phase>("redirecting");
+  const supabaseRef = useRef<SupabaseClient | null>(null);
+  const t = DICT[locale];
+  const plan = PLAN_LABELS[planType];
 
-export function PaymentModal({ plan, open, onClose, onPaid }: PaymentModalProps) {
-  const [flowState, setFlowState] = useState<FlowState>("idle");
-  const [orderId, setOrderId] = useState<string | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // Ленивая инициализация supabase-клиента (один раз)
+  if (!supabaseRef.current && supabaseUrl && supabaseAnonKey) {
+    supabaseRef.current = createClient(supabaseUrl, supabaseAnonKey);
+  }
 
-  const { status: orderStatus } = useOrderStatus(orderId);
+  const openKofiLink = () => {
+    const link = kofiLinks[planType];
+    window.open(link, "_blank", "noopener,noreferrer");
+    setPhase("waiting");
+  };
 
-  const startCheckout = useCallback(async () => {
-    setFlowState("creating_order");
-    setErrorMessage(null);
+  // При открытии модалки — сразу редиректим на Ko-fi
+  useEffect(() => {
+    if (!isOpen) return;
+    setPhase("redirecting");
+    const timer = setTimeout(openKofiLink, 400); // короткая пауза, чтобы модалка успела отрисоваться
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, planType]);
 
-    try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const accessToken = sessionData.session?.access_token;
-      if (!accessToken) {
-        throw new Error("not_authenticated");
-      }
+  // Realtime-подписка на public.subscriptions: как только webhook
+  // проставит access_status='active' и plan_type совпадёт — закрываем модалку.
+  useEffect(() => {
+    if (!isOpen || phase !== "waiting") return;
+    const supabase = supabaseRef.current;
+    if (!supabase) {
+      console.error("Supabase client is not configured (missing URL/anon key)");
+      setPhase("error");
+      return;
+    }
 
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/create-order`,
+    const channel = supabase
+      .channel(`subscriptions-watch-${userId}`)
+      .on(
+        "postgres_changes",
         {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${accessToken}`,
-          },
-          body: JSON.stringify({ plan_id: plan.id }),
+          event: "UPDATE",
+          schema: "public",
+          table: "subscriptions",
+          filter: `user_id=eq.${userId}`,
         },
-      );
+        (payload) => {
+          const row = payload.new as { access_status: string; plan_type: string };
+          if (row.access_status === "active") {
+            setPhase("success");
+            onActivated?.();
+          }
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "subscriptions",
+          filter: `user_id=eq.${userId}`,
+        },
+        (payload) => {
+          const row = payload.new as { access_status: string };
+          if (row.access_status === "active") {
+            setPhase("success");
+            onActivated?.();
+          }
+        },
+      )
+      .subscribe();
 
-      if (!res.ok) {
-        const errBody = await res.json().catch(() => ({}));
-        throw new Error(errBody.error ?? `request_failed_${res.status}`);
-      }
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [isOpen, phase, userId, onActivated]);
 
-      // create-order builds the Changelly checkout link server-side (the
-      // receiving wallet + exact salted amount are baked into widgetUrl —
-      // nothing sensitive is exposed to the client) and returns both the
-      // order id (for status polling) and that ready-to-open URL.
-      const { order, widgetUrl } = await res.json();
-
-      setOrderId(order.id);
-      setFlowState("awaiting_payment");
-
-      // New tab, not an iframe — avoids embedding restrictions and gives
-      // the user normal, trusted browser chrome for entering payment info.
-      const paymentWindow = window.open(widgetUrl, "_blank", "noopener");
-      if (!paymentWindow) {
-        setErrorMessage("popup_blocked");
-      }
-    } catch (err) {
-      console.error("checkout failed", err);
-      setFlowState("error");
-      setErrorMessage(err instanceof Error ? err.message : "unknown_error");
-    }
-  }, [plan.id]);
-
+  // Автозакрытие через пару секунд после успеха
   useEffect(() => {
-    if (!open) {
-      setFlowState("idle");
-      setOrderId(null);
-      setErrorMessage(null);
-    }
-  }, [open]);
+    if (phase !== "success") return;
+    const timer = setTimeout(onClose, 2500);
+    return () => clearTimeout(timer);
+  }, [phase, onClose]);
 
-  useEffect(() => {
-    if (orderStatus === "paid") {
-      setFlowState("paid");
-      onPaid?.();
-    } else if (orderStatus === "timed_out" || orderStatus === "expired") {
-      setFlowState("timed_out");
-    }
-  }, [orderStatus, onPaid]);
-
-  useEffect(() => {
-    if (open && flowState === "idle") {
-      startCheckout();
-    }
-  }, [open, flowState, startCheckout]);
-
-  if (!open) return null;
+  if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
-      <div className="relative w-full max-w-md rounded-2xl border border-white/10 bg-zinc-950 p-8 shadow-2xl">
-        {(flowState === "creating_order" || flowState === "awaiting_payment") && (
-          <div className="flex flex-col items-center gap-6 text-center">
-            <Spinner />
-            <div className="space-y-3 text-sm leading-relaxed text-zinc-300">
-              <p>{TEXT.waiting.ua}</p>
-              <p>{TEXT.waiting.en}</p>
-              <p>{TEXT.waiting.ru}</p>
-            </div>
-            {flowState === "awaiting_payment" && (
-              <button
-                onClick={startCheckout}
-                className="text-xs text-zinc-500 underline underline-offset-4 hover:text-zinc-300"
-              >
-                Didn't see the payment tab open? Click here to retry
-              </button>
-            )}
-          </div>
-        )}
-
-        {flowState === "paid" && (
-          <div className="flex flex-col items-center gap-4 text-center">
-            <CheckIcon />
-            <p className="text-lg font-medium text-white">{TEXT.paidTitle.en}</p>
-            <button
-              onClick={onClose}
-              className="mt-2 rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-medium text-white hover:bg-blue-500"
-            >
-              {TEXT.continue.en}
-            </button>
-          </div>
-        )}
-
-        {flowState === "timed_out" && (
-          <div className="flex flex-col items-center gap-4 text-center">
-            <p className="text-lg font-medium text-white">{TEXT.timedOutTitle.en}</p>
-            <p className="text-sm text-zinc-400">{TEXT.timedOutBody.en}</p>
-            <button
-              onClick={startCheckout}
-              className="mt-2 rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-medium text-white hover:bg-blue-500"
-            >
-              {TEXT.tryAgain.en}
-            </button>
-          </div>
-        )}
-
-        {flowState === "error" && (
-          <div className="flex flex-col items-center gap-4 text-center">
-            <p className="text-lg font-medium text-white">{TEXT.errorTitle.en}</p>
-            <p className="text-sm text-zinc-400">
-              {errorMessage === "popup_blocked" ? TEXT.popupBlocked.en : TEXT.errorBody.en}
-            </p>
-            <button
-              onClick={startCheckout}
-              className="mt-2 rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-medium text-white hover:bg-blue-500"
-            >
-              {TEXT.tryAgain.en}
-            </button>
-          </div>
-        )}
-
-        <button
-          onClick={onClose}
-          className="absolute right-4 top-4 text-zinc-500 hover:text-zinc-300"
-          aria-label="Close"
-        >
-          ✕
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="payment-modal-title"
+      style={styles.overlay}
+    >
+      <div style={styles.card}>
+        <button aria-label={t.close} onClick={onClose} style={styles.closeBtn}>
+          ×
         </button>
+
+        <h2 id="payment-modal-title" style={styles.title}>
+          {t.title(plan[locale], plan.price)}
+        </h2>
+
+        {phase === "redirecting" && <p style={styles.subtle}>{t.redirected}</p>}
+
+        {phase === "waiting" && (
+          <div style={styles.waitBlock}>
+            <Spinner />
+            <p style={styles.waitTitle}>{t.waitingTitle}</p>
+            <p style={styles.waitBody}>{t.waitingBody}</p>
+            <button onClick={openKofiLink} style={styles.linkBtn}>
+              {t.reopenLink}
+            </button>
+          </div>
+        )}
+
+        {phase === "success" && (
+          <div style={styles.waitBlock}>
+            <CheckIcon />
+            <p style={styles.successTitle}>{t.successTitle}</p>
+            <p style={styles.waitBody}>{t.successBody}</p>
+          </div>
+        )}
+
+        {phase === "error" && (
+          <div style={styles.waitBlock}>
+            <p style={styles.successTitle}>{t.errorTitle}</p>
+            <p style={styles.waitBody}>{t.errorBody}</p>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
+// ---------------------------------------------------------------
+// Мелкие визуальные детали: спиннер и иконка успеха, без внешних либ
+// ---------------------------------------------------------------
 function Spinner() {
   return (
-    <div
-      className="h-10 w-10 animate-spin rounded-full border-2 border-zinc-700 border-t-blue-500"
-      role="status"
-      aria-label="Loading"
-    />
+    <div style={styles.spinnerWrap}>
+      <div style={styles.spinnerRing} />
+      <style>{`
+        @keyframes rivant-spin { to { transform: rotate(360deg); } }
+        @keyframes rivant-pulse { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+      `}</style>
+    </div>
   );
 }
 
 function CheckIcon() {
   return (
-    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/15">
-      <svg viewBox="0 0 24 24" className="h-6 w-6 text-emerald-400" fill="none" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-      </svg>
-    </div>
+    <svg width="48" height="48" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+      <circle cx="24" cy="24" r="22" stroke="#22c55e" strokeWidth="2.5" />
+      <path
+        d="M14 24.5 L20.5 31 L34 17"
+        stroke="#22c55e"
+        strokeWidth="3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+    </svg>
   );
 }
+
+// ---------------------------------------------------------------
+// Инлайн-стили (можно заменить на Tailwind/CSS-модуль по вкусу проекта)
+// ---------------------------------------------------------------
+const styles: Record<string, React.CSSProperties> = {
+  overlay: {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(10, 10, 14, 0.6)",
+    backdropFilter: "blur(4px)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 1000,
+    padding: 16,
+  },
+  card: {
+    position: "relative",
+    background: "#12121a",
+    color: "#f4f4f6",
+    borderRadius: 16,
+    padding: "32px 28px",
+    width: "100%",
+    maxWidth: 420,
+    boxShadow: "0 20px 60px rgba(0,0,0,0.45)",
+    border: "1px solid rgba(255,255,255,0.08)",
+  },
+  closeBtn: {
+    position: "absolute",
+    top: 12,
+    right: 14,
+    background: "transparent",
+    border: "none",
+    color: "#9a9aa5",
+    fontSize: 24,
+    cursor: "pointer",
+    lineHeight: 1,
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: 600,
+    marginBottom: 20,
+    paddingRight: 24,
+  },
+  subtle: {
+    color: "#b3b3bd",
+    fontSize: 14,
+  },
+  waitBlock: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    textAlign: "center",
+    gap: 6,
+    padding: "12px 0 4px",
+  },
+  waitTitle: {
+    fontSize: 16,
+    fontWeight: 600,
+    marginTop: 14,
+  },
+  waitBody: {
+    fontSize: 13.5,
+    color: "#a4a4b0",
+    lineHeight: 1.5,
+    maxWidth: 300,
+  },
+  successTitle: {
+    fontSize: 16,
+    fontWeight: 600,
+    marginTop: 10,
+    color: "#22c55e",
+  },
+  linkBtn: {
+    marginTop: 14,
+    background: "transparent",
+    border: "none",
+    color: "#8b8bf5",
+    fontSize: 13,
+    textDecoration: "underline",
+    cursor: "pointer",
+  },
+  spinnerWrap: {
+    width: 48,
+    height: 48,
+  },
+  spinnerRing: {
+    width: 48,
+    height: 48,
+    borderRadius: "50%",
+    border: "3px solid rgba(255,255,255,0.12)",
+    borderTopColor: "#8b8bf5",
+    animation: "rivant-spin 0.9s linear infinite",
+  },
+};
