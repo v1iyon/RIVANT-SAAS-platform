@@ -12,12 +12,12 @@
 //     isOpen={isOpen}
 //     onClose={() => setIsOpen(false)}
 //     locale="ru"                 // 'ru' | 'uk' | 'en'
-//     planType="premium"          // 'growth' | 'premium' | 'enterprise'
+//     planType="growth"           // 'starter' | 'growth' | 'scale'
 //     userId={user.id}
 //     kofiLinks={{
+//       starter: "https://ko-fi.com/yourpage/tiers/starter-id",
 //       growth: "https://ko-fi.com/yourpage/tiers/growth-id",
-//       premium: "https://ko-fi.com/yourpage/tiers/premium-id",
-//       enterprise: "https://ko-fi.com/yourpage/tiers/enterprise-id",
+//       scale: "https://ko-fi.com/yourpage/tiers/scale-id",
 //     }}
 //     onActivated={() => router.push('/dashboard')}
 //   />
@@ -29,12 +29,12 @@ import { createClient, SupabaseClient } from "@supabase/supabase-js";
 // i18n словарь
 // ---------------------------------------------------------------
 type Locale = "ru" | "uk" | "en";
-type PlanType = "growth" | "premium" | "enterprise";
+type PlanType = "starter" | "growth" | "scale";
 
 const PLAN_LABELS: Record<PlanType, { ru: string; uk: string; en: string; price: string }> = {
-  growth: { ru: "Growth", uk: "Growth", en: "Growth", price: "$99" },
-  premium: { ru: "Premium", uk: "Premium", en: "Premium", price: "$299" },
-  enterprise: { ru: "Enterprise", uk: "Enterprise", en: "Enterprise", price: "$499" },
+  starter: { ru: "Starter", uk: "Starter", en: "Starter", price: "$99" },
+  growth: { ru: "Growth", uk: "Growth", en: "Growth", price: "$299" },
+  scale: { ru: "Scale", uk: "Scale", en: "Scale", price: "$499" },
 };
 
 const DICT: Record<Locale, {

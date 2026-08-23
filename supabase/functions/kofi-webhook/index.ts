@@ -47,10 +47,10 @@ interface KofiPayload {
 // Маппинг Ko-fi Tier -> внутренний plan_type
 // Названия Tier должны точно совпадать с тем, что настроено в Ko-fi Shop.
 // ---------------------------------------------------------------
-const TIER_TO_PLAN: Record<string, { plan_type: "growth" | "premium" | "enterprise"; amount: number }> = {
-  "Growth": { plan_type: "growth", amount: 99 },
-  "Premium": { plan_type: "premium", amount: 299 },
-  "Enterprise": { plan_type: "enterprise", amount: 499 },
+const TIER_TO_PLAN: Record<string, { plan_type: "starter" | "growth" | "scale"; amount: number }> = {
+  "Starter": { plan_type: "starter", amount: 99 },
+  "Growth": { plan_type: "growth", amount: 299 },
+  "Scale": { plan_type: "scale", amount: 499 },
 };
 
 const SUBSCRIPTION_DAYS = 30;
@@ -63,7 +63,7 @@ function jsonResponse(body: Record<string, unknown>, status: number): Response {
 }
 
 // Определяем plan_type: сначала пробуем tier_name (Membership), затем shop_items (разовая покупка)
-function resolvePlan(payload: KofiPayload): { plan_type: "growth" | "premium" | "enterprise"; amount: number } | null {
+function resolvePlan(payload: KofiPayload): { plan_type: "starter" | "growth" | "scale"; amount: number } | null {
   if (payload.tier_name && TIER_TO_PLAN[payload.tier_name]) {
     return TIER_TO_PLAN[payload.tier_name];
   }
