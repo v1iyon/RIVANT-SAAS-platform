@@ -50,6 +50,19 @@ const TIER_TO_PLAN_ID: Record<string, { plan_id: string; amount_cents: number }>
   "Scale": { plan_id: "premium", amount_cents: 49900 },
 };
 
+// Ko-fi Shop Item direct_link_code -> plan_id. Это самый надёжный способ
+// матчинга (в отличие от суммы, код ссылки не может "случайно совпасть"),
+// приходит в payload.shop_items[0].direct_link_code для типа "Shop Order".
+// Коды взяты из реальных ссылок:
+//   Starter -> https://ko-fi.com/s/10eb6d89bf
+//   Growth  -> https://ko-fi.com/s/9dcfdf1c5b
+//   Scale   -> https://ko-fi.com/s/ed50f0bf6a
+const DIRECT_LINK_CODE_TO_PLAN_ID: Record<string, string> = {
+  "10eb6d89bf": "starter",
+  "9dcfdf1c5b": "growth",
+  "ed50f0bf6a": "premium",
+};
+
 const SUBSCRIPTION_DAYS = 30;
 
 // Только эти типы событий Ko-fi считаем платежом за тариф. "Donation"
@@ -66,6 +79,15 @@ function jsonResponse(body: Record<string, unknown>, status: number): Response {
 }
 
 function resolvePlan(payload: KofiPayload): { plan_id: string; amount_cents: number } | null {
+  // 1) Самый надёжный способ: код Shop Item из ссылки.
+  const itemCode = payload.shop_items?.[0]?.direct_link_code;
+  if (itemCode && DIRECT_LINK_CODE_TO_PLAN_ID[itemCode]) {
+    const planId = DIRECT_LINK_CODE_TO_PLAN_ID[itemCode];
+    const byPlanId = Object.values(TIER_TO_PLAN_ID).find((t) => t.plan_id === planId);
+    if (byPlanId) return byPlanId;
+  }
+
+  // 2) Membership Tier (если когда-нибудь переключитесь на Tiers вместо Shop Items).
   if (payload.tier_name && TIER_TO_PLAN_ID[payload.tier_name]) {
     return TIER_TO_PLAN_ID[payload.tier_name];
   }
@@ -73,8 +95,9 @@ function resolvePlan(payload: KofiPayload): { plan_id: string; amount_cents: num
     const name = payload.shop_items[0].variation_name;
     if (name && TIER_TO_PLAN_ID[name]) return TIER_TO_PLAN_ID[name];
   }
-  // Фоллбэк по сумме — только для Subscription/Shop Order (уже отфильтровано
-  // выше через PLAN_PAYMENT_TYPES), когда имя тира/варианта не пришло.
+
+  // 3) Фоллбэк по сумме — только для Subscription/Shop Order (уже отфильтровано
+  // выше через PLAN_PAYMENT_TYPES), когда ни код, ни имя тира не пришли.
   const amountCents = Math.round(parseFloat(payload.amount) * 100);
   const byAmount = Object.values(TIER_TO_PLAN_ID).find((t) => t.amount_cents === amountCents);
   return byAmount ?? null;

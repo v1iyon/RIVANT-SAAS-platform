@@ -14,12 +14,11 @@
 // Plan ids match public.plans: "starter" | "growth" | "premium" (the
 // user-facing "Scale" tier's DB id is "premium", not "scale").
 //
-// TODO: kofiLinks values are placeholders (all point at https://ko-fi.com).
-// Replace with real Ko-fi Shop Item links once created — see chat notes on
-// getting them from Settings -> Shop -> "Copy Link". Until then, the
-// kofi-webhook resolves the plan by exact amount ($99.00 / $299.00 /
-// $499.00), so the buttons below still work end-to-end, just less robustly
-// than shop-item-code matching.
+// Ko-fi Shop Item links are wired in below as DEFAULT_KOFI_LINKS. The
+// kofi-webhook matches these by direct_link_code (the part after /s/ in
+// the URL) — if you regenerate a Shop Item link in Ko-fi, its code changes
+// and BOTH this file and kofi-webhook's DIRECT_LINK_CODE_TO_PLAN_ID need
+// updating.
 
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase-browser";
@@ -98,12 +97,21 @@ const DICT: Record<
   },
 };
 
+// Реальные ссылки на Ko-fi Shop Items (тарифы). Если понадобится
+// переопределить снаружи (напр. для теста) — проп kofiLinks всё ещё
+// опционален и перекроет эти дефолты.
+const DEFAULT_KOFI_LINKS: Record<PlanType, string> = {
+  starter: "https://ko-fi.com/s/10eb6d89bf",
+  growth: "https://ko-fi.com/s/9dcfdf1c5b",
+  premium: "https://ko-fi.com/s/ed50f0bf6a",
+};
+
 interface PaymentModalProps {
   isOpen: boolean;
   onClose: () => void;
   locale: Locale;
   userId: string;
-  kofiLinks: Record<PlanType, string>;
+  kofiLinks?: Record<PlanType, string>;
   onActivated?: () => void;
 }
 
@@ -112,7 +120,7 @@ export default function PaymentModal({
   onClose,
   locale,
   userId,
-  kofiLinks,
+  kofiLinks = DEFAULT_KOFI_LINKS,
   onActivated,
 }: PaymentModalProps) {
   const t = DICT[locale];
