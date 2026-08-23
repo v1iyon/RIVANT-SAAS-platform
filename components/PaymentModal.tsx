@@ -29,11 +29,19 @@
 //   2. Ko-fi checkout now opens in a centered popup window instead of a
 //      full new tab, so it reads as a modal over RIVANT rather than a
 //      full navigation away from the site. See handleKofiPay().
+//   3. Closing (X) the crypto checkout screen now closes the whole modal
+//      instead of falling back to the method picker. See the onClose
+//      passed into <CryptoCheckoutModal> below.
+//   4. Method-picker CTA redesigned: gradient button with a payment-method
+//      icon + arrow instead of a plain bordered row, plus a "secure
+//      checkout" badge instead of a small grey caption line. See
+//      styles.ctaBtn / styles.secureBadge.
 
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase-browser";
 import { createCryptoOrder, type CryptoOrder } from "@/lib/crypto-checkout";
 import { CryptoCheckoutModal } from "./crypto-checkout-modal";
+import { CreditCard, Coins, ShieldCheck, ArrowRight } from "lucide-react";
 
 type Locale = "en" | "uk" | "de";
 type PlanType = "starter" | "growth" | "premium";
@@ -276,8 +284,16 @@ export default function PaymentModal({
         receivingWallet={cryptoOrder.receiving_wallet}
         locale={locale}
         onClose={() => {
+          // --- FIX 3: крестик на крипто-экране закрывает всю модалку -----
+          // Раньше onClose тут только сбрасывал cryptoOrder/phase и
+          // откатывал назад на экран выбора таба (card/crypto) — то есть
+          // "закрыть" на крипто-шаге на деле означало "вернуться назад".
+          // Теперь крестик всегда полностью закрывает окно оплаты, как и
+          // ожидается от кнопки закрытия — если пользователь захочет
+          // сменить способ оплаты, он откроет модалку заново с pricing-карточки.
           setCryptoOrder(null);
           setPhase("picker");
+          onClose();
         }}
         onSuccess={() => {
           setPhase("success");
@@ -323,10 +339,13 @@ export default function PaymentModal({
                 onClick={() =>
                   method === "card" ? handleKofiPay(initialPlan) : handleCryptoPick(initialPlan)
                 }
-                style={styles.planBtn}
+                style={styles.ctaBtn}
               >
-                <span>{PLAN_LABELS[initialPlan].name}</span>
-                <span style={{ fontFamily: "monospace" }}>{PLAN_LABELS[initialPlan].price}</span>
+                {method === "card" ? <CreditCard size={20} /> : <Coins size={20} />}
+                <span style={styles.ctaBtnText}>
+                  {PLAN_LABELS[initialPlan].name} · {PLAN_LABELS[initialPlan].price}
+                </span>
+                <ArrowRight size={18} style={{ marginLeft: "auto", opacity: 0.7 }} />
               </button>
             ) : (
               <div style={styles.planList}>
@@ -338,17 +357,23 @@ export default function PaymentModal({
                       onClick={() =>
                         method === "card" ? handleKofiPay(planId) : handleCryptoPick(planId)
                       }
-                      style={styles.planBtn}
+                      style={styles.ctaBtn}
                     >
-                      <span>{plan.name}</span>
-                      <span style={{ fontFamily: "monospace" }}>{plan.price}</span>
+                      {method === "card" ? <CreditCard size={20} /> : <Coins size={20} />}
+                      <span style={styles.ctaBtnText}>
+                        {plan.name} · {plan.price}
+                      </span>
+                      <ArrowRight size={18} style={{ marginLeft: "auto", opacity: 0.7 }} />
                     </button>
                   );
                 })}
               </div>
             )}
 
-            <p style={styles.subtle}>{method === "card" ? t.payWithKofi : t.generateInvoice}</p>
+            <div style={styles.secureBadge}>
+              <ShieldCheck size={14} style={{ flexShrink: 0 }} />
+              <span>{method === "card" ? t.payWithKofi : t.generateInvoice}</span>
+            </div>
           </>
         )}
 
@@ -458,18 +483,43 @@ const styles: Record<string, React.CSSProperties> = {
   },
   tabBtnActive: { background: "rgba(255,255,255,0.1)", color: "#f4f4f6" },
   planList: { display: "flex", flexDirection: "column", gap: 10 },
-  planBtn: {
+  // --- FIX 4: живой CTA вместо плоской серой строки-заглушки ------------
+  // Раньше кнопка тарифа была нейтральной (transparent + тонкая рамка) и
+  // ничем не отличалась от второстепенного элемента интерфейса — из-за
+  // этого весь экран выбора способа оплаты выглядел как черновик, а не
+  // как "нажми, чтобы купить". Теперь это акцентная кнопка с брендовым
+  // градиентом, иконкой способа оплаты и стрелкой действия.
+  ctaBtn: {
     display: "flex",
-    justifyContent: "space-between",
     alignItems: "center",
-    padding: "12px 16px",
+    gap: 10,
+    width: "100%",
+    padding: "14px 18px",
     borderRadius: 12,
-    border: "1px solid rgba(255,255,255,0.1)",
-    background: "transparent",
-    color: "#f4f4f6",
+    border: "none",
+    background: "linear-gradient(135deg, #4f7cff 0%, #6f5bff 100%)",
+    color: "#ffffff",
     cursor: "pointer",
+    boxShadow: "0 8px 20px -6px rgba(79, 124, 255, 0.55)",
+    transition: "transform 0.15s ease, box-shadow 0.15s ease",
   },
-  subtle: { marginTop: 12, fontSize: 12, color: "#8b8b95" },
+  ctaBtnText: { fontSize: 15, fontWeight: 600, letterSpacing: 0.2 },
+  // Плашка "безопасно/обрабатывается через X" вместо мелкого серого текста —
+  // читается как знак доверия (замочек в кружке), а не как незаметная сноска.
+  secureBadge: {
+    marginTop: 14,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    padding: "8px 12px",
+    borderRadius: 999,
+    background: "rgba(34, 197, 94, 0.08)",
+    border: "1px solid rgba(34, 197, 94, 0.25)",
+    color: "#7fd8a0",
+    fontSize: 12,
+    fontWeight: 500,
+  },
   waitBlock: {
     display: "flex",
     flexDirection: "column",
