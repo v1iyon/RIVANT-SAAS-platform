@@ -113,6 +113,11 @@ interface PaymentModalProps {
   userId: string;
   kofiLinks?: Record<PlanType, string>;
   onActivated?: () => void;
+  // When set, the modal skips the "choose a plan" list entirely and opens
+  // straight on the method tabs (Card/PayPal vs Crypto) for THIS plan —
+  // the person already picked it by clicking a specific pricing card.
+  // Leave undefined to fall back to the old "pick any of 3 plans" picker.
+  initialPlan?: PlanType;
 }
 
 export default function PaymentModal({
@@ -122,6 +127,7 @@ export default function PaymentModal({
   userId,
   kofiLinks = DEFAULT_KOFI_LINKS,
   onActivated,
+  initialPlan,
 }: PaymentModalProps) {
   const t = DICT[locale];
   const [method, setMethod] = useState<Method>("card");
@@ -246,7 +252,9 @@ export default function PaymentModal({
 
         {phase === "picker" && (
           <>
-            <h2 style={styles.title}>{t.title}</h2>
+            <h2 style={styles.title}>
+              {initialPlan ? `${t.title} — ${PLAN_LABELS[initialPlan].name}` : t.title}
+            </h2>
 
             <div style={styles.tabs}>
               <button
@@ -263,23 +271,38 @@ export default function PaymentModal({
               </button>
             </div>
 
-            <div style={styles.planList}>
-              {(Object.keys(PLAN_LABELS) as PlanType[]).map((planId) => {
-                const plan = PLAN_LABELS[planId];
-                return (
-                  <button
-                    key={planId}
-                    onClick={() =>
-                      method === "card" ? handleKofiPay(planId) : handleCryptoPick(planId)
-                    }
-                    style={styles.planBtn}
-                  >
-                    <span>{plan.name}</span>
-                    <span style={{ fontFamily: "monospace" }}>{plan.price}</span>
-                  </button>
-                );
-              })}
-            </div>
+            {initialPlan ? (
+              // Plan already chosen on the pricing page — one button, no
+              // re-selection. Only the payment method (tabs above) is
+              // still a real choice here.
+              <button
+                onClick={() =>
+                  method === "card" ? handleKofiPay(initialPlan) : handleCryptoPick(initialPlan)
+                }
+                style={styles.planBtn}
+              >
+                <span>{PLAN_LABELS[initialPlan].name}</span>
+                <span style={{ fontFamily: "monospace" }}>{PLAN_LABELS[initialPlan].price}</span>
+              </button>
+            ) : (
+              <div style={styles.planList}>
+                {(Object.keys(PLAN_LABELS) as PlanType[]).map((planId) => {
+                  const plan = PLAN_LABELS[planId];
+                  return (
+                    <button
+                      key={planId}
+                      onClick={() =>
+                        method === "card" ? handleKofiPay(planId) : handleCryptoPick(planId)
+                      }
+                      style={styles.planBtn}
+                    >
+                      <span>{plan.name}</span>
+                      <span style={{ fontFamily: "monospace" }}>{plan.price}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
 
             <p style={styles.subtle}>{method === "card" ? t.payWithKofi : t.generateInvoice}</p>
           </>
