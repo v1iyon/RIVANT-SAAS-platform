@@ -48,10 +48,17 @@ const TEXT: Record<Locale, {
   },
 };
 
-// Собирает ссылку для iframe Transak. Проверьте актуальные параметры
-// в документации Transak перед боевым запуском — приведены на момент проектирования.
+// Собирает ссылку для iframe Transak.
+//
+// Environment больше не захардкожен: берём из
+// NEXT_PUBLIC_TRANSAK_ENVIRONMENT. По умолчанию — "PRODUCTION" (безопасный
+// дефолт для боевого запуска: если переменную забыли выставить, лучше
+// случайно получить прод, чем случайно застрять на staging и не увидеть
+// реальных платежей). Явно укажи "STAGING" в .env для локальной разработки:
+//
+//   NEXT_PUBLIC_TRANSAK_ENVIRONMENT=STAGING   # локально / preview
+//   NEXT_PUBLIC_TRANSAK_ENVIRONMENT=PRODUCTION # прод (или просто не задавать)
 function buildTransakUrl(opts: {
-  environment: "STAGING" | "PRODUCTION";
   fiatCurrency: string;
   cryptoCurrencyCode: string;
   network: string;
@@ -59,8 +66,11 @@ function buildTransakUrl(opts: {
   walletAddress: string;
   partnerOrderId: string;
 }) {
+  const environment =
+    process.env.NEXT_PUBLIC_TRANSAK_ENVIRONMENT === "STAGING" ? "STAGING" : "PRODUCTION";
+
   const base =
-    opts.environment === "PRODUCTION"
+    environment === "PRODUCTION"
       ? "https://global.transak.com"
       : "https://global-stg.transak.com";
 
@@ -128,7 +138,6 @@ export function CryptoCheckoutModal({
   const transakUrl = useMemo(
     () =>
       buildTransakUrl({
-        environment: "STAGING", // поменять на 'PRODUCTION' при боевом запуске
         fiatCurrency: "USD",
         cryptoCurrencyCode: token,
         network: chain,

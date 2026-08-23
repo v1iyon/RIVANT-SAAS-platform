@@ -213,12 +213,15 @@ Deno.serve(async (req: Request) => {
   //    полностью сохранена в kofi_transactions.raw_payload — этого достаточно
   //    для ручного сопоставления, если понадобится).
   // ---------------------------------------------------------------
+  const now = new Date().toISOString();
+
   const { error: subError } = await supabase.from("subscriptions").upsert(
     {
       user_id: userId,
       plan_id: plan.plan_id,
       access_status: "active",
       current_period_end: periodEnd,
+      updated_at: now, // same as polygon-webhook — don't let this column go stale for Ko-fi-paid rows
     },
     { onConflict: "user_id" },
   );
