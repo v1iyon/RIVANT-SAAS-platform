@@ -1,5 +1,15 @@
 "use client";
 
+// CHANGELOG (this fix):
+//   aria-label на кнопках "закрыть"/"скопировать сумму"/"скопировать адрес"
+//   были захардкожены на русском ("Закрыть", "Скопировать сумму",
+//   "Скопировать адрес") — при этом весь остальной компонент явно следует
+//   правилу "только en/uk/de, без русского" (см. комментарий у типа Locale
+//   и TEXT-словарь). Скринридер на английской/немецкой версии озвучивал бы
+//   эти три кнопки по-русски. Добавлены closeAria/copyAmountAria/
+//   copyAddressAria в TEXT для каждой локали, использованы вместо
+//   захардкоженных строк.
+
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase-browser";
 import { useOrderStatus } from "@/lib/use-order-status";
@@ -15,6 +25,9 @@ const TEXT: Record<Locale, {
   uniqueWarning: string;
   waiting: string;
   expired: string;
+  closeAria: string;
+  copyAmountAria: string;
+  copyAddressAria: string;
 }> = {
   de: {
     title: "Zahlung mit Kryptowährung",
@@ -25,6 +38,9 @@ const TEXT: Record<Locale, {
     uniqueWarning: "Dieser Betrag ist eindeutig für diese Bestellung — runden Sie ihn nicht.",
     waiting: "Zahlung wird erwartet — dieses Fenster schließt sich automatisch",
     expired: "Die Zahlungsfrist ist abgelaufen. Schließen Sie das Fenster und beginnen Sie erneut.",
+    closeAria: "Schließen",
+    copyAmountAria: "Betrag kopieren",
+    copyAddressAria: "Adresse kopieren",
   },
   en: {
     title: "Pay with crypto",
@@ -35,6 +51,9 @@ const TEXT: Record<Locale, {
     uniqueWarning: "This amount is unique to your order — don't round it.",
     waiting: "Waiting for payment — this window will close automatically",
     expired: "Payment window expired. Close this and start again.",
+    closeAria: "Close",
+    copyAmountAria: "Copy amount",
+    copyAddressAria: "Copy address",
   },
   uk: {
     title: "Оплата криптовалютою",
@@ -45,6 +64,9 @@ const TEXT: Record<Locale, {
     uniqueWarning: "Сума унікальна для цього замовлення — не округлюйте її.",
     waiting: "Очікуємо платіж — вікно закриється автоматично",
     expired: "Час на оплату минув. Закрийте вікно і почніть знову.",
+    closeAria: "Закрити",
+    copyAmountAria: "Скопіювати суму",
+    copyAddressAria: "Скопіювати адресу",
   },
 };
 
@@ -100,7 +122,7 @@ export function CryptoCheckoutModal({
         <button
           onClick={onClose}
           className="absolute right-4 top-4 text-slate-400 hover:text-white"
-          aria-label="Закрыть"
+          aria-label={t.closeAria}
         >
           <X className="w-5 h-5" />
         </button>
@@ -141,7 +163,7 @@ export function CryptoCheckoutModal({
                 <button
                   onClick={() => copy(amountToSend, "amount")}
                   className="text-slate-400 hover:text-white"
-                  aria-label="Скопировать сумму"
+                  aria-label={t.copyAmountAria}
                 >
                   {copiedAmount ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
                 </button>
@@ -156,7 +178,7 @@ export function CryptoCheckoutModal({
                 <button
                   onClick={() => copy(receivingWallet, "address")}
                   className="ml-2 shrink-0 text-slate-400 hover:text-white"
-                  aria-label="Скопировать адрес"
+                  aria-label={t.copyAddressAria}
                 >
                   {copiedAddress ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
                 </button>

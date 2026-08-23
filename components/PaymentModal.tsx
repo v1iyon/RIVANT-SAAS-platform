@@ -3,11 +3,13 @@
 // frontend/PaymentModal.tsx
 //
 // Plan picker with two tabs:
-//   - "Card / PayPal" -> opens the matching Ko-fi checkout in a new tab,
-//     then waits for kofi-webhook to flip public.subscriptions.access_status
+//   - "Card / PayPal" -> opens the matching Ko-fi checkout in a centered
+//     popup window (falls back to a new tab if the popup is blocked), then
+//     waits for kofi-webhook to flip public.subscriptions.access_status
 //     to 'active' (Realtime + 15s poll fallback).
-//   - "Crypto (USDC / Polygon)" -> calls createCryptoOrder() and mounts the
-//     existing CryptoCheckoutModal, which owns its own waiting/expiry UI via
+//   - "Crypto (USDC / Polygon)" -> calls createCryptoOrder() as soon as the
+//     tab is selected (when initialPlan is known) and mounts the existing
+//     CryptoCheckoutModal, which owns its own waiting/expiry UI via
 //     useOrderStatus().
 //
 // Locales: en / uk / de only (no Russian — matches the site-wide rule).
@@ -19,6 +21,14 @@
 // the URL) — if you regenerate a Shop Item link in Ko-fi, its code changes
 // and BOTH this file and kofi-webhook's DIRECT_LINK_CODE_TO_PLAN_ID need
 // updating.
+//
+// CHANGELOG (this fix):
+//   1. Crypto tab now fires createCryptoOrder() the moment the tab is
+//      clicked (when initialPlan is set), instead of waiting for a second
+//      click on the plan button. See handleMethodChange().
+//   2. Ko-fi checkout now opens in a centered popup window instead of a
+//      full new tab, so it reads as a modal over RIVANT rather than a
+//      full navigation away from the site. See handleKofiPay().
 
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase-browser";
@@ -203,8 +213,29 @@ export default function PaymentModal({
 
   if (!isOpen) return null;
 
+  // --- FIX 2: центрированный popup вместо полной новой вкладки ---------
+  // Раньше: window.open(kofiLinks[plan], "_blank", "noopener,noreferrer")
+  // открывал полноценную вкладку — пользователь визуально "уходил" с
+  // сайта на ko-fi.com. Popup фиксированного размера по центру экрана
+  // читается как модалка поверх RIVANT, а не как переход на чужой домен.
   const handleKofiPay = (plan: PlanType) => {
-    window.open(kofiLinks[plan], "_blank", "noopener,noreferrer");
+    const w = 480;
+    const h = 720;
+    const left = window.screenX + (window.outerWidth - w) / 2;
+    const top = window.screenY + (window.outerHeight - h) / 2;
+
+    const popup = window.open(
+      kofiLinks[plan],
+      "rivant_checkout",
+      `width=${w},height=${h},left=${left},top=${top},resizable=no,scrollbars=yes`,
+    );
+
+    if (!popup) {
+      // Popup заблокирован браузером — фоллбэк на старое поведение,
+      // чтобы оплата не сломалась совсем.
+      window.open(kofiLinks[plan], "_blank", "noopener,noreferrer");
+    }
+
     setPhase("card-waiting");
   };
 
@@ -217,6 +248,19 @@ export default function PaymentModal({
     } catch (err) {
       console.error("[PaymentModal] createCryptoOrder failed", err);
       setPhase("picker");
+    }
+  };
+
+  // --- FIX 1: авто-генерация крипто-инвойса при смене таба --------------
+  // Раньше клик по табу "Crypto" только подсвечивал его (setMethod), а
+  // createCryptoOrder() вызывался лишь на отдельном клике по кнопке с
+  // тарифом — то есть нужно было два клика подряд. Раз initialPlan уже
+  // известен (пришли с конкретной карточки тарифа на pricing-странице),
+  // тариф для инвойса понятен уже в момент клика по табу.
+  const handleMethodChange = (m: Method) => {
+    setMethod(m);
+    if (m === "crypto" && initialPlan && !cryptoOrder && phase === "picker") {
+      handleCryptoPick(initialPlan);
     }
   };
 
@@ -258,13 +302,13 @@ export default function PaymentModal({
 
             <div style={styles.tabs}>
               <button
-                onClick={() => setMethod("card")}
+                onClick={() => handleMethodChange("card")}
                 style={{ ...styles.tabBtn, ...(method === "card" ? styles.tabBtnActive : {}) }}
               >
                 {t.tabCard}
               </button>
               <button
-                onClick={() => setMethod("crypto")}
+                onClick={() => handleMethodChange("crypto")}
                 style={{ ...styles.tabBtn, ...(method === "crypto" ? styles.tabBtnActive : {}) }}
               >
                 {t.tabCrypto}
