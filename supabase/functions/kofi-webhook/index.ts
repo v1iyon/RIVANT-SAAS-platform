@@ -2,8 +2,7 @@
 //
 // Принимает POST от Ko-fi (application/x-www-form-urlencoded), проверяет
 // verification_token, парсит JSON из поля `data`, находит пользователя по
-// email в public.users и активирует подписку в public.subscriptions +
-// синхронизирует public.users.has_active_subscription/subscription_expires_at.
+// email в public.users и активирует подписку в public.subscriptions.
 //
 // ВАЖНО: эта функция НЕ трогает public.orders (та таблица заточена под
 // крипто-чекаут: tx_hash/chain/token) — Ko-fi платежи в неё не пишутся.
@@ -53,6 +52,12 @@ const TIER_TO_PLAN_ID: Record<string, { plan_id: string; amount_cents: number }>
 
 const SUBSCRIPTION_DAYS = 30;
 
+// Только эти типы событий Ko-fi считаем платежом за тариф. "Donation"
+// намеренно исключён: донат на произвольную сумму без tier_name/shop_items
+// не должен активировать подписку только потому, что сумма случайно
+// совпала с ценой тарифа (см. п.4 разбора).
+const PLAN_PAYMENT_TYPES: KofiPayload["type"][] = ["Subscription", "Shop Order"];
+
 function jsonResponse(body: Record<string, unknown>, status: number): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -68,7 +73,8 @@ function resolvePlan(payload: KofiPayload): { plan_id: string; amount_cents: num
     const name = payload.shop_items[0].variation_name;
     if (name && TIER_TO_PLAN_ID[name]) return TIER_TO_PLAN_ID[name];
   }
-  // fallback: по сумме, если имя тира не пришло
+  // Фоллбэк по сумме — только для Subscription/Shop Order (уже отфильтровано
+  // выше через PLAN_PAYMENT_TYPES), когда имя тира/варианта не пришло.
   const amountCents = Math.round(parseFloat(payload.amount) * 100);
   const byAmount = Object.values(TIER_TO_PLAN_ID).find((t) => t.amount_cents === amountCents);
   return byAmount ?? null;
@@ -120,8 +126,7 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: "Unauthorized" }, 401);
   }
 
-  const relevantTypes = ["Subscription", "Shop Order", "Donation"];
-  if (!relevantTypes.includes(payload.type)) {
+  if (!PLAN_PAYMENT_TYPES.includes(payload.type)) {
     return jsonResponse({ message: "Ignored: unsupported type" }, 200);
   }
 
@@ -200,15 +205,20 @@ Deno.serve(async (req: Request) => {
   const periodEnd = new Date(Date.now() + SUBSCRIPTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
   // ---------------------------------------------------------------
-  // 6. Upsert public.subscriptions (уникальный user_id уже гарантирован)
+  // 6. Upsert public.subscriptions — те же имена колонок, что и в
+  //    polygon-webhook (plan_id, не `plan`; никакого provider_subscription_id
+  //    — этой колонки нет в крипто-варианте upsert, и раз мы не подтвердили
+  //    её существование в реальной схеме, лучше не рисковать всем upsert'ом
+  //    ради поля, которое может не существовать. Kofi-транзакция и так
+  //    полностью сохранена в kofi_transactions.raw_payload — этого достаточно
+  //    для ручного сопоставления, если понадобится).
   // ---------------------------------------------------------------
   const { error: subError } = await supabase.from("subscriptions").upsert(
     {
       user_id: userId,
-      plan: plan.plan_id,
+      plan_id: plan.plan_id,
       access_status: "active",
       current_period_end: periodEnd,
-      provider_subscription_id: payload.kofi_transaction_id,
     },
     { onConflict: "user_id" },
   );
@@ -219,28 +229,41 @@ Deno.serve(async (req: Request) => {
   }
 
   // ---------------------------------------------------------------
-  // 7. Синхронизируем публичный флаг доступа в public.users
-  //    (в БД нет триггера, который делает это автоматически — см. проверку)
+  // 7. НЕ синхронизируем public.users.has_active_subscription здесь.
+  //
+  //    polygon-webhook пишет доступ ТОЛЬКО в subscriptions.access_status —
+  //    он не трогает users.has_active_subscription. Если бы этот блок
+  //    остался только в kofi-webhook, то:
+  //      - юзеры, оплатившие Ko-fi, были бы видны как активные в обоих
+  //        местах (users-флаг и subscriptions);
+  //      - юзеры, оплатившие crypto, — только в subscriptions.
+  //    Т.е. любой код, который всё ещё читает users.has_active_subscription
+  //    (а не subscriptions.access_status), видел бы крипто-платежи как
+  //    "неактивные" — это ровно баг из прошлого аудита, который мы не
+  //    должны тихо воспроизводить только для одного из двух путей оплаты.
+  //
+  //    Если по факту где-то в проекте (дашборд/админка/middleware) всё ещё
+  //    читается users.has_active_subscription — раскомментируйте блок ниже
+  //    И добавьте симметричный апдейт в polygon-webhook, иначе крипто-юзеры
+  //    останутся "невидимыми" для этой части приложения.
   // ---------------------------------------------------------------
-  const { error: usersError } = await supabase
-    .from("users")
-    .update({
-      has_active_subscription: true,
-      subscription_expires_at: periodEnd,
-    })
-    .eq("id", userId);
-
-  if (usersError) {
-    console.error("Failed to sync users.has_active_subscription:", usersError);
-    // Подписка уже активирована, поэтому не возвращаем 500 (Ko-fi начнёт ретраить
-    // и создаст новый platform-level конфликт) — просто логируем для ручного фикса.
-    await supabase.from("error_logs").insert({
-      source: "kofi-webhook",
-      message: "Subscription activated but failed to sync users flag",
-      details: JSON.stringify({ user_id: userId, error: usersError.message }),
-      resolved: false,
-    });
-  }
+  // const { error: usersError } = await supabase
+  //   .from("users")
+  //   .update({
+  //     has_active_subscription: true,
+  //     subscription_expires_at: periodEnd,
+  //   })
+  //   .eq("id", userId);
+  //
+  // if (usersError) {
+  //   console.error("Failed to sync users.has_active_subscription:", usersError);
+  //   await supabase.from("error_logs").insert({
+  //     source: "kofi-webhook",
+  //     message: "Subscription activated but failed to sync users flag",
+  //     details: JSON.stringify({ user_id: userId, error: usersError.message }),
+  //     resolved: false,
+  //   });
+  // }
 
   console.log(`Subscription activated: user=${userId}, plan=${plan.plan_id}, until=${periodEnd}`);
   return jsonResponse({ message: "Subscription activated" }, 200);

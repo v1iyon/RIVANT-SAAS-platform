@@ -2,234 +2,293 @@
 
 // frontend/PaymentModal.tsx
 //
-// Модалка оплаты тарифа: открывает Ko-fi Tier в новой вкладке,
-// показывает лоадер ожидания вебхука и слушает public.subscriptions
-// через Supabase Realtime — как только webhook активирует подписку,
-// окно закрывается само.
+// Plan picker with two tabs:
+//   - "Card / PayPal" -> opens the matching Ko-fi checkout in a new tab,
+//     then waits for kofi-webhook to flip public.subscriptions.access_status
+//     to 'active' (Realtime + 15s poll fallback).
+//   - "Crypto (USDC / Polygon)" -> calls createCryptoOrder() and mounts the
+//     existing CryptoCheckoutModal, which owns its own waiting/expiry UI via
+//     useOrderStatus().
 //
-// Использование:
-//   <PaymentModal
-//     isOpen={isOpen}
-//     onClose={() => setIsOpen(false)}
-//     locale="ru"                 // 'ru' | 'uk' | 'en'
-//     planType="growth"           // 'starter' | 'growth' | 'premium' (premium = "Scale" tier)
-//     userId={user.id}
-//     kofiLinks={{
-//       starter: "https://ko-fi.com/yourpage/tiers/starter-id",
-//       growth: "https://ko-fi.com/yourpage/tiers/growth-id",
-//       premium: "https://ko-fi.com/yourpage/tiers/scale-id",
-//     }}
-//     onActivated={() => router.push('/dashboard')}
-//   />
+// Locales: en / uk / de only (no Russian — matches the site-wide rule).
+// Plan ids match public.plans: "starter" | "growth" | "premium" (the
+// user-facing "Scale" tier's DB id is "premium", not "scale").
+//
+// TODO: kofiLinks values are placeholders (all point at https://ko-fi.com).
+// Replace with real Ko-fi Shop Item links once created — see chat notes on
+// getting them from Settings -> Shop -> "Copy Link". Until then, the
+// kofi-webhook resolves the plan by exact amount ($99.00 / $299.00 /
+// $499.00), so the buttons below still work end-to-end, just less robustly
+// than shop-item-code matching.
 
 import { useEffect, useRef, useState } from "react";
-import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { createClient } from "@/lib/supabase-browser";
+import { createCryptoOrder, type CryptoOrder } from "@/lib/crypto-checkout";
+import { CryptoCheckoutModal } from "./crypto-checkout-modal";
 
-// ---------------------------------------------------------------
-// i18n словарь
-// ---------------------------------------------------------------
-type Locale = "ru" | "uk" | "en";
-type PlanType = "starter" | "growth" | "premium"; // premium = id из public.plans для тира "Scale"
+type Locale = "en" | "uk" | "de";
+type PlanType = "starter" | "growth" | "premium";
+type Method = "card" | "crypto";
+type Phase = "picker" | "card-waiting" | "crypto-loading" | "crypto-checkout" | "success";
 
-const PLAN_LABELS: Record<PlanType, { ru: string; uk: string; en: string; price: string }> = {
-  starter: { ru: "Starter", uk: "Starter", en: "Starter", price: "$99" },
-  growth: { ru: "Growth", uk: "Growth", en: "Growth", price: "$299" },
-  premium: { ru: "Scale", uk: "Scale", en: "Scale", price: "$499" }, // display "Scale", DB id "premium"
+const PLAN_LABELS: Record<PlanType, { name: string; price: string }> = {
+  starter: { name: "Starter", price: "$99" },
+  growth: { name: "Growth", price: "$299" },
+  premium: { name: "Scale", price: "$499" }, // display "Scale", DB id "premium"
 };
 
-const DICT: Record<Locale, {
-  title: (plan: string, price: string) => string;
-  redirected: string;
-  waitingTitle: string;
-  waitingBody: string;
-  reopenLink: string;
-  successTitle: string;
-  successBody: string;
-  errorTitle: string;
-  errorBody: string;
-  close: string;
-}> = {
-  ru: {
-    title: (plan, price) => `Оплата тарифа ${plan} — ${price}`,
-    redirected: "Мы открыли страницу оплаты Ko-fi в новой вкладке.",
-    waitingTitle: "Ожидаем подтверждения платежа",
-    waitingBody:
-      "Ожидаем автоматического подтверждения платежа от процессора… Пожалуйста, не закрывайте эту страницу.",
-    reopenLink: "Не открылась вкладка? Открыть ссылку заново",
-    successTitle: "Подписка активирована!",
-    successBody: "Оплата подтверждена, доступ открыт.",
-    errorTitle: "Что-то пошло не так",
-    errorBody: "Проверьте соединение или повторите попытку позже.",
-    close: "Закрыть",
-  },
-  uk: {
-    title: (plan, price) => `Оплата тарифу ${plan} — ${price}`,
-    redirected: "Ми відкрили сторінку оплати Ko-fi у новій вкладці.",
-    waitingTitle: "Очікуємо підтвердження платежу",
-    waitingBody:
-      "Очікуємо автоматичного підтвердження платежу від процесора… Будь ласка, не закривайте цю сторінку.",
-    reopenLink: "Вкладка не відкрилась? Відкрити посилання ще раз",
-    successTitle: "Підписку активовано!",
-    successBody: "Оплату підтверджено, доступ відкрито.",
-    errorTitle: "Щось пішло не так",
-    errorBody: "Перевірте з'єднання або спробуйте пізніше.",
-    close: "Закрити",
-  },
+const DICT: Record<
+  Locale,
+  {
+    title: string;
+    tabCard: string;
+    tabCrypto: string;
+    payWithKofi: string;
+    generateInvoice: string;
+    redirected: string;
+    waitingTitle: string;
+    waitingBody: string;
+    reopenLink: string;
+    successTitle: string;
+    successBody: string;
+    close: string;
+  }
+> = {
   en: {
-    title: (plan, price) => `${plan} plan checkout — ${price}`,
+    title: "Choose a plan",
+    tabCard: "Card / PayPal",
+    tabCrypto: "Crypto (USDC / Polygon)",
+    payWithKofi: "Pay with Ko-fi",
+    generateInvoice: "Generate crypto invoice",
     redirected: "We opened the Ko-fi checkout page in a new tab.",
     waitingTitle: "Waiting for payment confirmation",
-    waitingBody:
-      "Waiting for automatic payment confirmation from the processor… Please don't close this page.",
+    waitingBody: "This can take a couple of minutes. Please don't close this window.",
     reopenLink: "Tab didn't open? Open the link again",
     successTitle: "Subscription activated!",
     successBody: "Payment confirmed, your access is now open.",
-    errorTitle: "Something went wrong",
-    errorBody: "Check your connection or try again later.",
     close: "Close",
+  },
+  uk: {
+    title: "Оберіть тариф",
+    tabCard: "Картка / PayPal",
+    tabCrypto: "Крипта (USDC / Polygon)",
+    payWithKofi: "Оплатити через Ko-fi",
+    generateInvoice: "Згенерувати рахунок",
+    redirected: "Ми відкрили сторінку оплати Ko-fi у новій вкладці.",
+    waitingTitle: "Очікуємо підтвердження платежу",
+    waitingBody: "Це може зайняти кілька хвилин. Не закривайте це вікно.",
+    reopenLink: "Вкладка не відкрилась? Відкрити посилання ще раз",
+    successTitle: "Підписку активовано!",
+    successBody: "Оплату підтверджено, доступ відкрито.",
+    close: "Закрити",
+  },
+  de: {
+    title: "Plan wählen",
+    tabCard: "Karte / PayPal",
+    tabCrypto: "Krypto (USDC / Polygon)",
+    payWithKofi: "Mit Ko-fi bezahlen",
+    generateInvoice: "Krypto-Rechnung erstellen",
+    redirected: "Wir haben die Ko-fi-Checkout-Seite in einem neuen Tab geöffnet.",
+    waitingTitle: "Warte auf Zahlungsbestätigung",
+    waitingBody: "Das kann ein paar Minuten dauern. Bitte schließen Sie dieses Fenster nicht.",
+    reopenLink: "Tab nicht geöffnet? Link erneut öffnen",
+    successTitle: "Abo aktiviert!",
+    successBody: "Zahlung bestätigt, Ihr Zugang ist jetzt freigeschaltet.",
+    close: "Schließen",
   },
 };
 
-// ---------------------------------------------------------------
-// Пропсы
-// ---------------------------------------------------------------
 interface PaymentModalProps {
   isOpen: boolean;
   onClose: () => void;
   locale: Locale;
-  planType: PlanType;
   userId: string;
   kofiLinks: Record<PlanType, string>;
   onActivated?: () => void;
-  supabaseUrl?: string;
-  supabaseAnonKey?: string;
 }
-
-type Phase = "redirecting" | "waiting" | "success" | "error";
 
 export default function PaymentModal({
   isOpen,
   onClose,
   locale,
-  planType,
   userId,
   kofiLinks,
   onActivated,
-  supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL,
-  supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
 }: PaymentModalProps) {
-  const [phase, setPhase] = useState<Phase>("redirecting");
-  const supabaseRef = useRef<SupabaseClient | null>(null);
   const t = DICT[locale];
-  const plan = PLAN_LABELS[planType];
+  const [method, setMethod] = useState<Method>("card");
+  const [phase, setPhase] = useState<Phase>("picker");
+  const [cryptoOrder, setCryptoOrder] = useState<CryptoOrder | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const supabase = useRef(createClient()).current;
 
-  // Ленивая инициализация supabase-клиента (один раз)
-  if (!supabaseRef.current && supabaseUrl && supabaseAnonKey) {
-    supabaseRef.current = createClient(supabaseUrl, supabaseAnonKey);
-  }
-
-  const openKofiLink = () => {
-    const link = kofiLinks[planType];
-    window.open(link, "_blank", "noopener,noreferrer");
-    setPhase("waiting");
+  const stopPolling = () => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
   };
 
-  // При открытии модалки — сразу редиректим на Ko-fi
-  useEffect(() => {
-    if (!isOpen) return;
-    setPhase("redirecting");
-    const timer = setTimeout(openKofiLink, 400); // короткая пауза, чтобы модалка успела отрисоваться
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, planType]);
+  const checkSubscriptionOnce = async () => {
+    const { data, error } = await supabase
+      .from("subscriptions")
+      .select("access_status")
+      .eq("user_id", userId)
+      .maybeSingle();
 
-  // Realtime-подписка на public.subscriptions: как только webhook
-  // проставит access_status='active' и plan_type совпадёт — закрываем модалку.
-  useEffect(() => {
-    if (!isOpen || phase !== "waiting") return;
-    const supabase = supabaseRef.current;
-    if (!supabase) {
-      console.error("Supabase client is not configured (missing URL/anon key)");
-      setPhase("error");
-      return;
+    if (!error && data?.access_status === "active") {
+      setPhase("success");
+      stopPolling();
     }
+  };
+
+  // Realtime watch + 15s poll fallback while waiting on the Ko-fi flow.
+  useEffect(() => {
+    if (phase !== "card-waiting") return;
 
     const channel = supabase
       .channel(`subscriptions-watch-${userId}`)
       .on(
         "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "subscriptions",
-          filter: `user_id=eq.${userId}`,
-        },
+        { event: "*", schema: "public", table: "subscriptions", filter: `user_id=eq.${userId}` },
         (payload) => {
-          const row = payload.new as { access_status: string; plan: string };
-          if (row.access_status === "active") {
+          const row = payload.new as { access_status?: string };
+          if (row?.access_status === "active") {
             setPhase("success");
             onActivated?.();
-          }
-        },
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "subscriptions",
-          filter: `user_id=eq.${userId}`,
-        },
-        (payload) => {
-          const row = payload.new as { access_status: string };
-          if (row.access_status === "active") {
-            setPhase("success");
-            onActivated?.();
+            stopPolling();
           }
         },
       )
       .subscribe();
 
+    pollRef.current = setInterval(checkSubscriptionOnce, 15000);
+
     return () => {
       supabase.removeChannel(channel);
+      stopPolling();
     };
-  }, [isOpen, phase, userId, onActivated]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, userId]);
 
-  // Автозакрытие через пару секунд после успеха
   useEffect(() => {
-    if (phase !== "success") return;
-    const timer = setTimeout(onClose, 2500);
-    return () => clearTimeout(timer);
+    if (!isOpen) {
+      setPhase("picker");
+      setMethod("card");
+      setCryptoOrder(null);
+      stopPolling();
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (phase === "success") {
+      const timer = setTimeout(onClose, 2500);
+      return () => clearTimeout(timer);
+    }
   }, [phase, onClose]);
 
   if (!isOpen) return null;
 
+  const handleKofiPay = (plan: PlanType) => {
+    window.open(kofiLinks[plan], "_blank", "noopener,noreferrer");
+    setPhase("card-waiting");
+  };
+
+  const handleCryptoPick = async (plan: PlanType) => {
+    setPhase("crypto-loading");
+    try {
+      const order = await createCryptoOrder({ planId: plan });
+      setCryptoOrder(order);
+      setPhase("crypto-checkout");
+    } catch (err) {
+      console.error("[PaymentModal] createCryptoOrder failed", err);
+      setPhase("picker");
+    }
+  };
+
+  // Crypto tab owns its own full UI (amount/address/copy, Realtime waiting,
+  // expiry) once an order exists — just delegate to it.
+  if (phase === "crypto-checkout" && cryptoOrder) {
+    return (
+      <CryptoCheckoutModal
+        orderId={cryptoOrder.order_id}
+        amountToSend={cryptoOrder.amount_to_send}
+        token={cryptoOrder.token}
+        chain={cryptoOrder.chain}
+        receivingWallet={cryptoOrder.receiving_wallet}
+        locale={locale}
+        onClose={() => {
+          setCryptoOrder(null);
+          setPhase("picker");
+        }}
+        onSuccess={() => {
+          setPhase("success");
+          onActivated?.();
+        }}
+      />
+    );
+  }
+
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="payment-modal-title"
-      style={styles.overlay}
-    >
+    <div role="dialog" aria-modal="true" style={styles.overlay}>
       <div style={styles.card}>
         <button aria-label={t.close} onClick={onClose} style={styles.closeBtn}>
           ×
         </button>
 
-        <h2 id="payment-modal-title" style={styles.title}>
-          {t.title(plan[locale], plan.price)}
-        </h2>
+        {phase === "picker" && (
+          <>
+            <h2 style={styles.title}>{t.title}</h2>
 
-        {phase === "redirecting" && <p style={styles.subtle}>{t.redirected}</p>}
+            <div style={styles.tabs}>
+              <button
+                onClick={() => setMethod("card")}
+                style={{ ...styles.tabBtn, ...(method === "card" ? styles.tabBtnActive : {}) }}
+              >
+                {t.tabCard}
+              </button>
+              <button
+                onClick={() => setMethod("crypto")}
+                style={{ ...styles.tabBtn, ...(method === "crypto" ? styles.tabBtnActive : {}) }}
+              >
+                {t.tabCrypto}
+              </button>
+            </div>
 
-        {phase === "waiting" && (
+            <div style={styles.planList}>
+              {(Object.keys(PLAN_LABELS) as PlanType[]).map((planId) => {
+                const plan = PLAN_LABELS[planId];
+                return (
+                  <button
+                    key={planId}
+                    onClick={() =>
+                      method === "card" ? handleKofiPay(planId) : handleCryptoPick(planId)
+                    }
+                    style={styles.planBtn}
+                  >
+                    <span>{plan.name}</span>
+                    <span style={{ fontFamily: "monospace" }}>{plan.price}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <p style={styles.subtle}>{method === "card" ? t.payWithKofi : t.generateInvoice}</p>
+          </>
+        )}
+
+        {phase === "crypto-loading" && (
+          <div style={styles.waitBlock}>
+            <Spinner />
+            <p style={styles.waitBody}>{t.generateInvoice}…</p>
+          </div>
+        )}
+
+        {phase === "card-waiting" && (
           <div style={styles.waitBlock}>
             <Spinner />
             <p style={styles.waitTitle}>{t.waitingTitle}</p>
             <p style={styles.waitBody}>{t.waitingBody}</p>
-            <button onClick={openKofiLink} style={styles.linkBtn}>
-              {t.reopenLink}
-            </button>
           </div>
         )}
 
@@ -240,29 +299,15 @@ export default function PaymentModal({
             <p style={styles.waitBody}>{t.successBody}</p>
           </div>
         )}
-
-        {phase === "error" && (
-          <div style={styles.waitBlock}>
-            <p style={styles.successTitle}>{t.errorTitle}</p>
-            <p style={styles.waitBody}>{t.errorBody}</p>
-          </div>
-        )}
       </div>
     </div>
   );
 }
 
-// ---------------------------------------------------------------
-// Мелкие визуальные детали: спиннер и иконка успеха, без внешних либ
-// ---------------------------------------------------------------
 function Spinner() {
   return (
-    <div style={styles.spinnerWrap}>
-      <div style={styles.spinnerRing} />
-      <style>{`
-        @keyframes rivant-spin { to { transform: rotate(360deg); } }
-        @keyframes rivant-pulse { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
-      `}</style>
+    <div style={styles.spinnerRing}>
+      <style>{`@keyframes rivant-spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }
@@ -283,9 +328,6 @@ function CheckIcon() {
   );
 }
 
-// ---------------------------------------------------------------
-// Инлайн-стили (можно заменить на Tailwind/CSS-модуль по вкусу проекта)
-// ---------------------------------------------------------------
 const styles: Record<string, React.CSSProperties> = {
   overlay: {
     position: "fixed",
@@ -320,54 +362,50 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: "pointer",
     lineHeight: 1,
   },
-  title: {
-    fontSize: 18,
-    fontWeight: 600,
-    marginBottom: 20,
-    paddingRight: 24,
+  title: { fontSize: 18, fontWeight: 600, marginBottom: 16, paddingRight: 24 },
+  tabs: {
+    display: "flex",
+    gap: 4,
+    background: "rgba(255,255,255,0.05)",
+    borderRadius: 10,
+    padding: 4,
+    marginBottom: 16,
   },
-  subtle: {
-    color: "#b3b3bd",
-    fontSize: 14,
+  tabBtn: {
+    flex: 1,
+    padding: "8px 10px",
+    fontSize: 13,
+    borderRadius: 8,
+    border: "none",
+    background: "transparent",
+    color: "#a4a4b0",
+    cursor: "pointer",
   },
+  tabBtnActive: { background: "rgba(255,255,255,0.1)", color: "#f4f4f6" },
+  planList: { display: "flex", flexDirection: "column", gap: 10 },
+  planBtn: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "12px 16px",
+    borderRadius: 12,
+    border: "1px solid rgba(255,255,255,0.1)",
+    background: "transparent",
+    color: "#f4f4f6",
+    cursor: "pointer",
+  },
+  subtle: { marginTop: 12, fontSize: 12, color: "#8b8b95" },
   waitBlock: {
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
     textAlign: "center",
     gap: 6,
-    padding: "12px 0 4px",
+    padding: "20px 0 4px",
   },
-  waitTitle: {
-    fontSize: 16,
-    fontWeight: 600,
-    marginTop: 14,
-  },
-  waitBody: {
-    fontSize: 13.5,
-    color: "#a4a4b0",
-    lineHeight: 1.5,
-    maxWidth: 300,
-  },
-  successTitle: {
-    fontSize: 16,
-    fontWeight: 600,
-    marginTop: 10,
-    color: "#22c55e",
-  },
-  linkBtn: {
-    marginTop: 14,
-    background: "transparent",
-    border: "none",
-    color: "#8b8bf5",
-    fontSize: 13,
-    textDecoration: "underline",
-    cursor: "pointer",
-  },
-  spinnerWrap: {
-    width: 48,
-    height: 48,
-  },
+  waitTitle: { fontSize: 16, fontWeight: 600, marginTop: 14 },
+  waitBody: { fontSize: 13.5, color: "#a4a4b0", lineHeight: 1.5, maxWidth: 300 },
+  successTitle: { fontSize: 16, fontWeight: 600, marginTop: 10, color: "#22c55e" },
   spinnerRing: {
     width: 48,
     height: 48,
