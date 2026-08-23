@@ -3,11 +3,10 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase-browser";
 import { loadPaddle, openPaddleCheckout } from "@/lib/paddle-client";
-import { createCryptoOrder } from "@/lib/crypto-checkout";
-import { CryptoCheckoutModal } from "@/components/crypto-checkout-modal";
+import PaymentModal from "@/components/PaymentModal";
 import { Button } from "@/components/ui/button";
 import { Check, Zap, FileText, Users, ArrowRight } from "lucide-react";
-import { useLanguage } from "@/lib/translations";
+import { useLanguage, type Language } from "@/lib/translations";
 import { useCurrency } from "@/lib/currency";
 import { commonError } from "@/lib/error-messages";
 
@@ -17,12 +16,6 @@ type Plan = {
   description: string;
   features: string[];
   popular: boolean;
-};
-
-const PRICE_IDS: Record<string, string> = {
-  starter: process.env.NEXT_PUBLIC_PADDLE_PRICE_STARTER!,
-  growth: process.env.NEXT_PUBLIC_PADDLE_PRICE_GROWTH!,
-  scale: process.env.NEXT_PUBLIC_PADDLE_PRICE_SCALE!,
 };
 
 export function PricingSection() {
@@ -42,21 +35,31 @@ export function PricingSection() {
     [T.scale ?? "Scale"]: "premium",
   };
 
-  const [cryptoOrder, setCryptoOrder] = useState<any>(null);
+  // Site language (EN | UA | DE, see lib/translations.tsx) -> PaymentModal's
+  // locale codes (en | uk | de). PaymentModal auto-detects from this — no
+  // manual language buttons inside the payment flow anymore.
+  const LANGUAGE_TO_MODAL_LOCALE: Record<Language, "en" | "uk" | "de"> = {
+    EN: "en",
+    UA: "uk",
+    DE: "de",
+  };
+
+  const [paymentPlan, setPaymentPlan] = useState<"starter" | "growth" | "premium" | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
 
   const handleGetStarted = async (planName: string) => {
-    const { data } = await supabase.auth.getSession();
-    if (!data.session) {
-      window.dispatchEvent(new CustomEvent("rivant:open-signup"));
-      return;
-    }
-    const planKey = planKeyMap[planName];
+    const planKey = planKeyMap[planName] as "starter" | "growth" | "premium";
     setLoadingPlan(planKey);
     try {
-      const order = await createCryptoOrder({ planId: planKey });
-      setCryptoOrder(order);
+      const { data } = await supabase.auth.getSession();
+      if (!data.session) {
+        window.dispatchEvent(new CustomEvent("rivant:open-signup"));
+        return;
+      }
+      setUserId(data.session.user.id);
+      setPaymentPlan(planKey);
     } catch (e) {
-      console.error("crypto checkout error:", e);
+      console.error("session check error:", e);
       alert(commonError("paymentWindowFailed", language));
     } finally {
       setLoadingPlan(null);
@@ -217,20 +220,18 @@ export function PricingSection() {
         </div>
       </div>
 
-      {cryptoOrder && (
-  <CryptoCheckoutModal
-    orderId={cryptoOrder.order_id}
-    amountToSend={cryptoOrder.amount_to_send}
-    token={cryptoOrder.token}
-    chain={cryptoOrder.chain}
-    receivingWallet={cryptoOrder.receiving_wallet}
-    onClose={() => setCryptoOrder(null)}
-    onSuccess={() => {
-      setCryptoOrder(null);
-      window.location.href = "/dashboard?checkout=success";
-    }}
-  />
-)}
+      {paymentPlan && userId && (
+        <PaymentModal
+          isOpen={!!paymentPlan}
+          onClose={() => setPaymentPlan(null)}
+          locale={LANGUAGE_TO_MODAL_LOCALE[language]}
+          userId={userId}
+          initialPlan={paymentPlan}
+          onActivated={() => {
+            window.location.href = "/dashboard?checkout=success";
+          }}
+        />
+      )}
     </section>
   );
 }
