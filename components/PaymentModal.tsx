@@ -3,10 +3,11 @@
 // frontend/PaymentModal.tsx
 //
 // Plan picker with two tabs:
-//   - "Card / PayPal" -> opens the matching Ko-fi checkout in a centered
-//     popup window (falls back to a new tab if the popup is blocked), then
-//     waits for kofi-webhook to flip public.subscriptions.access_status
-//     to 'active' (Realtime + 15s poll fallback).
+//   - "Card / PayPal" -> shows a short KofiRedirectConfirm warning, then
+//     opens the matching Ko-fi checkout in a centered popup window (falls
+//     back to a new tab if the popup is blocked), then waits for
+//     kofi-webhook to flip public.subscriptions.access_status to 'active'
+//     (Realtime + 15s poll fallback).
 //   - "Crypto (USDC / Polygon)" -> calls createCryptoOrder() as soon as the
 //     tab is selected (when initialPlan is known) and mounts the existing
 //     CryptoCheckoutModal, which owns its own waiting/expiry UI via
@@ -28,7 +29,7 @@
 //      click on the plan button. See handleMethodChange().
 //   2. Ko-fi checkout now opens in a centered popup window instead of a
 //      full new tab, so it reads as a modal over RIVANT rather than a
-//      full navigation away from the site. See handleKofiPay().
+//      full navigation away from the site. See openKofiPopup().
 //   3. Closing (X) the crypto checkout screen now closes the whole modal
 //      instead of falling back to the method picker. See the onClose
 //      passed into <CryptoCheckoutModal> below.
@@ -36,17 +37,32 @@
 //      icon + arrow instead of a plain bordered row, plus a "secure
 //      checkout" badge instead of a small grey caption line. See
 //      styles.ctaBtn / styles.secureBadge.
+//   5. NEW: before opening the Ko-fi popup, show a short
+//      KofiRedirectConfirm warning ("check your cart — old items may
+//      still be in it", localized en/uk/de) — Ko-fi's cart is persistent
+//      and invisible to us, so this catches the case where a prior
+//      aborted checkout left something in it. handleKofiPay() no longer
+//      opens the popup directly; it sets phase to "kofi-confirm" and
+//      openKofiPopup() (the old handleKofiPay body) only runs after the
+//      user confirms. Reused as-is by the addon buy flow.
 
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase-browser";
 import { createCryptoOrder, type CryptoOrder } from "@/lib/crypto-checkout";
 import { CryptoCheckoutModal } from "./crypto-checkout-modal";
+import { KofiRedirectConfirm } from "./kofi-redirect-confirm";
 import { CreditCard, Coins, ShieldCheck, ArrowRight } from "lucide-react";
 
 type Locale = "en" | "uk" | "de";
 type PlanType = "starter" | "growth" | "premium";
 type Method = "card" | "crypto";
-type Phase = "picker" | "card-waiting" | "crypto-loading" | "crypto-checkout" | "success";
+type Phase =
+  | "picker"
+  | "kofi-confirm"
+  | "card-waiting"
+  | "crypto-loading"
+  | "crypto-checkout"
+  | "success";
 
 const PLAN_LABELS: Record<PlanType, { name: string; price: string }> = {
   starter: { name: "Starter", price: "$99" },
@@ -151,6 +167,9 @@ export default function PaymentModal({
   const [method, setMethod] = useState<Method>("card");
   const [phase, setPhase] = useState<Phase>("picker");
   const [cryptoOrder, setCryptoOrder] = useState<CryptoOrder | null>(null);
+  // Plan awaiting confirmation on the KofiRedirectConfirm screen — set the
+  // moment the user clicks a Ko-fi CTA, cleared once they cancel/confirm.
+  const [pendingKofiPlan, setPendingKofiPlan] = useState<PlanType | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const supabase = useRef(createClient()).current;
 
@@ -208,6 +227,7 @@ export default function PaymentModal({
       setPhase("picker");
       setMethod("card");
       setCryptoOrder(null);
+      setPendingKofiPlan(null);
       stopPolling();
     }
   }, [isOpen]);
@@ -226,7 +246,12 @@ export default function PaymentModal({
   // открывал полноценную вкладку — пользователь визуально "уходил" с
   // сайта на ko-fi.com. Popup фиксированного размера по центру экрана
   // читается как модалка поверх RIVANT, а не как переход на чужой домен.
-  const handleKofiPay = (plan: PlanType) => {
+  //
+  // --- FIX 5: вынесено из handleKofiPay ----------------------------------
+  // Раньше это тело и было handleKofiPay — попап открывался сразу по
+  // клику. Теперь это отдельная функция, которая вызывается только после
+  // подтверждения на экране KofiRedirectConfirm (см. handleKofiPay ниже).
+  const openKofiPopup = (plan: PlanType) => {
     const w = 480;
     const h = 720;
     const left = window.screenX + (window.outerWidth - w) / 2;
@@ -245,6 +270,14 @@ export default function PaymentModal({
     }
 
     setPhase("card-waiting");
+  };
+
+  // --- FIX 5: клик по Ko-fi CTA теперь сначала показывает предупреждение
+  // про корзину, а не открывает попап напрямую. Сам попап открывает
+  // openKofiPopup(), вызываемый из onConfirm экрана KofiRedirectConfirm.
+  const handleKofiPay = (plan: PlanType) => {
+    setPendingKofiPlan(plan);
+    setPhase("kofi-confirm");
   };
 
   const handleCryptoPick = async (plan: PlanType) => {
@@ -298,6 +331,29 @@ export default function PaymentModal({
         onSuccess={() => {
           setPhase("success");
           onActivated?.();
+        }}
+      />
+    );
+  }
+
+  // --- FIX 5: экран подтверждения перед Ko-fi -----------------------------
+  // Отдельный ранний return, как и у crypto-checkout выше — KofiRedirectConfirm
+  // сам себе модалка (свой overlay), поэтому не встраиваем его внутрь
+  // styles.card ниже, чтобы не получить модалку-в-модалке.
+  if (phase === "kofi-confirm" && pendingKofiPlan) {
+    return (
+      <KofiRedirectConfirm
+        itemName={PLAN_LABELS[pendingKofiPlan].name}
+        priceLabel={PLAN_LABELS[pendingKofiPlan].price}
+        locale={locale}
+        onCancel={() => {
+          setPendingKofiPlan(null);
+          setPhase("picker");
+        }}
+        onConfirm={() => {
+          const plan = pendingKofiPlan;
+          setPendingKofiPlan(null);
+          openKofiPopup(plan);
         }}
       />
     );
