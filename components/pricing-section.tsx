@@ -92,6 +92,16 @@ export function PricingSection() {
 
   const [orderingService, setOrderingService] = useState<string | null>(null);
 
+  // Ko-fi Shop Item links for add-ons. kofi-webhook matches these by
+  // direct_link_code (the part after /s/) — see DIRECT_LINK_CODE_TO_ADDON
+  // in supabase/functions/kofi-webhook/index.ts. If you regenerate a Shop
+  // Item link in Ko-fi, its code changes and BOTH places need updating.
+  const ADDON_KOFI_LINKS: Record<string, string> = {
+    whatif_analysis: "https://ko-fi.com/s/41ec6cf444", // AI Historical Analysis
+    monthly_digest: "https://ko-fi.com/s/cfa88bffb3", // AI Performance Digest
+    team_alerts: "https://ko-fi.com/s/a6db84895c", // Team Alert Access
+  };
+
   const handleOrderService = async (serviceType: string) => {
     const { data } = await supabase.auth.getSession();
     if (!data.session) {
@@ -99,6 +109,31 @@ export function PricingSection() {
       return;
     }
 
+    const kofiLink = ADDON_KOFI_LINKS[serviceType];
+    if (kofiLink) {
+      // Same centered-popup pattern as PaymentModal.handleKofiPay, so this
+      // reads as a checkout modal over RIVANT rather than a full navigation
+      // away. kofi-webhook creates the service_order/addon_subscription row
+      // as soon as payment lands — no need to call /api/orders/create here.
+      setOrderingService(serviceType);
+      const w = 480;
+      const h = 720;
+      const left = window.screenX + (window.outerWidth - w) / 2;
+      const top = window.screenY + (window.outerHeight - h) / 2;
+      const popup = window.open(
+        kofiLink,
+        "rivant_checkout",
+        `width=${w},height=${h},left=${left},top=${top},resizable=no,scrollbars=yes`,
+      );
+      if (!popup) {
+        window.open(kofiLink, "_blank", "noopener,noreferrer");
+      }
+      setOrderingService(null);
+      return;
+    }
+
+    // Fallback for any service without a Ko-fi link yet (e.g. business_setup,
+    // which stays on the calendar-booking / Paddle route below).
     setOrderingService(serviceType);
     try {
       const res = await fetch("/api/orders/create", {

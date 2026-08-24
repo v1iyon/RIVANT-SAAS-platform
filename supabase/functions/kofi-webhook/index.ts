@@ -393,41 +393,17 @@ Deno.serve(async (req: Request) => {
   }
 
   // ---------------------------------------------------------------
-  // 7. НЕ синхронизируем public.users.has_active_subscription здесь.
+  // 7. public.users.has_active_subscription сознательно не трогаем.
   //
-  //    polygon-webhook пишет доступ ТОЛЬКО в subscriptions.access_status —
-  //    он не трогает users.has_active_subscription. Если бы этот блок
-  //    остался только в kofi-webhook, то:
-  //      - юзеры, оплатившие Ko-fi, были бы видны как активные в обоих
-  //        местах (users-флаг и subscriptions);
-  //      - юзеры, оплатившие crypto, — только в subscriptions.
-  //    Т.е. любой код, который всё ещё читает users.has_active_subscription
-  //    (а не subscriptions.access_status), видел бы крипто-платежи как
-  //    "неактивные" — это ровно баг из прошлого аудита, который мы не
-  //    должны тихо воспроизводить только для одного из двух путей оплаты.
-  //
-  //    Если по факту где-то в проекте (дашборд/админка/middleware) всё ещё
-  //    читается users.has_active_subscription — раскомментируйте блок ниже
-  //    И добавьте симметричный апдейт в polygon-webhook, иначе крипто-юзеры
-  //    останутся "невидимыми" для этой части приложения.
+  //    Проверено по всему репо: этот флаг больше нигде не читается — вся
+  //    активная логика (дашборд, админка, /api/subscription-status, бот
+  //    и т.д.) уже использует subscriptions.access_status, включая
+  //    polygon-webhook, который тоже пишет только сюда. Колонка осталась
+  //    только в старой миграции 0001_crypto_payments.sql как мёртвый след.
+  //    Если это когда-нибудь снова понадобится — добавляйте синхронизацию
+  //    сразу симметрично в оба вебхука (kofi + polygon), иначе один из
+  //    путей оплаты снова станет "невидимым" для читателей этого флага.
   // ---------------------------------------------------------------
-  // const { error: usersError } = await supabase
-  //   .from("users")
-  //   .update({
-  //     has_active_subscription: true,
-  //     subscription_expires_at: periodEnd,
-  //   })
-  //   .eq("id", userId);
-  //
-  // if (usersError) {
-  //   console.error("Failed to sync users.has_active_subscription:", usersError);
-  //   await supabase.from("error_logs").insert({
-  //     source: "kofi-webhook",
-  //     message: "Subscription activated but failed to sync users flag",
-  //     details: JSON.stringify({ user_id: userId, error: usersError.message }),
-  //     resolved: false,
-  //   });
-  // }
 
   console.log(`Subscription activated: user=${userId}, plan=${plan.plan_id}, until=${periodEnd}`);
   return jsonResponse({ message: "Subscription activated" }, 200);
