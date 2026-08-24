@@ -7,6 +7,18 @@
 // ВАЖНО: эта функция НЕ трогает public.orders (та таблица заточена под
 // крипто-чекаут: tx_hash/chain/token) — Ko-fi платежи в неё не пишутся.
 //
+// --------------------------------------------------------------------------
+// v2: обработка ВСЕХ payload.shop_items, а не только shop_items[0].
+//
+// Причина: у Ko-fi корзина персистентная и невидимая для нашего сайта —
+// если пользователь переходит по одной ссылке ("Order Service" / "Buy"),
+// не завершает оплату, потом переходит по другой — второй товар
+// добавляется в ТУ ЖЕ корзину. Это подтверждённое штатное поведение Ko-fi
+// (см. скриншот реальной корзины: Starter Plan + AI Performance Digest x2
+// в одном чеке), а не редкий edge case — значит вебхук обязан правильно
+// обрабатывать любую комбинацию тариф+тариф / тариф+допуслуга /
+// допуслуга+допуслуга(дубль) в одном payload.
+//
 // Deploy:
 //   supabase functions deploy kofi-webhook --no-verify-jwt
 //
@@ -18,6 +30,12 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 // ---------------------------------------------------------------
 // Payload от Ko-fi (см. https://ko-fi.com/manage/webhooks)
 // ---------------------------------------------------------------
+interface KofiShopItem {
+  direct_link_code: string;
+  variation_name: string;
+  quantity: number;
+}
+
 interface KofiPayload {
   verification_token: string;
   message_id: string;
@@ -26,12 +44,12 @@ interface KofiPayload {
   is_public: boolean;
   from_name: string;
   message: string | null;
-  amount: string; // строка вида "299.00"
+  amount: string; // строка вида "299.00" — сумма ВСЕЙ корзины, не одного айтема
   url: string;
   email: string;
   currency: string;
   kofi_transaction_id: string;
-  shop_items: { direct_link_code: string; variation_name: string; quantity: number }[] | null;
+  shop_items: KofiShopItem[] | null;
   tier_name: string | null; // для Membership/Subscription
   is_subscription_payment: boolean;
   is_first_subscription_payment: boolean;
@@ -50,10 +68,8 @@ const TIER_TO_PLAN_ID: Record<string, { plan_id: string; amount_cents: number }>
   "Scale": { plan_id: "premium", amount_cents: 49900 },
 };
 
-// Ko-fi Shop Item direct_link_code -> plan_id. Это самый надёжный способ
-// матчинга (в отличие от суммы, код ссылки не может "случайно совпасть"),
-// приходит в payload.shop_items[0].direct_link_code для типа "Shop Order".
-// Коды взяты из реальных ссылок:
+// Ko-fi Shop Item direct_link_code -> plan_id. Самый надёжный способ
+// матчинга. Коды взяты из реальных ссылок:
 //   Starter -> https://ko-fi.com/s/10eb6d89bf
 //   Growth  -> https://ko-fi.com/s/9dcfdf1c5b
 //   Scale   -> https://ko-fi.com/s/ed50f0bf6a
@@ -64,10 +80,8 @@ const DIRECT_LINK_CODE_TO_PLAN_ID: Record<string, string> = {
 };
 
 // ---------------------------------------------------------------
-// Допуслуги (addon-товары) — отдельная ветка от тарифов Starter/Growth/Scale
-// выше. Названия service_type/addon_type взяты 1-в-1 из PRICE_TO_ADDON в
-// app/api/webhooks/paddle/route.js, чтобы cron/process-service-orders,
-// cron/addon-expiry и api/team/invite узнавали эти записи без изменений.
+// Допуслуги (addon-товары). Названия service_type/addon_type взяты 1-в-1
+// из PRICE_TO_ADDON в app/api/webhooks/paddle/route.js.
 // ---------------------------------------------------------------
 type AddonMapping =
   | { kind: "order"; service_type: string }
@@ -81,10 +95,9 @@ const DIRECT_LINK_CODE_TO_ADDON: Record<string, AddonMapping> = {
 
 const SUBSCRIPTION_DAYS = 30;
 
-// Только эти типы событий Ko-fi считаем платежом за тариф. "Donation"
-// намеренно исключён: донат на произвольную сумму без tier_name/shop_items
-// не должен активировать подписку только потому, что сумма случайно
-// совпала с ценой тарифа (см. п.4 разбора).
+// Только эти типы событий Ko-fi считаем платежом. "Donation" намеренно
+// исключён: донат на произвольную сумму не должен ничего активировать
+// просто потому, что сумма случайно совпала с ценой тарифа.
 const PLAN_PAYMENT_TYPES: KofiPayload["type"][] = ["Subscription", "Shop Order"];
 
 function jsonResponse(body: Record<string, unknown>, status: number): Response {
@@ -94,29 +107,16 @@ function jsonResponse(body: Record<string, unknown>, status: number): Response {
   });
 }
 
-function resolvePlan(payload: KofiPayload): { plan_id: string; amount_cents: number } | null {
-  // 1) Самый надёжный способ: код Shop Item из ссылки.
-  const itemCode = payload.shop_items?.[0]?.direct_link_code;
-  if (itemCode && DIRECT_LINK_CODE_TO_PLAN_ID[itemCode]) {
-    const planId = DIRECT_LINK_CODE_TO_PLAN_ID[itemCode];
-    const byPlanId = Object.values(TIER_TO_PLAN_ID).find((t) => t.plan_id === planId);
-    if (byPlanId) return byPlanId;
-  }
-
-  // 2) Membership Tier (если когда-нибудь переключитесь на Tiers вместо Shop Items).
+// Фоллбэк-резолв тарифа БЕЗ shop_items (Membership/Subscription-тип оплаты
+// Ko-fi, а не Shop Order — там нет direct_link_code вообще, только
+// tier_name/amount). Используется только если в payload.shop_items не
+// нашлось ни одного тарифного айтема.
+function resolvePlanWithoutShopItems(payload: KofiPayload): { plan_id: string; amount_cents: number } | null {
   if (payload.tier_name && TIER_TO_PLAN_ID[payload.tier_name]) {
     return TIER_TO_PLAN_ID[payload.tier_name];
   }
-  if (payload.shop_items && payload.shop_items.length > 0) {
-    const name = payload.shop_items[0].variation_name;
-    if (name && TIER_TO_PLAN_ID[name]) return TIER_TO_PLAN_ID[name];
-  }
-
-  // 3) Фоллбэк по сумме — только для Subscription/Shop Order (уже отфильтровано
-  // выше через PLAN_PAYMENT_TYPES), когда ни код, ни имя тира не пришли.
   const amountCents = Math.round(parseFloat(payload.amount) * 100);
-  const byAmount = Object.values(TIER_TO_PLAN_ID).find((t) => t.amount_cents === amountCents);
-  return byAmount ?? null;
+  return Object.values(TIER_TO_PLAN_ID).find((t) => t.amount_cents === amountCents) ?? null;
 }
 
 Deno.serve(async (req: Request) => {
@@ -179,8 +179,11 @@ Deno.serve(async (req: Request) => {
   });
 
   // ---------------------------------------------------------------
-  // 3. Идемпотентность: если этот kofi_transaction_id уже обработан — выходим.
-  //    (Ko-fi ретраит вебхук, если не получил 200 вовремя.)
+  // 3. Идемпотентность НА УРОВНЕ ВСЕГО ЧЕКА: если этот kofi_transaction_id
+  //    уже обработан — выходим. Это защита от ретраев Ko-fi (не получили
+  //    200 вовремя — прислали тот же payload снова). Один kofi_transaction_id
+  //    = один чек, каким бы ни было число товаров внутри — так что дедуп по
+  //    всему payload остаётся корректным и после перехода на цикл по items.
   // ---------------------------------------------------------------
   const { error: dedupeError } = await supabase
     .from("kofi_transactions")
@@ -192,7 +195,6 @@ Deno.serve(async (req: Request) => {
 
   if (dedupeError) {
     if (dedupeError.code === "23505") {
-      // unique_violation — уже обработали этот платёж ранее
       console.log(`Duplicate Ko-fi transaction ${payload.kofi_transaction_id}, skipping`);
       return jsonResponse({ message: "Already processed" }, 200);
     }
@@ -200,145 +202,18 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: "Internal error" }, 500);
   }
 
-  // ---------------------------------------------------------------
-  // 3.5. Допуслуга? (AI Historical Analysis / Performance Digest / Team
-  // Alert Access) — проверяем ДО resolvePlan(), это отдельная ветка,
-  // которая не пересекается с тарифами Starter/Growth/Scale.
-  // ---------------------------------------------------------------
-  const addonItemCode = payload.shop_items?.[0]?.direct_link_code;
-  const addonMapping = addonItemCode ? DIRECT_LINK_CODE_TO_ADDON[addonItemCode] : undefined;
-
-  if (addonMapping) {
-    // Находим юзера по email (та же логика, что и для тарифов ниже).
-    const { data: addonUserRow, error: addonUserError } = await supabase
-      .from("users")
-      .select("id")
-      .ilike("email", email)
-      .maybeSingle();
-
-    if (addonUserError) {
-      console.error("Error looking up user by email (addon):", addonUserError);
-      return jsonResponse({ error: "Internal lookup error" }, 500);
-    }
-
-    if (!addonUserRow) {
-      console.warn(`No matching user for addon email ${email}`);
-      await supabase.from("error_logs").insert({
-        source: "kofi-webhook",
-        message: "Ko-fi addon payment received but no matching user found",
-        details: JSON.stringify({ email, addon: addonMapping, kofi_transaction_id: payload.kofi_transaction_id }),
-        resolved: false,
-      });
-      return jsonResponse({ message: "No matching user, logged for manual review" }, 200);
-    }
-
-    const addonUserId = addonUserRow.id as string;
-
-    // У Ko-fi (в отличие от Paddle custom_data) нет способа передать
-    // business_id прямо в чекауте — резолвим по users->businesses. Если у
-    // юзера ровно один бизнес, берём его; если 0 или больше 1 — не гадаем,
-    // логируем для ручной разборки в админке.
-    const { data: userBusinesses, error: businessesError } = await supabase
-      .from("businesses")
-      .select("id")
-      .eq("user_id", addonUserId);
-
-    if (businessesError) {
-      console.error("Error looking up businesses for addon:", businessesError);
-      return jsonResponse({ error: "Internal lookup error" }, 500);
-    }
-
-    if (!userBusinesses || userBusinesses.length !== 1) {
-      console.warn(`Ambiguous business_id for addon: user=${addonUserId}, count=${userBusinesses?.length ?? 0}`);
-      await supabase.from("error_logs").insert({
-        source: "kofi-webhook",
-        message: "Ko-fi addon payment: could not resolve a single business_id for user",
-        details: JSON.stringify({
-          user_id: addonUserId,
-          business_count: userBusinesses?.length ?? 0,
-          addon: addonMapping,
-          kofi_transaction_id: payload.kofi_transaction_id,
-        }),
-        resolved: false,
-      });
-      return jsonResponse({ message: "Ambiguous business, logged for manual review" }, 200);
-    }
-
-    const businessId = userBusinesses[0].id as string;
-
-    if (addonMapping.kind === "order") {
-      // Разовая допуслуга — создаём заказ, cron/process-service-orders его
-      // подхватит и сгенерирует отчёт, как и для Paddle-заказов.
-      // paddle_transaction_id в service_orders — nullable, для Kofi-заказов
-      // намеренно не заполняем (сама транзакция уже сохранена в
-      // kofi_transactions.raw_payload, этого достаточно для трассировки).
-      const { error: orderError } = await supabase.from("service_orders").insert({
-        business_id: businessId,
-        user_id: addonUserId,
-        service_type: addonMapping.service_type,
-        status: "pending",
-      });
-
-      if (orderError) {
-        console.error("Failed to insert service_orders (kofi addon):", orderError);
-        await supabase.from("error_logs").insert({
-          source: "kofi-webhook",
-          message: "Failed to create service_order for Ko-fi addon payment",
-          details: JSON.stringify({ business_id: businessId, addon: addonMapping, error: orderError.message }),
-          resolved: false,
-        });
-        return jsonResponse({ error: "Failed to create service order" }, 500);
-      }
-    } else {
-      // Ежемесячная допуслуга — та же модель "ручное продление раз в 30
-      // дней", что уже используется для тарифов Starter/Growth/Scale выше
-      // (Ko-fi Shop-ссылки не дают настоящей авто-рекуррентности).
-      // paddle_subscription_id в addon_subscriptions — nullable, для Kofi
-      // не заполняем по той же причине, что и выше.
-      const addonPeriodEnd = new Date(Date.now() + SUBSCRIPTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
-      const { error: addonSubError } = await supabase.from("addon_subscriptions").upsert(
-        {
-          business_id: businessId,
-          addon_type: addonMapping.addon_type,
-          status: "active",
-          current_period_end: addonPeriodEnd,
-        },
-        { onConflict: "business_id,addon_type" },
-      );
-
-      if (addonSubError) {
-        console.error("Failed to upsert addon_subscriptions (kofi addon):", addonSubError);
-        await supabase.from("error_logs").insert({
-          source: "kofi-webhook",
-          message: "Failed to activate addon_subscription for Ko-fi addon payment",
-          details: JSON.stringify({ business_id: businessId, addon: addonMapping, error: addonSubError.message }),
-          resolved: false,
-        });
-        return jsonResponse({ error: "Failed to activate addon subscription" }, 500);
-      }
-    }
-
-    console.log(`Addon activated via Ko-fi: business=${businessId}, addon=${JSON.stringify(addonMapping)}`);
-    return jsonResponse({ message: "Addon activated" }, 200);
-  }
-
-  // ---------------------------------------------------------------
-  // 4. Определяем тариф
-  // ---------------------------------------------------------------
-  const plan = resolvePlan(payload);
-  if (!plan) {
-    console.warn("Could not resolve plan for tier_name:", payload.tier_name, "amount:", payload.amount);
+  async function logError(message: string, details: Record<string, unknown>) {
     await supabase.from("error_logs").insert({
       source: "kofi-webhook",
-      message: "Unrecognized Ko-fi tier/amount",
-      details: JSON.stringify({ tier_name: payload.tier_name, amount: payload.amount, email }),
+      message,
+      details: JSON.stringify(details),
       resolved: false,
     });
-    return jsonResponse({ error: "Unrecognized tier/amount" }, 422);
   }
 
   // ---------------------------------------------------------------
-  // 5. Находим пользователя по email в public.users
+  // 4. Находим пользователя по email — ОДИН раз на весь чек, а не по разу
+  //    на тариф и на допуслугу, как было раньше.
   // ---------------------------------------------------------------
   const { data: userRow, error: userError } = await supabase
     .from("users")
@@ -353,58 +228,220 @@ Deno.serve(async (req: Request) => {
 
   if (!userRow) {
     console.warn(`No matching user for email ${email}`);
-    await supabase.from("error_logs").insert({
-      source: "kofi-webhook",
-      message: "Ko-fi payment received but no matching user found",
-      details: JSON.stringify({ email, plan_id: plan.plan_id, kofi_transaction_id: payload.kofi_transaction_id }),
-      resolved: false,
+    await logError("Ko-fi payment received but no matching user found", {
+      email,
+      kofi_transaction_id: payload.kofi_transaction_id,
+      shop_items: payload.shop_items,
     });
     return jsonResponse({ message: "No matching user, logged for manual review" }, 200);
   }
 
   const userId = userRow.id as string;
-  const periodEnd = new Date(Date.now() + SUBSCRIPTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
   // ---------------------------------------------------------------
-  // 6. Upsert public.subscriptions — те же имена колонок, что и в
-  //    polygon-webhook (plan_id, не `plan`; никакого provider_subscription_id
-  //    — этой колонки нет в крипто-варианте upsert, и раз мы не подтвердили
-  //    её существование в реальной схеме, лучше не рисковать всем upsert'ом
-  //    ради поля, которое может не существовать. Kofi-транзакция и так
-  //    полностью сохранена в kofi_transactions.raw_payload — этого достаточно
-  //    для ручного сопоставления, если понадобится).
+  // 5. Разбираем shop_items на тарифные и addon-айтемы. Дедуп по
+  //    direct_link_code внутри самого чека — если один и тот же код
+  //    встретился несколько раз (реальный кейс со скриншота: юзер дважды
+  //    кликнул на Digest), активируем эффект ОДИН раз, но обязательно
+  //    логируем это как потенциальную переплату — деньги за второй экземпляр
+  //    ушли, а второй активации по смыслу может не быть (для monthly-addon
+  //    активация и так идемпотентна через upsert; для разовой услуги
+  //    дублировать генерацию отчёта без явного намерения юзера не стоит).
   // ---------------------------------------------------------------
-  const now = new Date().toISOString();
+  const planItems = new Map<string, { plan_id: string; totalQty: number }>();
+  const addonItems = new Map<string, { mapping: AddonMapping; totalQty: number }>();
+  const unresolvedItems: KofiShopItem[] = [];
 
-  const { error: subError } = await supabase.from("subscriptions").upsert(
-    {
-      user_id: userId,
-      plan_id: plan.plan_id,
-      access_status: "active",
-      current_period_end: periodEnd,
-      updated_at: now, // same as polygon-webhook — don't let this column go stale for Ko-fi-paid rows
-    },
-    { onConflict: "user_id" },
-  );
+  for (const item of payload.shop_items ?? []) {
+    const code = item.direct_link_code;
 
-  if (subError) {
-    console.error("Failed to upsert subscription:", subError);
-    return jsonResponse({ error: "Failed to activate subscription" }, 500);
+    if (DIRECT_LINK_CODE_TO_ADDON[code]) {
+      const existing = addonItems.get(code);
+      addonItems.set(code, {
+        mapping: DIRECT_LINK_CODE_TO_ADDON[code],
+        totalQty: (existing?.totalQty ?? 0) + (item.quantity ?? 1),
+      });
+      continue;
+    }
+
+    if (DIRECT_LINK_CODE_TO_PLAN_ID[code]) {
+      const existing = planItems.get(code);
+      planItems.set(code, {
+        plan_id: DIRECT_LINK_CODE_TO_PLAN_ID[code],
+        totalQty: (existing?.totalQty ?? 0) + (item.quantity ?? 1),
+      });
+      continue;
+    }
+
+    unresolvedItems.push(item);
   }
 
-  // ---------------------------------------------------------------
-  // 7. public.users.has_active_subscription сознательно не трогаем.
-  //
-  //    Проверено по всему репо: этот флаг больше нигде не читается — вся
-  //    активная логика (дашборд, админка, /api/subscription-status, бот
-  //    и т.д.) уже использует subscriptions.access_status, включая
-  //    polygon-webhook, который тоже пишет только сюда. Колонка осталась
-  //    только в старой миграции 0001_crypto_payments.sql как мёртвый след.
-  //    Если это когда-нибудь снова понадобится — добавляйте синхронизацию
-  //    сразу симметрично в оба вебхука (kofi + polygon), иначе один из
-  //    путей оплаты снова станет "невидимым" для читателей этого флага.
-  // ---------------------------------------------------------------
+  if (unresolvedItems.length > 0) {
+    await logError("Ko-fi shop items with unrecognized direct_link_code", {
+      email,
+      kofi_transaction_id: payload.kofi_transaction_id,
+      unresolved: unresolvedItems,
+    });
+  }
 
-  console.log(`Subscription activated: user=${userId}, plan=${plan.plan_id}, until=${periodEnd}`);
-  return jsonResponse({ message: "Subscription activated" }, 200);
+  const results: Record<string, unknown>[] = [];
+
+  // ---------------------------------------------------------------
+  // 6. Тариф(ы). Политика при нескольких РАЗНЫХ тарифов в одной корзине —
+  //    редкий, но возможный кейс (юзер передумал и добавил другой тариф не
+  //    убрав старый) — активируем самый дорогой (наибольший amount_cents):
+  //    это безопаснее с точки зрения "не занизить то, за что заплатили",
+  //    и в любом случае логируем для ручной проверки, потому что тут явно
+  //    нужно решение по возврату за лишний тариф.
+  // ---------------------------------------------------------------
+  let resolvedPlan: { plan_id: string; amount_cents: number } | null = null;
+
+  if (planItems.size > 0) {
+    const candidates = [...planItems.values()].map((p) => ({
+      plan_id: p.plan_id,
+      amount_cents: Object.values(TIER_TO_PLAN_ID).find((t) => t.plan_id === p.plan_id)?.amount_cents ?? 0,
+    }));
+    resolvedPlan = candidates.reduce((a, b) => (b.amount_cents > a.amount_cents ? b : a));
+
+    if (planItems.size > 1) {
+      await logError("Ko-fi checkout contained multiple different plans", {
+        email,
+        kofi_transaction_id: payload.kofi_transaction_id,
+        plans_in_cart: candidates,
+        activated: resolvedPlan.plan_id,
+      });
+    }
+  } else {
+    // Shop Order без распознанных plan-кодов в items — может быть чистый
+    // Subscription/Membership пуш без shop_items вообще.
+    resolvedPlan = resolvePlanWithoutShopItems(payload);
+  }
+
+  if (resolvedPlan) {
+    const periodEnd = new Date(Date.now() + SUBSCRIPTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+    const now = new Date().toISOString();
+
+    const { error: subError } = await supabase.from("subscriptions").upsert(
+      {
+        user_id: userId,
+        plan_id: resolvedPlan.plan_id,
+        access_status: "active",
+        current_period_end: periodEnd,
+        updated_at: now,
+      },
+      { onConflict: "user_id" },
+    );
+
+    if (subError) {
+      console.error("Failed to upsert subscription:", subError);
+      await logError("Failed to activate subscription from Ko-fi payment", {
+        user_id: userId,
+        plan_id: resolvedPlan.plan_id,
+        error: subError.message,
+      });
+      results.push({ type: "plan", plan_id: resolvedPlan.plan_id, status: "error" });
+    } else {
+      console.log(`Subscription activated: user=${userId}, plan=${resolvedPlan.plan_id}, until=${periodEnd}`);
+      results.push({ type: "plan", plan_id: resolvedPlan.plan_id, status: "activated" });
+    }
+  }
+
+  // public.users.has_active_subscription сознательно не трогаем — см. п.7
+  // из предыдущей версии файла, ничего не изменилось в этом решении.
+
+  // ---------------------------------------------------------------
+  // 7. Допуслуги. business_id резолвим ОДИН раз, лениво — только если
+  //    в чеке реально есть addon-айтемы, тарифам он не нужен.
+  // ---------------------------------------------------------------
+  if (addonItems.size > 0) {
+    const { data: userBusinesses, error: businessesError } = await supabase
+      .from("businesses")
+      .select("id")
+      .eq("user_id", userId);
+
+    if (businessesError) {
+      console.error("Error looking up businesses for addon:", businessesError);
+      results.push({ type: "addon", status: "error", reason: "business_lookup_failed" });
+    } else if (!userBusinesses || userBusinesses.length !== 1) {
+      console.warn(`Ambiguous business_id: user=${userId}, count=${userBusinesses?.length ?? 0}`);
+      await logError("Ko-fi addon payment: could not resolve a single business_id for user", {
+        user_id: userId,
+        business_count: userBusinesses?.length ?? 0,
+        addons: [...addonItems.values()].map((a) => a.mapping),
+        kofi_transaction_id: payload.kofi_transaction_id,
+      });
+      results.push({ type: "addon", status: "logged_ambiguous_business" });
+    } else {
+      const businessId = userBusinesses[0].id as string;
+
+      for (const [code, { mapping, totalQty }] of addonItems) {
+        if (totalQty > 1) {
+          // Юзер заплатил за N экземпляров одной и той же допуслуги в одном
+          // чеке (кейс со скриншота). Активируем эффект один раз и явно
+          // логируем переплату — это НЕ технический сбой, а вопрос
+          // частичного возврата, который решает человек, а не код.
+          await logError("Ko-fi checkout contained duplicate addon quantity — possible overcharge", {
+            user_id: userId,
+            business_id: businessId,
+            addon: mapping,
+            direct_link_code: code,
+            quantity_paid: totalQty,
+            kofi_transaction_id: payload.kofi_transaction_id,
+          });
+        }
+
+        try {
+          if (mapping.kind === "order") {
+            const { error: orderError } = await supabase.from("service_orders").insert({
+              business_id: businessId,
+              user_id: userId,
+              service_type: mapping.service_type,
+              status: "pending",
+            });
+            if (orderError) throw orderError;
+            results.push({ type: "addon_order", service_type: mapping.service_type, status: "created" });
+          } else {
+            const addonPeriodEnd = new Date(Date.now() + SUBSCRIPTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+            const { error: addonSubError } = await supabase.from("addon_subscriptions").upsert(
+              {
+                business_id: businessId,
+                addon_type: mapping.addon_type,
+                status: "active",
+                current_period_end: addonPeriodEnd,
+              },
+              { onConflict: "business_id,addon_type" },
+            );
+            if (addonSubError) throw addonSubError;
+            results.push({ type: "addon_subscription", addon_type: mapping.addon_type, status: "activated" });
+          }
+        } catch (err) {
+          // Один упавший addon не должен блокировать остальные айтемы чека —
+          // именно поэтому try/catch внутри цикла, а не вокруг всей функции.
+          console.error(`Failed to process addon ${code}:`, err);
+          await logError("Failed to process Ko-fi addon item", {
+            user_id: userId,
+            business_id: businessId,
+            addon: mapping,
+            direct_link_code: code,
+            error: (err as Error).message,
+          });
+          results.push({ type: "addon", direct_link_code: code, status: "error" });
+        }
+      }
+    }
+  }
+
+  if (results.length === 0) {
+    console.warn("Could not resolve any plan/addon for Ko-fi payment", payload.kofi_transaction_id);
+    await logError("Unrecognized Ko-fi payment: no plan or addon resolved", {
+      email,
+      tier_name: payload.tier_name,
+      amount: payload.amount,
+      shop_items: payload.shop_items,
+      kofi_transaction_id: payload.kofi_transaction_id,
+    });
+    return jsonResponse({ error: "Unrecognized payment content" }, 422);
+  }
+
+  return jsonResponse({ message: "Processed", results }, 200);
 });
