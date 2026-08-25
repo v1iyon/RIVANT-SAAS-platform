@@ -50,7 +50,7 @@
 //   for the manual-renewal addon_subscriptions period.
 //
 // --------------------------------------------------------------------------
-// FIX (ordering — false-success / lost addon on partial failure):
+// FIX 1 (ordering — false-success / lost addon on partial failure):
 //
 //   Previously `orders.status` was flipped to 'paid' BEFORE
 //   processAddonOrder ran. `useOrderStatus` on the frontend reacts to
@@ -71,18 +71,37 @@
 //         same pending order again and we get an automatic retry instead
 //         of a silently lost payment.
 //
-//   The plan path is intentionally left exactly as it was (mark paid,
-//   then upsert subscription) — this fix is scoped to the addon branch
-//   only, per the "don't touch what already works" rule.
+//   The plan path is intentionally left exactly as it was in relative
+//   order (mark paid, then upsert subscription) — this fix is scoped to
+//   the addon branch only, per the "don't touch what already works" rule.
 //
 //   Known residual edge case (documented, not fixed here): if
 //   processAddonOrder's INSERT into service_orders succeeds but the
 //   subsequent `orders` UPDATE to 'paid' fails, a retry will call
 //   processAddonOrder again and insert a second service_orders row
-//   (it's a plain insert, not an upsert). Closing this fully needs a
-//   unique constraint on service_orders(order_id) + upsert-by-order_id
-//   instead of insert — a small migration, not done here since it wasn't
-//   asked for and touches schema.
+//   (it's a plain insert, not an upsert — confirmed via schema check,
+//   service_orders has no order_id column to upsert against yet).
+//   Closing this fully needs a unique constraint on
+//   service_orders(order_id) + upsert-by-order_id instead of insert — a
+//   small migration, not done here since it touches schema and wasn't
+//   asked for.
+//
+// --------------------------------------------------------------------------
+// FIX 2 (schema mismatch — orders has no `paid_at` column):
+//
+//   The original patch wrote `.update({ status: "paid", tx_hash: hash,
+//   paid_at: now.toISOString() })`. A live schema check of `orders`
+//   (information_schema.columns) confirmed there is NO `paid_at` column
+//   at all — the closest equivalent already in the table is `matched_at`
+//   (nullable timestamptz, currently unused by this function). Updating
+//   a non-existent column via the Supabase JS client returns an error,
+//   which means BOTH the plan path and the addon path were silently
+//   failing at the "mark order paid" step for every single crypto
+//   payment, regardless of kind.
+//
+//   Fixed by writing `matched_at` instead of `paid_at` in both branches
+//   below. If you later add a real `paid_at` column via migration, this
+//   is the one place (both occurrences) to update again.
 
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
@@ -168,8 +187,8 @@ interface MatchedOrderRow {
 // Handles a matched order whose kind === 'addon'. Mirrors kofi-webhook
 // section "5. Допуслуги" (business_id resolution with the same 0-or-many
 // error_logs fallback, service_orders insert / addon_subscriptions upsert).
-// IMPORTANT: called BEFORE the order is marked 'paid' — see the ordering
-// fix in the top-of-file changelog. Do not flip status before this returns
+// IMPORTANT: called BEFORE the order is marked 'paid' — see FIX 1 in the
+// top-of-file changelog. Do not flip status before this returns
 // matched: true.
 async function processAddonOrder(
   admin: ReturnType<typeof createClient>,
@@ -349,9 +368,9 @@ serve(async (req) => {
     const now = new Date();
 
     // --- ADDON SCHEMA: branch on kind BEFORE marking paid ----------------
-    // See the "FIX (ordering)" note at the top of this file for why the
-    // addon effect is written first, and the order is only flipped to
-    // 'paid' once that succeeds.
+    // See FIX 1 at the top of this file for why the addon effect is
+    // written first, and the order is only flipped to 'paid' once that
+    // succeeds.
     if (matchedOrder.kind === "addon") {
       const addonResult = await processAddonOrder(admin, matchedOrder, hash);
 
@@ -362,9 +381,10 @@ serve(async (req) => {
         continue;
       }
 
+      // FIX 2: matched_at, not paid_at — `orders` has no paid_at column.
       const { error: orderUpdateErr } = await admin
         .from("orders")
-        .update({ status: "paid", tx_hash: hash, paid_at: now.toISOString() })
+        .update({ status: "paid", tx_hash: hash, matched_at: now.toISOString() })
         .eq("id", matchedOrder.id)
         .eq("status", "pending"); // guard against double-processing races
 
@@ -379,10 +399,10 @@ serve(async (req) => {
     }
 
     // Original plan path — UNCHANGED order of operations (mark paid, then
-    // upsert subscription).
+    // upsert subscription). FIX 2 applied here too: matched_at, not paid_at.
     const { error: orderUpdateErr } = await admin
       .from("orders")
-      .update({ status: "paid", tx_hash: hash, paid_at: now.toISOString() })
+      .update({ status: "paid", tx_hash: hash, matched_at: now.toISOString() })
       .eq("id", matchedOrder.id)
       .eq("status", "pending"); // guard against double-processing races
 

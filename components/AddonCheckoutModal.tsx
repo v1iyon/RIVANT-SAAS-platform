@@ -25,6 +25,29 @@
 //     needed on the crypto path, for either addon kind.
 //
 // Locales: en / uk / de only, same rule as the rest of the payment flow.
+//
+// --------------------------------------------------------------------------
+// FIX (business_id resolution — was querying businesses with the wrong id):
+//
+//   `userId` passed into this component is the raw Supabase auth uid
+//   (`data.session.user.id` in PricingSection.tsx). A live schema check
+//   confirmed `businesses.user_id` is a foreign key into `public.users.id`
+//   — NOT into `auth.users.id` — and those are two different UUIDs
+//   (public.users has its own `auth_user_id` column that maps one to the
+//   other; supabase/functions/create-order/index.ts already does this
+//   exact lookup before touching `orders`).
+//
+//   The old effect below queried `businesses.user_id = eq(userId)` using
+//   the raw auth uid directly, which almost certainly matched zero rows.
+//   Practical effect: for Ko-fi-paid recurring add-ons, businessId never
+//   resolved, useAddonSubscriptionStatus never got a real id to watch,
+//   and the "waiting for confirmation" screen would spin forever even
+//   after kofi-webhook successfully activated the subscription server-side.
+//
+//   Fixed by resolving `public.users.id` from the auth uid first (via
+//   `auth_user_id`), then querying `businesses` with THAT id — same two
+//   hops create-order/index.ts already does. Only this one effect
+//   changed; nothing else in the component depends on the shape of userId.
 
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase-browser";
@@ -118,7 +141,7 @@ interface AddonCheckoutModalProps {
   isOpen: boolean;
   onClose: () => void;
   locale: Locale;
-  userId: string;
+  userId: string; // raw Supabase auth uid — resolved to public.users.id internally, see FIX above
   addon: AddonInfo;
 }
 
@@ -163,15 +186,29 @@ export function AddonCheckoutModal({ isOpen, onClose, locale, userId, addon }: A
   // Resolve business_id lazily, only when we actually need it (entering
   // card-waiting for a subscription addon) — plan/order-kind addons never
   // need it client-side.
+  //
+  // FIX: `userId` is the raw auth uid, but `businesses.user_id` FKs into
+  // `public.users.id`, not `auth.users.id` (confirmed via schema check —
+  // same indirection supabase/functions/create-order/index.ts already
+  // uses). So we resolve public.users.id via auth_user_id FIRST, then
+  // query businesses with that resolved id, instead of querying
+  // businesses directly with the auth uid (which was matching zero rows).
   useEffect(() => {
     if (phase !== "card-waiting" || addon.kind !== "subscription" || businessId) return;
 
     (async () => {
-      // NOTE: filtering by the raw auth uid here, same as PaymentModal.tsx
-      // does against `subscriptions` — if your `businesses.user_id` is
-      // actually keyed off public.users.id instead, this needs the same
-      // auth_user_id -> users.id indirection create-order/index.ts uses.
-      const { data, error } = await supabase.from("businesses").select("id").eq("user_id", userId);
+      const { data: profile, error: profileError } = await supabase
+        .from("users")
+        .select("id")
+        .eq("auth_user_id", userId)
+        .maybeSingle();
+
+      if (profileError || !profile) {
+        console.error("[AddonCheckoutModal] could not resolve public.users.id for auth uid", profileError, userId);
+        return;
+      }
+
+      const { data, error } = await supabase.from("businesses").select("id").eq("user_id", profile.id);
       if (error || !data || data.length !== 1) {
         console.error("[AddonCheckoutModal] could not resolve a single business_id", error, data);
         return;
