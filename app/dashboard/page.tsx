@@ -11,6 +11,7 @@ import { useLanguage, Language } from "@/lib/translations";
 import { commonError, translateUnknownError } from "@/lib/error-messages";
 import { useCurrency, Currency } from "@/lib/currency";
 import { getSeverityLabel, getSeverityColorClasses } from "@/lib/severity";
+import { businessDateStr, businessMonthStartStr } from "@/lib/business-date";
 import { TrialPromptModal } from "@/components/dashboard/trial-prompt-modal";
 import { OnboardingTour } from "@/components/dashboard/onboarding-tour";
 import { TeamAccessCard } from "@/components/dashboard/team-access-card";
@@ -358,8 +359,12 @@ function ChartTooltipPortal({ anchor, children }: { anchor: { left: number; top:
 }
 
 // ========== КОМПОНЕНТ ГЛАВНОГО ГРАФИКА ==========
-function RevenueExpensesChart({ history }: {
+function RevenueExpensesChart({ history, timezone }: {
   history: { day: number; date: string; revenue: number; expenses: number; profit: number; margin: number }[];
+  // Таймзона бизнеса (businesses.timezone) — нужна, чтобы "сегодня"/"начало
+  // месяца" на графике считались так же, как метрики на бэкенде и ответы
+  // бота (см. п. 3 аудита, lib/business-date.ts).
+  timezone?: string | null;
 }) {
   const { t, language } = useLanguage();
   const { symbol, convert } = useCurrency();
@@ -432,8 +437,16 @@ function RevenueExpensesChart({ history }: {
   // самого длинного календарного месяца; реальный windowDays всё равно
   // ограничен spanDays (реальным числом дней с начала месяца/подключения).
   const MAX_WINDOW_DAYS = 31;
-  const now = new Date();
-  const todayStr = now.toISOString().slice(0, 10);
+  // п. 3 аудита: раньше "сегодня" тут считалось по UTC (toISOString()), а
+  // "начало месяца" — по ЛОКАЛЬНОЙ ДАТЕ БРАУЗЕРА (getFullYear()/getMonth()
+  // без UTC-префикса), в то время как сами данные (metrics_computed) на
+  // бэкенде уже считаются по таймзоне БИЗНЕСА (businesses.timezone) — те же
+  // три "сегодня" одновременно. Возле полуночи/границы месяца это давало
+  // разъезд с карточками метрик сверху и с ответами бота/дайджестом,
+  // который правильно считает по business.timezone. Теперь оба значения
+  // считаются одной и той же функцией, по той же таймзоне бизнеса, что и
+  // в src/bot.js/scripts/daily-reports.mjs/scripts/sync-stripe-core.mjs.
+  const todayStr = businessDateStr(timezone);
   // Начало текущего календарного месяца — окно графика никогда не должно
   // "заходить" в предыдущий месяц. Раньше стартом ленты была самая первая
   // запись за всю историю бизнеса: если синк только начался, скажем, 28
@@ -441,7 +454,7 @@ function RevenueExpensesChart({ history }: {
   // 07.08), из-за чего "7-й день месяца" на графике выглядел как "11 дней
   // данных" — не сходилось с карточками метрик наверху, которые честно
   // считают только текущий месяц.
-  const monthStartStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+  const monthStartStr = businessMonthStartStr(timezone);
 
   let chartData: { day: number; date: string; revenue: number; expenses: number; profit: number; margin: number }[];
 
@@ -2640,7 +2653,7 @@ if (!subInfo) {
                   </div>
 
                   {metricsLoaded ? (
-                    <RevenueExpensesChart history={chartHistory} />
+                    <RevenueExpensesChart history={chartHistory} timezone={timezone} />
                   ) : (
                     <div className="h-[360px] rounded-2xl border border-gray-800 bg-card animate-pulse" />
                   )}
@@ -3076,9 +3089,14 @@ if (!subInfo) {
                         : (T.forecastMonthlyTitle || "Next 3 months")}
                     </h3>
                     {(() => {
-                      const now = new Date();
-                      const monthStartStr = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-                      const todayStr = now.toISOString().slice(0, 10);
+                      // п. 3 аудита: было смешение new Date(...).toISOString()
+                      // (Date-конструктор берёт локальную таймзону браузера
+                      // для year/month, а .toISOString() потом форматирует
+                      // результат по UTC — то есть тут была ошибка вдвойне)
+                      // с UTC-датой "сегодня". Теперь обе даты по таймзоне
+                      // бизнеса, как и сами metricsRows на бэкенде.
+                      const monthStartStr = businessMonthStartStr(timezone);
+                      const todayStr = businessDateStr(timezone);
                       const actualRevenueThisMonth = metricsRows
                         .filter((r) => r.date >= monthStartStr && r.date <= todayStr)
                         .reduce((sum, r) => sum + r.revenue, 0);
@@ -3308,7 +3326,7 @@ if (!subInfo) {
                       onLockedClick={() => router.push("/#pricing")}
                       refreshToken={integrationRefreshToken}
                       syncFailed={failedSyncProviders.includes("google_ads")}
-                      oauthStartHref={`/api/auth/google-ads/start?email=${encodeURIComponent(profileEmail)}`}
+                      oauthStartHref="/api/auth/google-ads/start"
                       oauthButtonLabel={
                         language === "UA" ? "Підключити через Google" : language === "DE" ? "Über Google verbinden" : "Connect with Google"
                       }
