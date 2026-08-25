@@ -1,17 +1,56 @@
 // supabase/functions/polygon-webhook/index.ts
 //
-// Single source of truth for payment confirmation. Alchemy Notify (Address
-// Activity webhook) calls this whenever a USDC transfer lands on
+// Single source of truth for crypto payment confirmation. Alchemy Notify
+// (Address Activity webhook) calls this whenever a USDC transfer lands on
 // POLYGON_PAY_TO_ADDRESS. We:
 //   1. Verify the HMAC-SHA256 signature over the RAW body before parsing
 //      anything — reject immediately on any mismatch or missing header.
 //   2. Match the transferred amount to exactly one pending order.
-//   3. Mark the order paid, then UPSERT `subscriptions` — the only table
-//      the rest of the product reads for access control.
+//   3. Mark the order paid, then branch on the order's kind:
+//        - "plan"  (default, existing behavior): UPSERT `subscriptions`.
+//        - "addon" (NEW): resolve business_id, then either INSERT
+//          `service_orders` (one-time) or UPSERT `addon_subscriptions`
+//          (recurring) — mirrors the addon block already shipped in
+//          kofi-webhook/index.ts, so the two payment paths converge on
+//          the exact same tables/shape.
 //
 // Docs: https://docs.alchemy.com/reference/notify-api-quickstart
 //       (signing key is the per-webhook "Signing Key" from the dashboard,
 //       NOT your Alchemy API key)
+//
+// --------------------------------------------------------------------------
+// CHANGELOG (this patch — crypto for add-ons, п.1 of the plan):
+//
+//   Matching itself is UNCHANGED: still exact_amount_cents against
+//   `orders` where status = 'pending'. Crypto orders for add-ons don't
+//   need a fixed/known price here — whatever amount reserve_order (called
+//   from lib/crypto-checkout.ts at order-creation time) assigned is
+//   already unique and already sitting on the `orders` row, so this
+//   webhook never has to know addon prices at all.
+//
+//   NEW: `orders` is assumed to now carry three extra columns so a
+//   matched order can identify itself as a plan order or an addon order:
+//     - kind         : 'plan' | 'addon'   (nullable — NULL/'plan' both
+//                       fall through to the existing subscription path,
+//                       so pre-existing plan rows keep working untouched)
+//     - addon_kind    : 'order' | 'subscription' | null
+//                       ('order' = one-time -> service_orders,
+//                        'subscription' = recurring -> addon_subscriptions)
+//     - addon_slug    : text | null  (e.g. 'whatif_analysis',
+//                       'monthly_digest', 'team_alerts' — same slugs
+//                       already used as service_type/addon_type values in
+//                       kofi-webhook, so downstream code doesn't need to
+//                       special-case which payment method was used)
+//
+//   ⚠️ These column names are ASSUMED to match your actual `orders`
+//   schema/migration — if you named them differently (or store this some
+//   other way, e.g. a separate `order_addons` table), rename the four
+//   spots marked "ADDON SCHEMA" below rather than trusting this blindly.
+//   Whatever lib/crypto-checkout.ts writes when reserving an addon order
+//   MUST use the same columns/values this file reads.
+//
+//   ADDON_SUBSCRIPTION_DAYS mirrors kofi-webhook's SUBSCRIPTION_DAYS (30)
+//   for the manual-renewal addon_subscriptions period.
 
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
@@ -25,6 +64,7 @@ const USDC_CONTRACT_POLYGON = (
   "0x3c499c542cef5e3811e1192ce70d8cc03d5c3359" // native USDC on Polygon PoS
 ).toLowerCase();
 const SUBSCRIPTION_PERIOD_DAYS = 30;
+const ADDON_SUBSCRIPTION_DAYS = 30; // mirrors kofi-webhook's SUBSCRIPTION_DAYS
 const AMOUNT_TOLERANCE_CENTS = 0; // exact match required; raise if you need slack for gas-rebate style transfers
 
 function timingSafeEqualHex(a: string, b: string): boolean {
@@ -64,6 +104,124 @@ function json(body: unknown, status = 200) {
     status,
     headers: { "Content-Type": "application/json" },
   });
+}
+
+// Same shape/spirit as kofi-webhook's logError — errors_logs entries so a
+// human can review anything the webhook couldn't resolve automatically.
+async function logError(
+  admin: ReturnType<typeof createClient>,
+  message: string,
+  details: Record<string, unknown>,
+) {
+  await admin.from("error_logs").insert({
+    source: "polygon-webhook",
+    message,
+    details: JSON.stringify(details),
+    resolved: false,
+  });
+}
+
+// --- ADDON SCHEMA: row shape matched from `orders` ------------------------
+interface MatchedOrderRow {
+  id: string;
+  user_id: string;
+  plan_id: string | null;
+  exact_amount_cents: number;
+  status: string;
+  kind: string | null; // 'plan' | 'addon' | null
+  addon_kind: string | null; // 'order' | 'subscription' | null
+  addon_slug: string | null;
+}
+
+// Handles a matched+paid order whose kind === 'addon'. Mirrors kofi-webhook
+// section "5. Допуслуги" (business_id resolution with the same 0-or-many
+// error_logs fallback, service_orders insert / addon_subscriptions upsert).
+async function processAddonOrder(
+  admin: ReturnType<typeof createClient>,
+  order: MatchedOrderRow,
+  hash: string,
+): Promise<{ matched: boolean; reason?: string }> {
+  if (!order.addon_kind || !order.addon_slug) {
+    console.error("polygon-webhook: order.kind = 'addon' but addon_kind/addon_slug missing", order.id);
+    await logError(admin, "Addon order missing addon_kind/addon_slug", { order_id: order.id, hash });
+    return { matched: false, reason: "addon_metadata_missing" };
+  }
+
+  const { data: userBusinesses, error: businessesError } = await admin
+    .from("businesses")
+    .select("id")
+    .eq("user_id", order.user_id);
+
+  if (businessesError) {
+    console.error("polygon-webhook: business lookup failed", businessesError);
+    await logError(admin, "Addon order: business lookup failed", {
+      order_id: order.id,
+      user_id: order.user_id,
+      error: businessesError.message,
+    });
+    return { matched: false, reason: "business_lookup_failed" };
+  }
+
+  if (!userBusinesses || userBusinesses.length !== 1) {
+    console.warn(`polygon-webhook: ambiguous business_id, user=${order.user_id}, count=${userBusinesses?.length ?? 0}`);
+    await logError(admin, "Addon order: could not resolve a single business_id for user", {
+      order_id: order.id,
+      user_id: order.user_id,
+      business_count: userBusinesses?.length ?? 0,
+      addon_kind: order.addon_kind,
+      addon_slug: order.addon_slug,
+      hash,
+    });
+    return { matched: false, reason: "ambiguous_business_id" };
+  }
+
+  const businessId = userBusinesses[0].id as string;
+
+  try {
+    if (order.addon_kind === "order") {
+      // One-time service (e.g. whatif_analysis) -> service_orders.
+      const { error: orderError } = await admin.from("service_orders").insert({
+        business_id: businessId,
+        user_id: order.user_id,
+        service_type: order.addon_slug,
+        status: "pending",
+      });
+      if (orderError) throw orderError;
+    } else if (order.addon_kind === "subscription") {
+      // Recurring addon (monthly_digest, team_alerts) -> addon_subscriptions.
+      const periodEnd = new Date(Date.now() + ADDON_SUBSCRIPTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+      const { error: addonSubError } = await admin.from("addon_subscriptions").upsert(
+        {
+          business_id: businessId,
+          addon_type: order.addon_slug,
+          status: "active",
+          current_period_end: periodEnd,
+        },
+        { onConflict: "business_id,addon_type" },
+      );
+      if (addonSubError) throw addonSubError;
+    } else {
+      console.error("polygon-webhook: unknown addon_kind", order.addon_kind);
+      await logError(admin, "Addon order: unknown addon_kind", {
+        order_id: order.id,
+        addon_kind: order.addon_kind,
+      });
+      return { matched: false, reason: "unknown_addon_kind" };
+    }
+  } catch (err) {
+    console.error("polygon-webhook: failed to process addon order", order.id, err);
+    await logError(admin, "Failed to process crypto addon order", {
+      order_id: order.id,
+      business_id: businessId,
+      addon_kind: order.addon_kind,
+      addon_slug: order.addon_slug,
+      error: (err as Error).message,
+      hash,
+    });
+    return { matched: false, reason: "addon_write_failed" };
+  }
+
+  return { matched: true };
 }
 
 serve(async (req) => {
@@ -126,10 +284,13 @@ serve(async (req) => {
       continue;
     }
 
-    // Match to a pending order by exact salted amount.
+    // Match to a pending order by exact salted amount. NOTE: this SELECT
+    // now also pulls kind/addon_kind/addon_slug (ADDON SCHEMA) so we know
+    // after marking it paid whether to go down the plan path or the addon
+    // path — the matching logic itself (exact_amount_cents) is untouched.
     let orderQuery = admin
       .from("orders")
-      .select("id, user_id, plan_id, exact_amount_cents, status")
+      .select("id, user_id, plan_id, exact_amount_cents, status, kind, addon_kind, addon_slug")
       .eq("status", "pending");
 
     if (AMOUNT_TOLERANCE_CENTS > 0) {
@@ -140,19 +301,19 @@ serve(async (req) => {
       orderQuery = orderQuery.eq("exact_amount_cents", amountCents);
     }
 
-    const { data: matchedOrder, error: matchErr } = await orderQuery.maybeSingle();
+    const { data: matchedOrderRaw, error: matchErr } = await orderQuery.maybeSingle();
 
-    if (matchErr || !matchedOrder) {
+    if (matchErr || !matchedOrderRaw) {
       results.push({ hash, matched: false, reason: "no_matching_pending_order" });
       // In production: alert on this. It means either an underpayment,
       // an expired order, or a transfer with no corresponding checkout.
       continue;
     }
 
+    const matchedOrder = matchedOrderRaw as MatchedOrderRow;
     const now = new Date();
-    const periodEnd = new Date(now.getTime() + SUBSCRIPTION_PERIOD_DAYS * 24 * 60 * 60_000);
 
-    // Mark the order paid.
+    // Mark the order paid. Same guard as before regardless of kind.
     const { error: orderUpdateErr } = await admin
       .from("orders")
       .update({ status: "paid", tx_hash: hash, paid_at: now.toISOString() })
@@ -164,6 +325,20 @@ serve(async (req) => {
       results.push({ hash, matched: false, reason: "order_update_failed" });
       continue;
     }
+
+    // --- ADDON SCHEMA: branch on kind --------------------------------
+    // kind === 'addon' is the only new path; everything else (including
+    // kind === null, for any pre-existing plan orders created before this
+    // column existed) falls through to the original subscriptions upsert
+    // exactly as before.
+    if (matchedOrder.kind === "addon") {
+      const addonResult = await processAddonOrder(admin, matchedOrder, hash);
+      results.push({ hash, ...addonResult });
+      continue;
+    }
+
+    // Original plan path — UNCHANGED.
+    const periodEnd = new Date(now.getTime() + SUBSCRIPTION_PERIOD_DAYS * 24 * 60 * 60_000);
 
     // Single source of truth: UPSERT subscriptions. Every part of the
     // product reads access from this table, not from `users` or `orders`.

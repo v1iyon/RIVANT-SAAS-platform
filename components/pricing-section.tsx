@@ -4,6 +4,7 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase-browser";
 import { loadPaddle, openPaddleCheckout } from "@/lib/paddle-client";
 import PaymentModal from "@/components/PaymentModal";
+import { AddonCheckoutModal, type AddonInfo } from "@/components/AddonCheckoutModal";
 import { Button } from "@/components/ui/button";
 import { Check, Zap, FileText, Users, ArrowRight } from "lucide-react";
 import { useLanguage, type Language } from "@/lib/translations";
@@ -35,9 +36,10 @@ export function PricingSection() {
     [T.scale ?? "Scale"]: "premium",
   };
 
-  // Site language (EN | UA | DE, see lib/translations.tsx) -> PaymentModal's
-  // locale codes (en | uk | de). PaymentModal auto-detects from this — no
-  // manual language buttons inside the payment flow anymore.
+  // Site language (EN | UA | DE, see lib/translations.tsx) -> payment
+  // components' locale codes (en | uk | de). Both PaymentModal and
+  // AddonCheckoutModal auto-detect from this — no manual language buttons
+  // inside either payment flow.
   const LANGUAGE_TO_MODAL_LOCALE: Record<Language, "en" | "uk" | "de"> = {
     EN: "en",
     UA: "uk",
@@ -90,45 +92,54 @@ export function PricingSection() {
     },
   ];
 
-  const [orderingService, setOrderingService] = useState<string | null>(null);
-
-  // Ko-fi Shop Item links for add-ons. kofi-webhook matches these by
-  // direct_link_code (the part after /s/) — see DIRECT_LINK_CODE_TO_ADDON
-  // in supabase/functions/kofi-webhook/index.ts. If you regenerate a Shop
-  // Item link in Ko-fi, its code changes and BOTH places need updating.
-  const ADDON_KOFI_LINKS: Record<string, string> = {
-    whatif_analysis: "https://ko-fi.com/s/41ec6cf444", // AI Historical Analysis
-    monthly_digest: "https://ko-fi.com/s/cfa88bffb3", // AI Performance Digest
-    team_alerts: "https://ko-fi.com/s/a6db84895c", // Team Alert Access
+  // --------------------------------------------------------------------
+  // CHANGELOG (crypto for add-ons, п.1 of the plan — final piece):
+  //
+  //   handleOrderService used to open the Ko-fi Shop Item link directly
+  //   in a popup with no payment-method choice and no cart warning. It
+  //   now just opens AddonCheckoutModal (new component), which owns the
+  //   Card-vs-Crypto choice, the KofiRedirectConfirm step, and — for
+  //   crypto — createCryptoOrder()/CryptoCheckoutModal. The old
+  //   ADDON_KOFI_LINKS map moves into ADDON_CATALOG below (now also
+  //   carrying `kind`, since AddonCheckoutModal needs to know one-time
+  //   vs recurring to pick the right waiting copy and to call
+  //   createCryptoOrder with the right addonKind).
+  //
+  //   `kind` here MUST match ADDON_CATALOG in
+  //   supabase/functions/create-order/index.ts — that's the one the
+  //   server actually trusts; this copy is only used for local UI
+  //   decisions (which waiting message to show).
+  //
+  //   business_setup (no Ko-fi link) still falls through to the old
+  //   /api/orders/create path untouched — see handleOrderService below.
+  // --------------------------------------------------------------------
+  const ADDON_CATALOG: Record<string, { kofiLink: string; kind: "order" | "subscription" }> = {
+    whatif_analysis: { kofiLink: "https://ko-fi.com/s/41ec6cf444", kind: "order" }, // AI Historical Analysis
+    monthly_digest: { kofiLink: "https://ko-fi.com/s/cfa88bffb3", kind: "subscription" }, // AI Performance Digest
+    team_alerts: { kofiLink: "https://ko-fi.com/s/a6db84895c", kind: "subscription" }, // Team Alert Access
   };
 
-  const handleOrderService = async (serviceType: string) => {
+  const [orderingService, setOrderingService] = useState<string | null>(null);
+  const [addonCheckout, setAddonCheckout] = useState<AddonInfo | null>(null);
+  const [addonUserId, setAddonUserId] = useState<string | null>(null);
+
+  const handleOrderService = async (serviceType: string, displayName: string, priceLabel: string) => {
     const { data } = await supabase.auth.getSession();
     if (!data.session) {
       window.dispatchEvent(new CustomEvent("rivant:open-signup"));
       return;
     }
 
-    const kofiLink = ADDON_KOFI_LINKS[serviceType];
-    if (kofiLink) {
-      // Same centered-popup pattern as PaymentModal.handleKofiPay, so this
-      // reads as a checkout modal over RIVANT rather than a full navigation
-      // away. kofi-webhook creates the service_order/addon_subscription row
-      // as soon as payment lands — no need to call /api/orders/create here.
-      setOrderingService(serviceType);
-      const w = 480;
-      const h = 720;
-      const left = window.screenX + (window.outerWidth - w) / 2;
-      const top = window.screenY + (window.outerHeight - h) / 2;
-      const popup = window.open(
-        kofiLink,
-        "rivant_checkout",
-        `width=${w},height=${h},left=${left},top=${top},resizable=no,scrollbars=yes`,
-      );
-      if (!popup) {
-        window.open(kofiLink, "_blank", "noopener,noreferrer");
-      }
-      setOrderingService(null);
+    const catalogEntry = ADDON_CATALOG[serviceType];
+    if (catalogEntry) {
+      setAddonUserId(data.session.user.id);
+      setAddonCheckout({
+        slug: serviceType,
+        kind: catalogEntry.kind,
+        name: displayName,
+        priceLabel,
+        kofiLink: catalogEntry.kofiLink,
+      });
       return;
     }
 
@@ -244,7 +255,9 @@ export function PricingSection() {
                 <Button
                   variant="outline"
                   className="w-full mt-auto group-hover:bg-primary group-hover:text-white group-hover:border-primary transition-all"
-                  onClick={() => handleOrderService(addon.key)}
+                  onClick={() =>
+                    handleOrderService(addon.key, addon.name, `${formatPrice(addon.price, "addon")}${addon.priceType === (T.oneTime ?? "One-time") ? "" : ` ${addon.priceType}`}`)
+                  }
                   disabled={orderingService === addon.key}
                 >
   {orderingService === addon.key ? "..." : (t.orderService || "Order Service")} <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
@@ -265,6 +278,16 @@ export function PricingSection() {
           onActivated={() => {
             window.location.href = "/dashboard?checkout=success";
           }}
+        />
+      )}
+
+      {addonCheckout && addonUserId && (
+        <AddonCheckoutModal
+          isOpen={!!addonCheckout}
+          onClose={() => setAddonCheckout(null)}
+          locale={LANGUAGE_TO_MODAL_LOCALE[language]}
+          userId={addonUserId}
+          addon={addonCheckout}
         />
       )}
     </section>

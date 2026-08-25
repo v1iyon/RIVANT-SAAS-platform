@@ -4,8 +4,24 @@
 // window. The user is resolved server-side from the session token
 // (Authorization: Bearer <access_token>) — never passed manually.
 //
-// The price is looked up server-side from public.plans by plan_id — the
-// client only ever sends which plan was picked, never an amount.
+// The price is looked up server-side (from public.plans for plans, and
+// server-side for addons too — client never sends an amount) — the
+// client only ever sends WHAT was picked (plan id, or addon kind+slug),
+// never an amount.
+//
+// CHANGELOG (crypto for add-ons, п.1 of the plan):
+//   createCryptoOrder now accepts either a plan target (unchanged,
+//   existing call sites like `createCryptoOrder({ planId })` in
+//   PaymentModal.tsx keep working with no changes) or a new addon target
+//   `{ addonKind, addonSlug }`. Both branches POST to the same
+//   create-order Edge Function; the function is expected to branch on
+//   `kind` server-side and, for addons, write the SAME `orders` columns
+//   polygon-webhook now reads: kind = 'addon', addon_kind, addon_slug
+//   (see the polygon-webhook patch — those two files must agree on these
+//   names). addon_kind mirrors kofi-webhook's AddonMapping union:
+//   'order' for one-time services (whatif_analysis -> service_orders),
+//   'subscription' for recurring addons (monthly_digest, team_alerts ->
+//   addon_subscriptions).
 
 import { createClient } from "@/lib/supabase-browser";
 
@@ -18,13 +34,13 @@ export interface CryptoOrder {
   expires_at: string;
 }
 
-export async function createCryptoOrder({
-  planId,
-  token = "USDC",
-}: {
-  planId: string;
-  token?: string;
-}): Promise<CryptoOrder> {
+type CryptoOrderTarget =
+  | { planId: string; addonKind?: undefined; addonSlug?: undefined }
+  | { addonKind: "order" | "subscription"; addonSlug: string; planId?: undefined };
+
+export async function createCryptoOrder(
+  target: CryptoOrderTarget & { token?: string },
+): Promise<CryptoOrder> {
   const supabase = createClient();
 
   const {
@@ -36,6 +52,12 @@ export async function createCryptoOrder({
   }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const token = target.token ?? "USDC";
+
+  const body =
+    target.planId !== undefined
+      ? { kind: "plan" as const, plan_id: target.planId, token }
+      : { kind: "addon" as const, addon_kind: target.addonKind, addon_slug: target.addonSlug, token };
 
   const res = await fetch(`${supabaseUrl}/functions/v1/create-order`, {
     method: "POST",
@@ -43,10 +65,7 @@ export async function createCryptoOrder({
       "Content-Type": "application/json",
       Authorization: `Bearer ${session.access_token}`,
     },
-    body: JSON.stringify({
-      plan_id: planId,
-      token,
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!res.ok) {

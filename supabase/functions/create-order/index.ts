@@ -2,11 +2,45 @@
 //
 // Вызывается фронтендом при открытии окна оплаты.
 // Атомарно резервирует уникальную "сумму с хвостом центов",
-// чтобы два параллельных покупателя одного и того же тарифа
+// чтобы два параллельных покупателя одного и того же тарифа/допуслуги
 // никогда не получили одинаковую exact_amount_cents, пока их заказы pending.
 //
-// Цена берётся из таблицы public.plans на сервере — клиенту нельзя
-// доверять сумму напрямую, иначе можно оплатить любой тариф за 1 цент.
+// Цена берётся из БД на сервере (тарифы — public.plans, допуслуги —
+// ADDON_CATALOG ниже) — клиенту нельзя доверять сумму напрямую, иначе
+// можно оплатить любой тариф/допуслугу за 1 цент.
+//
+// --------------------------------------------------------------------------
+// CHANGELOG (crypto for add-ons, п.1 of the plan):
+//
+//   Принимает теперь { kind: "plan", plan_id, token } (старое поведение,
+//   без изменений) ИЛИ { kind: "addon", addon_kind, addon_slug, token }
+//   (новое). Резервирование суммы (случайный cents_offset 0..99 +
+//   ретрай на 23505 unique_violation) переиспользуется для обоих —
+//   уникальный индекс orders_pending_amount_unique общий на все pending
+//   заказы вне зависимости от kind, так что сумма допуслуги никогда не
+//   столкнётся с суммой тарифа автоматически, без доп. логики.
+//
+//   ADDON_CATALOG ниже — единственное место, где сейчас "живут" цены
+//   допуслуг для крипто-оплаты (аналог public.plans, но захардкожено —
+//   таблицы под цены допуслуг сейчас нет). Цены подставлены по реальному
+//   прайсингу со страницы Add-ons: AI Historical Analysis $199 one-time,
+//   AI Performance Digest $49/mo, Team Alert Access $29/mo. addon_kind в
+//   каталоге — защита от рассинхрона с клиентом (whatif_analysis обязан
+//   быть "order", а не "subscription", и т.п.), сервер не доверяет
+//   присланному addon_kind напрямую.
+//
+//   Пишет в orders: kind='addon', addon_kind, addon_slug — те же
+//   колонки/значения, которые уже читает патченный polygon-webhook.
+//   plan_id для addon-заказов остаётся NULL.
+//
+//   FIX (locale bug): все user-facing ошибки этой функции были захардкожены
+//   на русском ("Требуется авторизация", "Невалидная сессия",
+//   "Профиль пользователя ещё не создан...", "Не удалось выделить
+//   уникальную сумму..."). Дублировать переводы на 3 языка прямо в Deno-
+//   функции — плохая идея (рассинхрон с фронтом гарантирован), поэтому
+//   вместо текста теперь короткие машинные коды, как уже было у
+//   missing_plan/invalid_plan/invalid_addon — перевод должен делать
+//   фронт (тот же DICT-паттерн, что в PaymentModal.tsx).
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -21,6 +55,17 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*", // tighten to your domain in production
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
+// --- ADDON CATALOG ---------------------------------------------------------
+// Real prices from the Add-ons pricing page.
+// addon_kind here is the source of truth the server trusts; whatever the
+// client sends in the request body is only used to pick a slug, never to
+// decide the kind or the price.
+const ADDON_CATALOG: Record<string, { addon_kind: "order" | "subscription"; base_amount_cents: number }> = {
+  whatif_analysis: { addon_kind: "order", base_amount_cents: 19900 }, // $199, one-time (AI Historical Analysis)
+  monthly_digest: { addon_kind: "subscription", base_amount_cents: 4900 }, // $49/mo (AI Performance Digest)
+  team_alerts: { addon_kind: "subscription", base_amount_cents: 2900 }, // $29/mo (Team Alert Access)
 };
 
 function json(body: unknown, status = 200) {
@@ -47,7 +92,7 @@ Deno.serve(async (req) => {
     const jwt = authHeader.replace(/^Bearer\s+/i, "");
 
     if (!jwt) {
-      return json({ error: "Требуется авторизация" }, 401);
+      return json({ error: "not_authenticated" }, 401);
     }
 
     // anon-клиент нужен именно для валидации токена пользователя,
@@ -58,33 +103,59 @@ Deno.serve(async (req) => {
 
     const { data: authData, error: authError } = await authClient.auth.getUser(jwt);
     if (authError || !authData?.user) {
-      return json({ error: "Невалидная сессия" }, 401);
+      return json({ error: "invalid_session" }, 401);
     }
 
     const authUser = authData.user;
 
-    const { plan_id, token = "USDC" } = await req.json();
-
-    if (!plan_id || typeof plan_id !== "string") {
-      return json({ error: "missing_plan" }, 400);
-    }
+    const body = await req.json();
+    const kind: "plan" | "addon" = body.kind === "addon" ? "addon" : "plan";
+    const token = body.token ?? "USDC";
 
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
-    // Цену берём ТОЛЬКО из БД по plan_id — клиент цену не задаёт.
-    const { data: plan, error: planError } = await admin
-      .from("plans")
-      .select("id, display_name, base_amount_cents, is_active")
-      .eq("id", plan_id)
-      .maybeSingle();
+    // --- Резолвим цену и метаданные заказа в зависимости от kind ---------
+    let base_amount_cents: number;
+    let plan_id: string | null = null;
+    let addon_kind: "order" | "subscription" | null = null;
+    let addon_slug: string | null = null;
 
-    if (planError) throw planError;
+    if (kind === "plan") {
+      const { plan_id: requestedPlanId } = body;
 
-    if (!plan || !plan.is_active) {
-      return json({ error: "invalid_plan" }, 400);
+      if (!requestedPlanId || typeof requestedPlanId !== "string") {
+        return json({ error: "missing_plan" }, 400);
+      }
+
+      // Цену берём ТОЛЬКО из БД по plan_id — клиент цену не задаёт.
+      const { data: plan, error: planError } = await admin
+        .from("plans")
+        .select("id, display_name, base_amount_cents, is_active")
+        .eq("id", requestedPlanId)
+        .maybeSingle();
+
+      if (planError) throw planError;
+
+      if (!plan || !plan.is_active) {
+        return json({ error: "invalid_plan" }, 400);
+      }
+
+      base_amount_cents = plan.base_amount_cents;
+      plan_id = plan.id;
+    } else {
+      const { addon_slug: requestedSlug } = body;
+
+      if (!requestedSlug || typeof requestedSlug !== "string" || !ADDON_CATALOG[requestedSlug]) {
+        return json({ error: "invalid_addon" }, 400);
+      }
+
+      // addon_kind тоже берём ТОЛЬКО из каталога — то, что прислал клиент
+      // в body.addon_kind, ни на цену, ни на записываемый kind не влияет.
+      const catalogEntry = ADDON_CATALOG[requestedSlug];
+      base_amount_cents = catalogEntry.base_amount_cents;
+      addon_kind = catalogEntry.addon_kind;
+      addon_slug = requestedSlug;
     }
-
-    const base_amount_cents = plan.base_amount_cents;
 
     // Находим соответствующую запись в public.users по auth_user_id.
     // Если её ещё нет (гонка с триггером при только что созданном аккаунте) —
@@ -108,17 +179,16 @@ Deno.serve(async (req) => {
     if (profileError) throw profileError;
 
     if (!profile) {
-      return json(
-        { error: "Профиль пользователя ещё не создан, попробуйте через несколько секунд" },
-        409,
-      );
+      // Race with the just-signed-up trigger — client should retry shortly.
+      return json({ error: "profile_not_ready" }, 409);
     }
 
     const user_id = profile.id;
 
     // Пытаемся найти свободный "хвост" центов 0..99.
     // Коллизии по exact_amount_cents исключены уникальным индексом
-    // orders_pending_amount_unique — просто ретраим на конфликте.
+    // orders_pending_amount_unique (общий на все pending-заказы, вне
+    // зависимости от kind) — просто ретраим на конфликте.
     let lastError: unknown = null;
 
     for (let attempt = 0; attempt < MAX_OFFSET_ATTEMPTS; attempt++) {
@@ -128,7 +198,10 @@ Deno.serve(async (req) => {
         .from("orders")
         .insert({
           user_id,
-          plan_id: plan.id,
+          plan_id,
+          kind,
+          addon_kind,
+          addon_slug,
           base_amount_cents,
           cents_offset: centsOffset,
           token,
@@ -163,10 +236,7 @@ Deno.serve(async (req) => {
     }
 
     console.error("create-order: exhausted attempts", lastError);
-    return json(
-      { error: "Не удалось выделить уникальную сумму, попробуйте ещё раз через минуту" },
-      503,
-    );
+    return json({ error: "amount_reservation_failed" }, 503);
   } catch (err) {
     console.error("create-order error", err);
     return json({ error: "internal_error" }, 500);
