@@ -6,7 +6,8 @@
 //   1. Verify the HMAC-SHA256 signature over the RAW body before parsing
 //      anything — reject immediately on any mismatch or missing header.
 //   2. Match the transferred amount to exactly one pending order.
-//   3. Mark the order paid, then branch on the order's kind:
+//   3. Branch on the order's kind, THEN mark it paid (see CHANGELOG below
+//      for why the order matters):
 //        - "plan"  (default, existing behavior): UPSERT `subscriptions`.
 //        - "addon" (NEW): resolve business_id, then either INSERT
 //          `service_orders` (one-time) or UPSERT `addon_subscriptions`
@@ -19,7 +20,7 @@
 //       NOT your Alchemy API key)
 //
 // --------------------------------------------------------------------------
-// CHANGELOG (this patch — crypto for add-ons, п.1 of the plan):
+// CHANGELOG (crypto for add-ons, п.1 of the plan):
 //
 //   Matching itself is UNCHANGED: still exact_amount_cents against
 //   `orders` where status = 'pending'. Crypto orders for add-ons don't
@@ -28,8 +29,8 @@
 //   already unique and already sitting on the `orders` row, so this
 //   webhook never has to know addon prices at all.
 //
-//   NEW: `orders` is assumed to now carry three extra columns so a
-//   matched order can identify itself as a plan order or an addon order:
+//   `orders` carries three extra columns so a matched order can identify
+//   itself as a plan order or an addon order:
 //     - kind         : 'plan' | 'addon'   (nullable — NULL/'plan' both
 //                       fall through to the existing subscription path,
 //                       so pre-existing plan rows keep working untouched)
@@ -42,15 +43,46 @@
 //                       kofi-webhook, so downstream code doesn't need to
 //                       special-case which payment method was used)
 //
-//   ⚠️ These column names are ASSUMED to match your actual `orders`
-//   schema/migration — if you named them differently (or store this some
-//   other way, e.g. a separate `order_addons` table), rename the four
-//   spots marked "ADDON SCHEMA" below rather than trusting this blindly.
-//   Whatever lib/crypto-checkout.ts writes when reserving an addon order
-//   MUST use the same columns/values this file reads.
+//   These are written by supabase/functions/create-order/index.ts — the
+//   two functions must agree on the column names/values.
 //
 //   ADDON_SUBSCRIPTION_DAYS mirrors kofi-webhook's SUBSCRIPTION_DAYS (30)
 //   for the manual-renewal addon_subscriptions period.
+//
+// --------------------------------------------------------------------------
+// FIX (ordering — false-success / lost addon on partial failure):
+//
+//   Previously `orders.status` was flipped to 'paid' BEFORE
+//   processAddonOrder ran. `useOrderStatus` on the frontend reacts to
+//   'paid' and immediately shows the user "payment confirmed" / calls
+//   onSuccess(). If processAddonOrder then failed (DB hiccup, race,
+//   whatever), the user had already seen a false success while nothing
+//   was actually written to service_orders/addon_subscriptions — the
+//   only trace left behind was an error_logs row nobody watches in real
+//   time.
+//
+//   Now, for the addon path: processAddonOrder runs FIRST. Only if it
+//   reports `matched: true` do we flip the order to 'paid'. If it fails,
+//   the order stays 'pending', which means:
+//     (a) the user correctly keeps seeing "waiting for confirmation"
+//         instead of a false "done", and
+//     (b) if Alchemy retries this same webhook delivery (they do retry
+//         on non-2xx / timeout), the matching logic above will find this
+//         same pending order again and we get an automatic retry instead
+//         of a silently lost payment.
+//
+//   The plan path is intentionally left exactly as it was (mark paid,
+//   then upsert subscription) — this fix is scoped to the addon branch
+//   only, per the "don't touch what already works" rule.
+//
+//   Known residual edge case (documented, not fixed here): if
+//   processAddonOrder's INSERT into service_orders succeeds but the
+//   subsequent `orders` UPDATE to 'paid' fails, a retry will call
+//   processAddonOrder again and insert a second service_orders row
+//   (it's a plain insert, not an upsert). Closing this fully needs a
+//   unique constraint on service_orders(order_id) + upsert-by-order_id
+//   instead of insert — a small migration, not done here since it wasn't
+//   asked for and touches schema.
 
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
@@ -133,9 +165,12 @@ interface MatchedOrderRow {
   addon_slug: string | null;
 }
 
-// Handles a matched+paid order whose kind === 'addon'. Mirrors kofi-webhook
+// Handles a matched order whose kind === 'addon'. Mirrors kofi-webhook
 // section "5. Допуслуги" (business_id resolution with the same 0-or-many
 // error_logs fallback, service_orders insert / addon_subscriptions upsert).
+// IMPORTANT: called BEFORE the order is marked 'paid' — see the ordering
+// fix in the top-of-file changelog. Do not flip status before this returns
+// matched: true.
 async function processAddonOrder(
   admin: ReturnType<typeof createClient>,
   order: MatchedOrderRow,
@@ -285,9 +320,9 @@ serve(async (req) => {
     }
 
     // Match to a pending order by exact salted amount. NOTE: this SELECT
-    // now also pulls kind/addon_kind/addon_slug (ADDON SCHEMA) so we know
-    // after marking it paid whether to go down the plan path or the addon
-    // path — the matching logic itself (exact_amount_cents) is untouched.
+    // also pulls kind/addon_kind/addon_slug (ADDON SCHEMA) so we know
+    // which path to take — the matching logic itself (exact_amount_cents)
+    // is untouched.
     let orderQuery = admin
       .from("orders")
       .select("id, user_id, plan_id, exact_amount_cents, status, kind, addon_kind, addon_slug")
@@ -313,7 +348,38 @@ serve(async (req) => {
     const matchedOrder = matchedOrderRaw as MatchedOrderRow;
     const now = new Date();
 
-    // Mark the order paid. Same guard as before regardless of kind.
+    // --- ADDON SCHEMA: branch on kind BEFORE marking paid ----------------
+    // See the "FIX (ordering)" note at the top of this file for why the
+    // addon effect is written first, and the order is only flipped to
+    // 'paid' once that succeeds.
+    if (matchedOrder.kind === "addon") {
+      const addonResult = await processAddonOrder(admin, matchedOrder, hash);
+
+      if (!addonResult.matched) {
+        // Order stays 'pending' on purpose — safe for Alchemy's retry to
+        // pick this same tx back up and try again.
+        results.push({ hash, ...addonResult });
+        continue;
+      }
+
+      const { error: orderUpdateErr } = await admin
+        .from("orders")
+        .update({ status: "paid", tx_hash: hash, paid_at: now.toISOString() })
+        .eq("id", matchedOrder.id)
+        .eq("status", "pending"); // guard against double-processing races
+
+      if (orderUpdateErr) {
+        console.error("failed to mark addon order paid", orderUpdateErr);
+        results.push({ hash, matched: false, reason: "order_update_failed" });
+        continue;
+      }
+
+      results.push({ hash, matched: true });
+      continue;
+    }
+
+    // Original plan path — UNCHANGED order of operations (mark paid, then
+    // upsert subscription).
     const { error: orderUpdateErr } = await admin
       .from("orders")
       .update({ status: "paid", tx_hash: hash, paid_at: now.toISOString() })
@@ -326,18 +392,6 @@ serve(async (req) => {
       continue;
     }
 
-    // --- ADDON SCHEMA: branch on kind --------------------------------
-    // kind === 'addon' is the only new path; everything else (including
-    // kind === null, for any pre-existing plan orders created before this
-    // column existed) falls through to the original subscriptions upsert
-    // exactly as before.
-    if (matchedOrder.kind === "addon") {
-      const addonResult = await processAddonOrder(admin, matchedOrder, hash);
-      results.push({ hash, ...addonResult });
-      continue;
-    }
-
-    // Original plan path — UNCHANGED.
     const periodEnd = new Date(now.getTime() + SUBSCRIPTION_PERIOD_DAYS * 24 * 60 * 60_000);
 
     // Single source of truth: UPSERT subscriptions. Every part of the
