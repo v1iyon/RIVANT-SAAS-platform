@@ -388,11 +388,18 @@ async function upsertExpense({ businessId, date, amount, category, source, descr
 }
 
 async function main(businessId) {
+  // ФІКС: той самий self-lockout, що і в sync-stripe-core.mjs — status:
+  // "connected" в фільтрі означав, що інтеграція, яка хоч раз впала в
+  // "error", більше ніколи не потрапляла в цей запит (ні в кроні, ні в
+  // ручному "Sync now"), а тільки успішний прогін всередині циклу повертав
+  // status назад на "connected". Один тимчасовий збій — і синк зупинявся
+  // назавжди без ручного втручання. Тепер підбираємо і "error" теж, щоб
+  // синк міг сам спробувати ще раз і сам відновити статус при успіху.
   let query = admin
     .from("integrations")
     .select("id, business_id, api_key_encrypted, config")
     .eq("provider", "shopify")
-    .eq("status", "connected");
+    .in("status", ["connected", "error"]);
   if (businessId) query = query.eq("business_id", businessId);
   const { data: integrations, error: fetchErr } = await query;
 
