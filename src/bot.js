@@ -569,32 +569,6 @@ bot.callbackQuery("trial_no", async (ctx) => {
   await ctx.reply(d.trialNoReply);
 });
 
-bot.callbackQuery("trial_no", async (ctx) => {
-  await ctx.answerCallbackQuery();
-  const { user, d } = ctx.rivant;
-
-  const { data: business } = await supabase
-    .from("businesses")
-    .select("id")
-    .eq("user_id", user.id)
-    .limit(1)
-    .maybeSingle();
-
-  await supabase.from("user_events").insert({
-    user_id: user.id,
-    business_id: business?.id || null,
-    event_type: "trial_prompt_no",
-    channel: "telegram",
-  });
-  await supabase.from("interest_signals").insert({
-    business_id: business?.id || null,
-    email: user.email,
-    response: "not_now",
-  });
-
-  await ctx.reply(d.trialNoReply || "Зрозуміло, дякуємо за відповідь!");
-});
-
 bot.on("message", async (ctx) => {
   await ctx.reply(ctx.rivant?.d?.fallback || getDict("EN").fallback);
 });

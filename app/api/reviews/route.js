@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { getClientIp, checkRateLimit, isHoneypotTripped } from "@/lib/rate-limit";
+import { requireUser, UnauthorizedError } from "@/lib/require-user";
 
 const admin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -28,6 +29,13 @@ export async function GET() {
 const RATE_LIMIT = { limit: 3, windowMs: 60 * 60 * 1000 };
 
 // POST — отправка нового отзыва (только зарегистрированные клиенты)
+//
+// ФІКС (п. B4 аудиту): раніше email бралось прямо з тіла запиту — будь-хто,
+// не заходячи в акаунт, міг надіслати відгук "від імені" будь-якого реального
+// клієнта, просто знаючи його email. Тепер особу автора беремо ТІЛЬКИ з
+// поточної сесії (requireUser()), той самий патерн, що вже використаний в
+// /api/metrics, /api/export-data і т.д. email з тіла запиту більше не
+// приймається і ні на що не впливає.
 export async function POST(req) {
   const ip = getClientIp(req);
   const { allowed, retryAfterSeconds } = checkRateLimit(`reviews:${ip}`, RATE_LIMIT);
@@ -38,8 +46,16 @@ export async function POST(req) {
     );
   }
 
+  let email;
+  try {
+    ({ email } = await requireUser());
+  } catch (e) {
+    if (e instanceof UnauthorizedError) return Response.json({ error: "unauthorized" }, { status: 401 });
+    throw e;
+  }
+
   const body = await req.json();
-  const { email, author_name, business_name, rating, comment } = body;
+  const { author_name, business_name, rating, comment } = body;
 
   // Honeypot — см. lib/rate-limit.js. Фронту нужно добавить скрытое поле
   // с тем же именем в форму отзыва.
@@ -47,7 +63,7 @@ export async function POST(req) {
     return Response.json({ ok: true });
   }
 
-  if (!email || !author_name || !rating || !comment) {
+  if (!author_name || !rating || !comment) {
     return Response.json({ error: "missing fields" }, { status: 400 });
   }
   if (rating < 1 || rating > 5) {

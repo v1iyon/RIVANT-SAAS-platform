@@ -26,6 +26,7 @@
 //   supabase secrets set KOFI_VERIFICATION_TOKEN=xxxxx
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
+import { timingSafeEqual } from "node:crypto";
 
 // ---------------------------------------------------------------
 // Payload от Ko-fi (см. https://ko-fi.com/manage/webhooks)
@@ -119,6 +120,28 @@ function resolvePlanWithoutShopItems(payload: KofiPayload): { plan_id: string; a
   return Object.values(TIER_TO_PLAN_ID).find((t) => t.amount_cents === amountCents) ?? null;
 }
 
+// Безопасное (timing-safe) сравнение verification_token — тот же принцип,
+// что уже применён в lib/verify-secret.js (ADMIN_SECRET/CRON_SECRET) и в
+// polygon-webhook (подпись Alchemy). Обычное !== сравнивает посимвольно и
+// выходит на первом несовпадении — по времени ответа теоретически можно
+// подбирать токен посимвольно. См. п. A6 аудита.
+function isValidKofiToken(provided: unknown, expected: string): boolean {
+  if (typeof provided !== "string" || !provided) return false;
+
+  const providedBuf = new TextEncoder().encode(provided);
+  const expectedBuf = new TextEncoder().encode(expected);
+
+  if (providedBuf.length !== expectedBuf.length) {
+    // timingSafeEqual требует буферы одинаковой длины и иначе бросает
+    // исключение. Сравниваем expected сам с собой, чтобы не отвечать
+    // быстрее на заведомо неверную длину (тоже временная утечка).
+    timingSafeEqual(expectedBuf, expectedBuf);
+    return false;
+  }
+
+  return timingSafeEqual(providedBuf, expectedBuf);
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") {
     return jsonResponse({ error: "Method not allowed" }, 405);
@@ -160,7 +183,7 @@ Deno.serve(async (req: Request) => {
   // ---------------------------------------------------------------
   // 2. Строгая сверка verification_token
   // ---------------------------------------------------------------
-  if (payload.verification_token !== KOFI_VERIFICATION_TOKEN) {
+  if (!isValidKofiToken(payload.verification_token, KOFI_VERIFICATION_TOKEN)) {
     console.warn("Invalid Ko-fi verification_token received");
     return jsonResponse({ error: "Unauthorized" }, 401);
   }
