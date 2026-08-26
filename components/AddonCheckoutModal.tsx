@@ -251,6 +251,19 @@ export function AddonCheckoutModal({ isOpen, onClose, locale, userId, addon }: A
     }
   };
 
+  // FIX: same "auto-generate invoice on tab switch" fix already applied to
+  // PaymentModal.tsx (see its handleMethodChange) — clicking the "Crypto"
+  // tab used to only highlight it (setMethod), requiring a second, separate
+  // click on the CTA button below to actually call createCryptoOrder() and
+  // show the invoice. Addon and slug are already known the moment the tab
+  // is clicked, so there's no reason to wait for a second click here either.
+  const handleMethodChange = (m: Method) => {
+    setMethod(m);
+    if (m === "crypto" && !cryptoOrder && phase === "method") {
+      handleCryptoPick();
+    }
+  };
+
   if (phase === "crypto-checkout" && cryptoOrder) {
     return (
       <CryptoCheckoutModal
@@ -297,13 +310,13 @@ export function AddonCheckoutModal({ isOpen, onClose, locale, userId, addon }: A
 
             <div style={styles.tabs}>
               <button
-                onClick={() => setMethod("card")}
+                onClick={() => handleMethodChange("card")}
                 style={{ ...styles.tabBtn, ...(method === "card" ? styles.tabBtnActive : {}) }}
               >
                 {t.tabCard}
               </button>
               <button
-                onClick={() => setMethod("crypto")}
+                onClick={() => handleMethodChange("crypto")}
                 style={{ ...styles.tabBtn, ...(method === "crypto" ? styles.tabBtnActive : {}) }}
               >
                 {t.tabCrypto}
