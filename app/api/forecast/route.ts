@@ -9,7 +9,12 @@
 // - Результат кэшируется в forecast_cache на 6 часов, чтобы не дёргать
 //   Anthropic API при каждом открытии дашборда (синк всё равно раз в час).
 import { createClient } from "@supabase/supabase-js";
-import { requireUser, UnauthorizedError } from "@/lib/require-user";
+import {
+  requireActiveSubscription,
+  UnauthorizedError,
+  SubscriptionInactiveError,
+  subscriptionErrorResponse,
+} from "@/lib/require-active-subscription";
 
 // Курс для конвертации сумм в промпте для ИИ-объяснения — сознательно НЕ
 // импортируем из lib/currency.tsx: тот файл помечен "use client" и тянет за
@@ -48,13 +53,11 @@ interface MetricsRow {
   margin_pct: number;
 }
 
-async function getBusinessId(email: string) {
-  const { data: appUser } = await admin.from("users").select("id").eq("email", email).maybeSingle();
-  if (!appUser) return null;
+async function getBusinessIdByUserId(userId: string) {
   const { data: business } = await admin
     .from("businesses")
     .select("id")
-    .eq("user_id", appUser.id)
+    .eq("user_id", userId)
     .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
@@ -261,17 +264,23 @@ export async function GET(req: Request) {
   const currencyParam = url.searchParams.get("currency");
   const currency: Currency = currencyParam === "EUR" ? "EUR" : "USD";
 
-  // email больше не берём из query — иначе прогноз (и промпт с реальными
-  // цифрами выручки) чужого бизнеса можно было получить, зная его email.
-  let email: string;
+  // п. B1 аудита: раньше hasForecastAccess(plan) проверял ТОЛЬКО план —
+  // если подписку отменяли/просрочивали, plan оставался прежним
+  // (access_status менялся на "blocked" отдельно), и заблокированный
+  // Growth/Scale-клиент продолжал получать полный прогноз с реальными
+  // цифрами выручки. requireActiveSubscription() бросает исключение сразу,
+  // если access_status не активен — независимо от того, какой у него plan.
+  let userId: string;
+  let plan: string | null;
   try {
-    ({ email } = await requireUser());
+    ({ userId, plan } = await requireActiveSubscription());
   } catch (e) {
     if (e instanceof UnauthorizedError) return Response.json({ error: "unauthorized" }, { status: 401 });
+    if (e instanceof SubscriptionInactiveError) return subscriptionErrorResponse(e);
     throw e;
   }
 
-  const businessId = await getBusinessId(email);
+  const businessId = await getBusinessIdByUserId(userId);
   if (!businessId) return Response.json({ sufficient: false, days: 0 });
 
   // Гейт по тарифу — до любых расчётов и до чтения metrics_computed, чтобы
@@ -279,7 +288,6 @@ export async function GET(req: Request) {
   // виде. planLocked — отдельный явный флаг для фронта (не путать с
   // "sufficient: false, days < 3" — там просто мало истории, а здесь
   // доступа нет вовсе независимо от объёма данных).
-  const plan = await getSubscriptionPlan(email);
   if (!hasForecastAccess(plan)) {
     return Response.json({ sufficient: false, planLocked: true, requiredPlan: "growth", days: 0 });
   }
