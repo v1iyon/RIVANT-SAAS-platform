@@ -1,14 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
-import { isValidSecret } from "@/lib/verify-secret";
+import { requireAdmin } from "@/lib/admin-auth";
 
 const admin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_KEY
 );
-
-function checkAuth(req) {
-  return isValidSecret(req.headers.get("x-admin-secret"), process.env.ADMIN_SECRET);
-}
 
 async function sendTelegramToAll(message) {
   const { data: users } = await admin
@@ -39,7 +35,8 @@ async function sendTelegramToAll(message) {
 }
 
 export async function POST(req) {
-  if (!checkAuth(req)) return Response.json({ error: "unauthorized" }, { status: 401 });
+  const authError = requireAdmin(req);
+  if (authError) return authError;
 
   const { message, viaTelegram, viaInApp, expireDays } = await req.json();
   if (!message || !message.trim()) {

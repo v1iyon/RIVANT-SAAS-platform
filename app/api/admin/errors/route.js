@@ -1,18 +1,14 @@
 import { createClient } from "@supabase/supabase-js";
-import { isValidSecret } from "@/lib/verify-secret";
+import { requireAdmin } from "@/lib/admin-auth";
 
 const admin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_KEY
 );
 
-function checkAuth(req) {
-  const secret = req.headers.get("x-admin-secret");
-  return isValidSecret(secret, process.env.ADMIN_SECRET);
-}
-
 export async function GET(req) {
-  if (!checkAuth(req)) return Response.json({ error: "unauthorized" }, { status: 401 });
+  const authError = requireAdmin(req);
+  if (authError) return authError;
 
   const { data: errors, error } = await admin
     .from("error_logs")
@@ -27,7 +23,8 @@ export async function GET(req) {
 }
 
 export async function PUT(req) {
-  if (!checkAuth(req)) return Response.json({ error: "unauthorized" }, { status: 401 });
+  const authError = requireAdmin(req);
+  if (authError) return authError;
 
   const { id, resolved } = await req.json();
   if (!id) return Response.json({ error: "id required" }, { status: 400 });
@@ -46,7 +43,8 @@ export async function PUT(req) {
 }
 
 export async function DELETE(req) {
-  if (!checkAuth(req)) return Response.json({ error: "unauthorized" }, { status: 401 });
+  const authError = requireAdmin(req);
+  if (authError) return authError;
 
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");

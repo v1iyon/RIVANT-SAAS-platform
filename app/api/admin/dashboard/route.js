@@ -1,15 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
-import { isValidSecret } from "@/lib/verify-secret";
+import { requireAdmin } from "@/lib/admin-auth";
 
 const admin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_KEY
 );
-
-function checkAuth(req) {
-  const secret = req.headers.get("x-admin-secret");
-  return isValidSecret(secret, process.env.ADMIN_SECRET);
-}
 
 // Цены тарифов в USD/мес — если у вас другие суммы, поправьте здесь.
 // Это единственное место, где MRR зависит от предположения, а не от реальных данных.
@@ -20,7 +15,8 @@ const PLAN_PRICES_USD = {
 };
 
 export async function GET(req) {
-  if (!checkAuth(req)) return Response.json({ error: "unauthorized" }, { status: 401 });
+  const authError = requireAdmin(req);
+  if (authError) return authError;
 
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);

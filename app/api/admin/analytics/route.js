@@ -1,14 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
-import { isValidSecret } from "@/lib/verify-secret";
+import { requireAdmin } from "@/lib/admin-auth";
 
 const admin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_KEY
 );
-
-function checkAuth(req) {
-  return isValidSecret(req.headers.get("x-admin-secret"), process.env.ADMIN_SECRET);
-}
 
 function startOfDay(daysAgo = 0) {
   const d = new Date();
@@ -18,7 +14,8 @@ function startOfDay(daysAgo = 0) {
 }
 
 export async function GET(req) {
-  if (!checkAuth(req)) return Response.json({ error: "unauthorized" }, { status: 401 });
+  const authError = requireAdmin(req);
+  if (authError) return authError;
 
   try {
     const [
