@@ -633,7 +633,25 @@ function RevenueExpensesChart({ history, timezone }: {
             <div className="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-wider leading-tight">{T.totalRevenue || "Total Revenue"}</div>
           </div>
           <div className="text-base sm:text-lg font-bold text-blue-400">{symbol}{(convert(totalRevenue) / 1000).toFixed(0)}k</div>
-          <div className="text-[10px] text-gray-500 mt-0.5">↑ {statsBase[0].revenue > 0 ? Math.abs(((statsBase[statsBase.length-1].revenue - statsBase[0].revenue) / statsBase[0].revenue * 100)).toFixed(0) : "0"}% {T.demoVsStart || "vs start"}</div>
+          {/* ФІКС: стрілка "↑" раніше була захардкожена, а різниця бралась
+              через Math.abs() — тобто напис ЗАВЖДИ показував "зростання",
+              навіть якщо останній день ленти насправді дешевший за перший
+              (реальне падіння малювалось як ріст). Тепер напрямок і знак
+              рахуються з реальної (не абсолютної) різниці. */}
+          {(() => {
+            const startRevenue = statsBase[0].revenue;
+            if (!(startRevenue > 0)) {
+              return <div className="text-[10px] text-gray-500 mt-0.5">— {T.demoVsStart || "vs start"}</div>;
+            }
+            const endRevenue = statsBase[statsBase.length - 1].revenue;
+            const deltaPct = ((endRevenue - startRevenue) / startRevenue) * 100;
+            const arrow = deltaPct > 0 ? "↑" : deltaPct < 0 ? "↓" : "→";
+            return (
+              <div className="text-[10px] text-gray-500 mt-0.5">
+                {arrow} {Math.abs(deltaPct).toFixed(0)}% {T.demoVsStart || "vs start"}
+              </div>
+            );
+          })()}
         </div>
         <div className="bg-rose-500/5 rounded-xl p-2 sm:p-2.5 border border-rose-500/15 flex flex-col items-center text-center">
           <div className="flex flex-col items-center gap-0.5 mb-0.5">

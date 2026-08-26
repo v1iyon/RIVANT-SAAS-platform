@@ -275,7 +275,27 @@ async function getBusinessUserId(businessId) {
 //   "add" — користувач явно позначив магазин як окремий, незалежний потік
 //     грошей (чекбокс при підключенні) — тоді додаємо суму до того, що вже
 //     є в рядку, а не заміщуємо.
-async function upsertShopifyRevenue({ businessId, date, revenue, orders, revenueMode }) {
+//
+// ФІКС (задвоєння доходу в режимі "add"): `revenue`, який приходить сюди —
+// це ЗАВЖДИ повна сума Shopify-замовлень за ЦЮ ДАТУ, порахована наново з
+// нуля (вікно синку sinceIso = now-48h перечитує Shopify щогодини заново,
+// той самий підхід, що і в sync-stripe-core.mjs). Раніше в режимі "add" код
+// робив `revenue + existing.revenue` — тобто щогодини ПОВНА денна сума
+// Shopify додавалась ЗНОВУ поверх того, що вже лежало в рядку (а там уже
+// могла бути ця ж сума з попереднього прогону). За добу, поки дата
+// залишається в 48-годинному вікні синку (тобто ~48 годинних прогонів),
+// дохід за день роздувався в десятки разів. Особливо критично саме для
+// "add" — це режим для магазину БЕЗ Stripe, тобто нема іншого синку, який
+// би перезаписав/скинув це значення між прогонами Shopify.
+//
+// Тепер пам'ятаємо в integrations.config.shopify_revenue_memo (мапа
+// date -> сума, яку МИ САМІ востаннє туди додали) і на кожному прогоні
+// додаємо лише РІЗНИЦЮ між новою порахованою сумою і тим, що вже додавали
+// раніше за цю дату — так дохід за день завжди дорівнює РЕАЛЬНІЙ денній
+// сумі Shopify (+ те, що додав іще хтось інший, напр. Stripe), а не сумі
+// по кількості прогонів синку. Мапа обрізається до останніх 3 днів, щоб
+// integrations.config не росло безмежно.
+async function upsertShopifyRevenue({ integrationId, integrationConfig, businessId, date, revenue, orders, revenueMode }) {
   const { data: existing } = await admin
     .from("metrics_computed")
     .select("revenue, cost, orders")
@@ -283,10 +303,33 @@ async function upsertShopifyRevenue({ businessId, date, revenue, orders, revenue
     .eq("date", date)
     .maybeSingle();
 
-  const finalRevenue =
-    revenueMode === "add" ? Number((revenue + (existing?.revenue || 0)).toFixed(2)) : Number(revenue.toFixed(2));
+  let finalRevenue;
+  let finalOrders;
+  let updatedMemo = null;
+
+  if (revenueMode === "add") {
+    const memo = { ...(integrationConfig?.shopify_revenue_memo || {}) };
+    const prevContribution = Number(memo[date] || 0);
+    const delta = Number((revenue - prevContribution).toFixed(2));
+    finalRevenue = Number(((existing?.revenue || 0) + delta).toFixed(2));
+    finalOrders = Math.max(0, (existing?.orders || 0) + orders - Number(memo[`${date}_orders`] || 0));
+    memo[date] = revenue;
+    memo[`${date}_orders`] = orders;
+    // Тримаємо мемо лише за останні 3 дні (той самий порядок величини, що
+    // й вікно синку) — старі дати більше не оновлюються, зберігати їх сенсу
+    // немає.
+    const cutoff = new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+    for (const key of Object.keys(memo)) {
+      const keyDate = key.replace(/_orders$/, "");
+      if (keyDate < cutoff) delete memo[key];
+    }
+    updatedMemo = memo;
+  } else {
+    finalRevenue = Number(revenue.toFixed(2));
+    finalOrders = orders;
+  }
+
   const cost = existing?.cost || 0;
-  const finalOrders = revenueMode === "add" ? orders + (existing?.orders || 0) : orders;
   const marginPct = finalRevenue > 0 ? Number((((finalRevenue - cost) / finalRevenue) * 100).toFixed(1)) : 0;
 
   const { error } = await admin.from("metrics_computed").upsert(
@@ -301,6 +344,15 @@ async function upsertShopifyRevenue({ businessId, date, revenue, orders, revenue
     { onConflict: "business_id,date" }
   );
   if (error) console.error(`Failed to write Shopify revenue for ${businessId} ${date}:`, error.message);
+
+  if (updatedMemo && integrationId) {
+    const { error: memoErr } = await admin
+      .from("integrations")
+      .update({ config: { ...(integrationConfig || {}), shopify_revenue_memo: updatedMemo } })
+      .eq("id", integrationId);
+    if (memoErr) console.error(`Failed to persist shopify_revenue_memo for integration ${integrationId}:`, memoErr.message);
+    else integrationConfig.shopify_revenue_memo = updatedMemo; // тримаємо in-memory config актуальним для наступних дат у цьому ж прогоні
+  }
 }
 
 // cost of goods для одного variant_id: variant → inventory_item_id → inventory_item.cost.
@@ -482,6 +534,8 @@ async function main(businessId) {
       }
       for (const [date, revenue] of Object.entries(revenueByDate)) {
         await upsertShopifyRevenue({
+          integrationId: integ.id,
+          integrationConfig: integ.config || {},
           businessId: integ.business_id,
           date,
           revenue,
