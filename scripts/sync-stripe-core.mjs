@@ -204,11 +204,28 @@ async function main(businessId, options = {}) {
   // без options — поведение (48ч окно + самолечение пропусков за 30 дней)
   // не меняется.
   const sinceDaysOverride = options.sinceDays || null;
+  // ФІКС: раніше тут стояло .eq("status", "connected"), і це створювало
+  // самозамкнене коло — якщо прогін хоч раз падав (мережевий збій, таймаут
+  // Stripe, rate limit), інтеграція нижче в catch-блоці отримувала
+  // status: "error", а цей самий запит на НАСТУПНОМУ прогоні (і в
+  // почасовому кроні, і в ручному "Sync now" з кабінету — обидва йдуть
+  // через runSync/main з тим самим фільтром) більше НІКОЛИ її не вибирав.
+  // Єдине місце, де status повертається на "connected" — це успішне
+  // завершення синка ВСЕРЕДИНІ цього ж циклу, куди інтеграція зі статусом
+  // "error" вже не потрапляла. Тобто один тимчасовий збій назавжди зупиняв
+  // Stripe-синк для бізнесу: metrics_computed переставав оновлюватись
+  // (звідси — застиглий "вчорашній" дохід в ранковому дайджесті й $0 у
+  // вечірньому), а payment_silence_stripe (сповіщення "давно нема оплат")
+  // теж переставало спрацьовувати, бо ця перевірка живе в тому самому
+  // per-integration циклі. Тепер вибираємо і "connected", і "error" —
+  // синк сам спробує ще раз і сам відновить статус на "connected" при
+  // успіху (рядок нижче з .update({ status: "connected" ... })), без
+  // ручного втручання.
   let query = admin
     .from("integrations")
     .select("id, business_id, api_key_encrypted, config")
     .eq("provider", "stripe")
-    .eq("status", "connected");
+    .in("status", ["connected", "error"]);
   if (businessId) query = query.eq("business_id", businessId);
   const { data: integrations, error: fetchErr } = await query;
 
