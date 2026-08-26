@@ -159,7 +159,11 @@ bot.command("start", async (ctx) => {
     .eq("used", false)
     .maybeSingle();
 
-  if (error || !linkToken) {
+  // п. B5 аудита: раніше перевіряли тільки used=false, без урахування
+  // строку дії — токен, що одного разу засвітився (скріншот, історія
+  // браузера), лишався робочим назавжди. Тепер той самий стандарт, що вже
+  // застосовано вище для team_invites (tm_-токенів).
+  if (error || !linkToken || new Date(linkToken.expires_at) < new Date()) {
     return ctx.reply(getDict("EN").linkInvalid);
   }
 

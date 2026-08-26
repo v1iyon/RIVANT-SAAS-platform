@@ -6,6 +6,11 @@ const admin = createClient(
   process.env.SUPABASE_SERVICE_KEY
 );
 
+// п. B5 аудита: 30 минут — ссылка открывается сразу после клика на сайте,
+// долгий срок жизни не нужен. Тот же стандарт, что уже применён для
+// team_invites (tm_-токенов) в src/bot.js.
+const LINK_TOKEN_TTL_MS = 30 * 60 * 1000;
+
 export async function POST(req) {
   const { language } = await req.json();
   let email;
@@ -45,9 +50,10 @@ export async function POST(req) {
   }
 
   const token = crypto.randomUUID();
+  const expiresAt = new Date(Date.now() + LINK_TOKEN_TTL_MS).toISOString();
   const { error: tokenError } = await admin
     .from("link_tokens")
-    .insert({ token, user_id: appUser.id });
+    .insert({ token, user_id: appUser.id, expires_at: expiresAt });
   if (tokenError) return Response.json({ error: tokenError.message }, { status: 500 });
 
   return Response.json({ url: `https://t.me/rivant_os_bot?start=${token}` });
