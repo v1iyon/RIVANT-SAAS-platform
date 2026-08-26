@@ -95,11 +95,15 @@ async function upsertExpense({ businessId, date, amount, category, source, descr
 }
 
 async function main(businessId, options = {}) {
+  // ФІКС: той самий self-lockout, що і в sync-stripe-core.mjs — див.
+  // коментар там. Один тимчасовий збій ставив status: "error" і назавжди
+  // виключав інтеграцію з усіх майбутніх прогонів. Тепер підбираємо і
+  // "error" теж, щоб синк міг сам відновитись при успішній спробі.
   let query = admin
     .from("integrations")
     .select("id, business_id, api_key_encrypted, config")
     .eq("provider", "meta_ads")
-    .eq("status", "connected");
+    .in("status", ["connected", "error"]);
   if (businessId) query = query.eq("business_id", businessId);
   const { data: integrations, error: fetchErr } = await query;
 
