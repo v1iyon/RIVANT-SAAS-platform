@@ -1,11 +1,21 @@
 // app/api/orders/create/route.js
 //
-// Единая точка входа для кнопки "Замовити послугу" на pricing-section.
-// Пока PAYMENTS_ENABLED !== "true" (нет ФОП/Paddle не подключен) — просто
-// фиксируем лид и шлём тебе уведомление в Telegram, как и с trial-prompt.
-// Когда включишь оплату — тот же клиентский код вызывает этот же route,
-// но здесь дальше сработает ветка с paddlePriceId, отдающая клиенту priceId
-// для openPaddleCheckout (компонент сам откроет чекаут).
+// п.19 аудита: по факту сейчас этот route вызывается ТОЛЬКО с
+// serviceType="business_setup" (handleOrderService в pricing-section.tsx) —
+// сразу уходит в ветку `mode: "redirect"` на календарь, оплата не участвует.
+// Все три допуслуги (whatif_analysis, monthly_digest, team_alerts) вынесены
+// в ADDON_CATALOG и идут через components/AddonCheckoutModal.tsx
+// (Ko-fi/crypto), этот route и ветку ниже с PADDLE_PRICE_BY_SERVICE /
+// PAYMENTS_ENABLED / paymentsEnabled они не трогают.
+//
+// Ветка `lead_captured` ниже (старый баг "кнопка редиректит на дашборд
+// вместо оплаты") сейчас недостижима для существующих сервисов именно
+// поэтому — не потому что баг починен здесь, а потому что сюда для них
+// больше не заходят. Если Paddle всё-таки не нужен (Ko-fi + crypto
+// закрывают текущие сценарии) — этот блок и app/api/webhooks/paddle можно
+// удалить целиком. Если оставляешь про запас — при добавлении новой
+// допуслуги её нужно занести в ADDON_CATALOG, а не полагаться на Paddle-ветку
+// здесь: она не была протестирована в проде.
 //
 // serviceType: "business_setup" | "whatif_analysis" | "monthly_digest" | "team_alerts"
 

@@ -112,9 +112,28 @@ function jsonResponse(body: Record<string, unknown>, status: number): Response {
 // Ko-fi, а не Shop Order — там нет direct_link_code вообще, только
 // tier_name/amount). Используется только если в payload.shop_items не
 // нашлось ни одного тарифного айтема.
+//
+// п.18 аудита: раньше здесь был ещё один фоллбэк — матчинг по голой сумме
+// (amount_cents) без tier_name, который срабатывал в том числе для
+// "Shop Order". Это дыра: Shop Order ВСЕГДА приходит с payload.shop_items,
+// так что если тарифный item там не распознан (unresolvedItems выше по
+// коду), это значит либо баг маппинга direct_link_code, либо это вообще не
+// тариф — а не "давай угадаем по сумме". Любой сторонний Shop Order на
+// случайно совпадающую сумму ($99/$299/$499) без нужного товара в корзине
+// раньше засчитывался как оплата тарифа. Теперь матчинг по сумме работает
+// только для payload.type === "Subscription" (Ko-fi Membership — там
+// действительно нет shop_items и это единственный сигнал), и только если
+// tier_name не пришёл или не распознан.
 function resolvePlanWithoutShopItems(payload: KofiPayload): { plan_id: string; amount_cents: number } | null {
   if (payload.tier_name && TIER_TO_PLAN_ID[payload.tier_name]) {
     return TIER_TO_PLAN_ID[payload.tier_name];
+  }
+  if (payload.type !== "Subscription") {
+    // Shop Order без распознанного tier_name и без совпавшего
+    // direct_link_code в shop_items — не угадываем по сумме, оставляем
+    // resolvedPlan == null. Дальше по коду это залогируется как
+    // "unrecognized direct_link_code" для ручной проверки.
+    return null;
   }
   const amountCents = Math.round(parseFloat(payload.amount) * 100);
   return Object.values(TIER_TO_PLAN_ID).find((t) => t.amount_cents === amountCents) ?? null;
