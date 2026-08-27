@@ -1,7 +1,20 @@
 // supabase/functions/expire-orders/index.ts
 //
-// Called every 5 minutes by pg_cron (see 20260818000002_cron_expire_orders.sql).
-// The actual DB update is already done by public.expire_stale_orders() in SQL
+// ФІКС (аудит FINAL B2): раніше цей коментар посилався на
+// 20260818000002_cron_expire_orders.sql — файлу з таким pg_cron-
+// розкладом ніколи не існувало в репозиторії, хоча коментар описував
+// його як вже підключений (той самий патерн "фікс задокументований, але
+// не написаний", що і в знахідці №9). Функція public.expire_stale_orders()
+// тепер РЕАЛЬНО існує (supabase/migrations/20260827000001_expire_stale_orders_function.sql),
+// але pg_cron.schedule() до неї НАВМИСНО ще не підключено (осознане
+// рішення — не займали крон-частину в цьому проході). Поки розклад не
+// підключений, цей Edge Function потрібно викликати вручну або з
+// зовнішнього тригера — САМ ПО СОБІ він ні на що не підписаний.
+// Захисний мінімум на цей час: supabase/functions/polygon-webhook/index.ts
+// вже фільтрує матчинг по expires_at незалежно від того, чи запускалась
+// колись ця функція.
+//
+// The actual DB update is done by public.expire_stale_orders() in SQL
 // for reliability; this function re-runs the same guarded update (harmless,
 // idempotent) and is the place to add side effects — logging, notifying
 // users their checkout expired, metrics, etc.

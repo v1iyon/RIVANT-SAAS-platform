@@ -342,10 +342,23 @@ serve(async (req) => {
     // also pulls kind/addon_kind/addon_slug (ADDON SCHEMA) so we know
     // which path to take — the matching logic itself (exact_amount_cents)
     // is untouched.
+    //
+    // FIX (аудит FINAL B2, безопасный минимум): раньше матчинг смотрел
+    // ТОЛЬКО на status='pending', не проверяя expires_at — заказ, который
+    // по всем признакам должен был "сгореть" (клиент передумал/ошибся
+    // суммой), мог быть неожиданно закрыт чужим, не связанным с ним
+    // переводом той же суммы спустя дни/недели, если он всё ещё оставался
+    // status='pending' (потому что public.expire_stale_orders() ещё не
+    // подключён к расписанию — см. миграцию
+    // 20260827000001_expire_stale_orders_function.sql). Этот фильтр
+    // работает независимо от того, успел ли отработать крон истечения:
+    // просроченный заказ никогда не подхватится платежом, даже если сам
+    // expire_stale_orders() ещё ни разу не запускался.
     let orderQuery = admin
       .from("orders")
       .select("id, user_id, plan_id, exact_amount_cents, status, kind, addon_kind, addon_slug")
-      .eq("status", "pending");
+      .eq("status", "pending")
+      .gte("expires_at", new Date().toISOString());
 
     if (AMOUNT_TOLERANCE_CENTS > 0) {
       orderQuery = orderQuery
