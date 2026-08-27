@@ -1,6 +1,6 @@
 // app/api/connect-stripe/route.js
 import { createClient } from "@supabase/supabase-js";
-import crypto from "crypto";
+import { encrypt } from "@/lib/crypto";
 import { requireUser, UnauthorizedError } from "@/lib/require-user";
 
 export const runtime = "nodejs";
@@ -17,18 +17,6 @@ const admin = createClient(
 // бути в integrations_selected — це і є той самий слот, який клієнт обрав
 // через /api/integrations-select.
 const UNLIMITED_PLANS = ["scale", "trial"];
-
-function getKey() {
-  return crypto.createHash("sha256").update(process.env.ENCRYPTION_KEY || "").digest();
-}
-
-function encrypt(text) {
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv("aes-256-gcm", getKey(), iv);
-  const encrypted = Buffer.concat([cipher.update(text, "utf8"), cipher.final()]);
-  const authTag = cipher.getAuthTag();
-  return Buffer.concat([iv, authTag, encrypted]).toString("base64");
-}
 
 async function verifyStripeKey(apiKey) {
   const res = await fetch("https://api.stripe.com/v1/charges?limit=1", {
@@ -122,6 +110,20 @@ export async function POST(req) {
     const encrypted = encrypt(apiKey);
     const keyPreview = apiKey.slice(0, 12) + "..." + apiKey.slice(-4);
 
+    // ФІКС (аудит #2, знахідка №9): пробуємо одразу зареєструвати
+    // per-business webhook endpoint у Stripe-акаунті клієнта тим самим
+    // restricted key — щоб метрики оновлювались майже одразу після оплати,
+    // а не чекали до годинного крону. Best-effort: якщо у ключа нема права
+    // "Webhook Endpoints: Write" (клієнт видав вужчий ключ) — просто
+    // лишаємось на кроні, як і раніше, нічого не ламаємо і не блокуємо
+    // підключення через це.
+    const { ensureStripeWebhook } = await import("../../../lib/stripe-webhook.mjs");
+    const webhook = await ensureStripeWebhook(apiKey, business.id, encrypt);
+    const config = {
+      backfill_pending: true,
+      ...(webhook ? { webhook_id: webhook.id, webhook_secret_encrypted: webhook.secretEncrypted } : {}),
+    };
+
     const { data: existing } = await admin
       .from("integrations")
       .select("id")
@@ -132,7 +134,7 @@ export async function POST(req) {
     if (existing) {
       await admin
         .from("integrations")
-        .update({ api_key_encrypted: encrypted, status: "connected", key_preview: keyPreview, config: { backfill_pending: true } })
+        .update({ api_key_encrypted: encrypted, status: "connected", key_preview: keyPreview, config })
         .eq("id", existing.id);
     } else {
       await admin.from("integrations").insert({
@@ -141,7 +143,7 @@ export async function POST(req) {
         api_key_encrypted: encrypted,
         status: "connected",
         key_preview: keyPreview,
-        config: { backfill_pending: true },
+        config,
       });
     }
 

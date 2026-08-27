@@ -1,7 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
-import { decrypt } from "../lib/crypto.js";
+import { decrypt, encrypt } from "../lib/crypto.js";
 import { logError } from "../lib/log-error.js";
 import { sendAlertToBusiness, hasRecentAlert, resolveSensitivityMultiplier, getUserContact } from "../lib/alerts.mjs";
+import { ensureStripeWebhook } from "../lib/stripe-webhook.mjs";
 
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
@@ -248,6 +249,30 @@ async function main(businessId, options = {}) {
   for (const integ of integrations) {
     try {
       const apiKey = decrypt(integ.api_key_encrypted);
+
+      // ФІКС (аудит #2, знахідка №9, self-heal): для інтеграцій, підключених
+      // ДО цього фіксу (або де перша спроба зареєструвати webhook не
+      // вдалась — наприклад, ключ на той момент не мав потрібного права),
+      // config.webhook_secret_encrypted відсутній. Пробуємо ще раз тут, але
+      // не на КОЖНОМУ годинному прогоні — це або марно спалює запити до
+      // Stripe API для ключів, у яких права дійсно нема, або взагалі не
+      // потрібно для тих, у кого вебхук вже є. Ретраїмо не частіше разу на
+      // 24 години (webhook_last_attempt_at).
+      if (!integ.config?.webhook_secret_encrypted) {
+        const lastAttempt = integ.config?.webhook_last_attempt_at
+          ? new Date(integ.config.webhook_last_attempt_at).getTime()
+          : 0;
+        if (Date.now() - lastAttempt > 24 * 3600 * 1000) {
+          const webhook = await ensureStripeWebhook(apiKey, integ.business_id, encrypt);
+          const nextConfig = {
+            ...(integ.config || {}),
+            webhook_last_attempt_at: new Date().toISOString(),
+            ...(webhook ? { webhook_id: webhook.id, webhook_secret_encrypted: webhook.secretEncrypted } : {}),
+          };
+          await admin.from("integrations").update({ config: nextConfig }).eq("id", integ.id);
+          integ.config = nextConfig; // тримаємо in-memory об'єкт актуальним для решти цього прогону
+        }
+      }
 
       // Тепер тягнемо business (і його timezone) ОДРАЗУ — раніше цей запит
       // стояв нижче, ПІСЛЯ gap-detection і групування charges по датах, тому

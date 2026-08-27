@@ -51,8 +51,16 @@ const RECEIVING_WALLET = Deno.env.get("POLYGON_RECEIVING_WALLET")!; // один 
 const ORDER_TTL_MINUTES = 30;
 const MAX_OFFSET_ATTEMPTS = 25;
 
+// ФІКС (аудит #2, знахідка №16): "*" пропускав виклик цієї функції з
+// будь-якого домену. Ендпоінт захищений JWT, не куками, тож класичний CSRF
+// тут не працює — це радше гігієна, ніж дірка. Звужуємо до реального
+// домену RIVANT (той самий SITE_URL/фолбек, що вже використовується в
+// src/bot.js), через env-змінну, щоб не хардкодити продакшн-домен прямо в
+// Deno-функції (staging/preview деплої можуть відрізнятись).
+const ALLOWED_ORIGIN = Deno.env.get("SITE_URL") || "https://rivant-os.vercel.app";
+
 const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "*", // tighten to your domain in production
+  "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
