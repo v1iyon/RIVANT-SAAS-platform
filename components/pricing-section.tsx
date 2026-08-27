@@ -158,7 +158,10 @@ export function PricingSection() {
         window.location.href = result.url; // e.g. business_setup -> calendar booking
       } else if (result.mode === "checkout") {
         await loadPaddle();
-        openPaddleCheckout({ priceId: result.priceId, email: data.session.user.email!, plan: serviceType });
+        // ФІКС (аудит FINAL B3): передаємо весь result.customData від
+        // сервера (містить business_id), а не збираємо власний урізаний
+        // об'єкт { email, plan } — див. коментар у lib/paddle-client.ts.
+        openPaddleCheckout({ priceId: result.priceId, email: data.session.user.email!, customData: result.customData });
       } else {
         // lead_captured — payment not wired up yet, request already sent to you via Telegram
         window.location.href = "/dashboard?order=received";

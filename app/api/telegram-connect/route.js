@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { requireUser, UnauthorizedError } from "@/lib/require-user";
+import { ensureTrial } from "@/lib/ensure-trial";
 
 const admin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -37,13 +38,14 @@ export async function POST(req) {
     if (error) return Response.json({ error: error.message }, { status: 500 });
     appUser = created;
 
-    const trialEnd = new Date(Date.now() + 14 * 24 * 3600 * 1000).toISOString();
-    await admin.from("subscriptions").insert({
-      user_id: appUser.id,
-      plan: "trial",
-      access_status: "trial",
-      current_period_end: trialEnd,
-    });
+    // ФІКС (аудит #2, знахідка №14): та сама lib/ensure-trial.js, що й у
+    // subscription-status/route.js — раніше тут була окрема копія цієї
+    // логіки (і, на відміну від subscription-status, помилка insert
+    // взагалі не перевірялась).
+    const { error: trialErr } = await ensureTrial(appUser.id);
+    if (trialErr) {
+      console.error("telegram-connect: failed to create trial subscription:", trialErr);
+    }
   } else {
     // язык мог смениться на сайте — обновляем при каждом переподключении
     await admin.from("users").update({ language: lang }).eq("id", appUser.id);

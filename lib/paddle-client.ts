@@ -37,19 +37,33 @@ export function loadPaddle(): Promise<void> {
   return paddleReady;
 }
 
+// ФІКС (аудит FINAL B3): раніше приймала лише { priceId, email, plan } і
+// сама жорстко збирала customData: { email, plan } — business_id, який
+// /api/orders/create СПЕЦІАЛЬНО готує в result.customData, губився по
+// дорозі. Вебхук (app/api/webhooks/paddle/route.js) для допуслуг
+// вимагає custom_data.business_id і без нього тихо відповідає 200 OK,
+// нічого не створюючи — гроші списались, послуга — ні. Зараз ця гілка
+// недосяжна (усі три допуслуги йдуть через Ko-fi/крипту, не через
+// Paddle), але лишати міну для моменту, коли Paddle увімкнуть під
+// допуслуги, не варто.
+//
+// Тепер приймає весь customData цілим об'єктом від сервера (як він є в
+// result.customData з /api/orders/create), а не збирає його сама з
+// урізаного набору полів — це і є "єдине джерело правди" про те, що
+// має піти у вебхук.
 export function openPaddleCheckout({
   priceId,
   email,
-  plan,
+  customData,
 }: {
   priceId: string;
   email: string;
-  plan: string;
+  customData?: Record<string, unknown>;
 }) {
   window.Paddle.Checkout.open({
     items: [{ priceId, quantity: 1 }],
     customer: { email },
-    customData: { email, plan },
+    customData: customData ?? { email },
     settings: {
       successUrl: `${window.location.origin}/dashboard?checkout=success`,
     },

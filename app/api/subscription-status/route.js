@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { requireUser, UnauthorizedError } from "@/lib/require-user";
+import { ensureTrial } from "@/lib/ensure-trial";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -44,17 +45,10 @@ export async function GET(req) {
     .maybeSingle();
 
   if (!sub) {
-    const periodEnd = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
-    const { data: created, error } = await admin
-      .from("subscriptions")
-      .insert({
-        user_id: appUser.id,
-        plan: "trial",
-        access_status: "trial",
-        current_period_end: periodEnd,
-      })
-      .select("plan, access_status, current_period_end")
-      .maybeSingle();
+    // ФІКС (аудит #2, знахідка №14): раніше створення trial-підписки було
+    // продубльоване тут окремим блоком — тепер спільна lib/ensure-trial.js,
+    // та сама, що й у telegram-connect/route.js.
+    const { sub: created, error } = await ensureTrial(appUser.id);
 
     if (error) {
       return Response.json(
