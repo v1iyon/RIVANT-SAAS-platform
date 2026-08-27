@@ -371,9 +371,32 @@ serve(async (req) => {
     const { data: matchedOrderRaw, error: matchErr } = await orderQuery.maybeSingle();
 
     if (matchErr || !matchedOrderRaw) {
+      // FIX (audit #3 follow-up): this branch used to only push a
+      // result into the in-memory `results` array, which is returned in
+      // the HTTP response to Alchemy — nobody reads that. Real USDC that
+      // doesn't match a pending order (underpayment, expired order, or a
+      // transfer with no corresponding checkout) was silently untracked
+      // anywhere in the database, despite `public.unmatched_payments`
+      // existing specifically for this case since migration
+      // 0001_crypto_payments.sql. Insert here so the money is at least
+      // visible for manual reconciliation/refund instead of vanishing.
+      const { error: unmatchedErr } = await admin.from("unmatched_payments").upsert(
+        {
+          tx_hash: hash,
+          amount_cents: amountCents,
+          token: "USDC",
+          raw_activity: activity,
+        },
+        { onConflict: "tx_hash", ignoreDuplicates: true },
+      );
+      if (unmatchedErr) {
+        await logError(admin, "Failed to record unmatched crypto payment", {
+          hash,
+          amountCents,
+          error: unmatchedErr,
+        });
+      }
       results.push({ hash, matched: false, reason: "no_matching_pending_order" });
-      // In production: alert on this. It means either an underpayment,
-      // an expired order, or a transfer with no corresponding checkout.
       continue;
     }
 
