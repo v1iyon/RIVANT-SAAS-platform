@@ -23,6 +23,31 @@
 // and BOTH this file and kofi-webhook's DIRECT_LINK_CODE_TO_PLAN_ID need
 // updating.
 //
+// --------------------------------------------------------------------------
+// FIX (subscriptions_owner_read / userId — same class of bug already fixed
+// in AddonCheckoutModal.tsx for businesses/addon_subscriptions):
+//
+//   `userId` passed into this component is the raw Supabase auth uid
+//   (`data.session.user.id` in pricing-section.tsx). But subscriptions.user_id
+//   is a foreign key into public.users.id, not auth.users.id — both
+//   kofi-webhook and app/api/webhooks/paddle/route.js write user_id from
+//   `public.users.id`, resolved via auth_user_id. The old RLS policy
+//   compared auth.uid() = user_id, so it never matched, and this component
+//   was filtering .eq("user_id", userId) with the raw auth uid too — same
+//   two different UUIDs, same mismatch.
+//
+//   Practical effect: the "Waiting for payment confirmation" screen spun
+//   forever on the Ko-fi/card path even after kofi-webhook had already
+//   activated the subscription server-side — both the Realtime watch and
+//   the 15s poll fallback always got zero rows back.
+//
+//   Fixed the same way as AddonCheckoutModal.tsx: resolve public.users.id
+//   from auth_user_id first (see resolvedUserId below), then use THAT id
+//   for both the Realtime filter and the poll query. Paired with a
+//   migration fixing subscriptions_owner_read to compare against
+//   public.users.id instead of auth.uid() — needs both sides, RLS fix
+//   alone still leaves the client filtering on the wrong id.
+//
 // CHANGELOG (this fix):
 //   1. Crypto tab now fires createCryptoOrder() the moment the tab is
 //      clicked (when initialPlan is set), instead of waiting for a second
@@ -170,6 +195,10 @@ export default function PaymentModal({
   // Plan awaiting confirmation on the KofiRedirectConfirm screen — set the
   // moment the user clicks a Ko-fi CTA, cleared once they cancel/confirm.
   const [pendingKofiPlan, setPendingKofiPlan] = useState<PlanType | null>(null);
+  // Resolved public.users.id — see FIX comment at the top of this file.
+  // `userId` prop is the raw auth uid; subscriptions.user_id stores
+  // public.users.id, so we resolve it once before filtering/watching.
+  const [resolvedUserId, setResolvedUserId] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const supabase = useRef(createClient()).current;
 
@@ -180,11 +209,32 @@ export default function PaymentModal({
     }
   };
 
-  const checkSubscriptionOnce = async () => {
+  // Resolve public.users.id from the auth uid as soon as we might need it
+  // (entering card-waiting) — same lazy-resolve pattern as
+  // AddonCheckoutModal.tsx's businessId effect.
+  useEffect(() => {
+    if (phase !== "card-waiting" || resolvedUserId) return;
+
+    (async () => {
+      const { data: profile, error: profileError } = await supabase
+        .from("users")
+        .select("id")
+        .eq("auth_user_id", userId)
+        .maybeSingle();
+
+      if (profileError || !profile) {
+        console.error("[PaymentModal] could not resolve public.users.id for auth uid", profileError, userId);
+        return;
+      }
+      setResolvedUserId(profile.id as string);
+    })();
+  }, [phase, resolvedUserId, userId, supabase]);
+
+  const checkSubscriptionOnce = async (uid: string) => {
     const { data, error } = await supabase
       .from("subscriptions")
       .select("access_status")
-      .eq("user_id", userId)
+      .eq("user_id", uid)
       .maybeSingle();
 
     if (!error && data?.access_status === "active") {
@@ -194,14 +244,16 @@ export default function PaymentModal({
   };
 
   // Realtime watch + 15s poll fallback while waiting on the Ko-fi flow.
+  // Waits on resolvedUserId (public.users.id), not the raw userId prop —
+  // see FIX comment at the top of this file.
   useEffect(() => {
-    if (phase !== "card-waiting") return;
+    if (phase !== "card-waiting" || !resolvedUserId) return;
 
     const channel = supabase
-      .channel(`subscriptions-watch-${userId}`)
+      .channel(`subscriptions-watch-${resolvedUserId}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "subscriptions", filter: `user_id=eq.${userId}` },
+        { event: "*", schema: "public", table: "subscriptions", filter: `user_id=eq.${resolvedUserId}` },
         (payload) => {
           const row = payload.new as { access_status?: string };
           if (row?.access_status === "active") {
@@ -213,14 +265,14 @@ export default function PaymentModal({
       )
       .subscribe();
 
-    pollRef.current = setInterval(checkSubscriptionOnce, 15000);
+    pollRef.current = setInterval(() => checkSubscriptionOnce(resolvedUserId), 15000);
 
     return () => {
       supabase.removeChannel(channel);
       stopPolling();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, userId]);
+  }, [phase, resolvedUserId]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -228,6 +280,7 @@ export default function PaymentModal({
       setMethod("card");
       setCryptoOrder(null);
       setPendingKofiPlan(null);
+      setResolvedUserId(null);
       stopPolling();
     }
   }, [isOpen]);
