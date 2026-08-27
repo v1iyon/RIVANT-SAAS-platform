@@ -390,8 +390,8 @@ async function main(businessId, options = {}) {
       const nowSec = Math.floor(Date.now() / 1000);
       const todayMidnightSec = getLocalMidnightUnixSec(bizTimezone, nowSec);
       const elapsedTodaySec = nowSec - todayMidnightSec;
-      const last24h = sumChargesWindow(todayMidnightSec, nowSec + 1);
-      const prev24h = sumChargesWindow(todayMidnightSec - 24 * 3600, todayMidnightSec - 24 * 3600 + elapsedTodaySec + 1);
+      let last24h = sumChargesWindow(todayMidnightSec, nowSec + 1);
+      let prev24h = sumChargesWindow(todayMidnightSec - 24 * 3600, todayMidnightSec - 24 * 3600 + elapsedTodaySec + 1);
 
       // Не обновляем метрики, если подписка не активна (трайл/план закончился)
       const { data: subRow } = await admin
@@ -440,6 +440,51 @@ async function main(businessId, options = {}) {
       // ("add"), Stripe продовжує писати revenue як завжди, а
       // shopify-sync.mjs додає свою суму зверху (див. upsertShopifyRevenue).
       const shopifyRevenueAuthoritative = shopifyConnected && shopifyIntegration?.config?.revenue_mode !== "add";
+
+      // ФІКС (аудит #2, знахідка №2): раніше last24h/prev24h (бейдж "Наживо"
+      // на дашборді + поріг revenue_drop) рахувалися ВИКЛЮЧНО зі Stripe
+      // charges — навіть коли shopifyRevenueAuthoritative, тобто саме тоді,
+      // коли Shopify є ЄДИНИМ справжнім джерелом revenue, а Stripe у
+      // дашборді — просто платіжний процесор, який може взагалі не бачити
+      // замовлення напряму (Shopify Payments замість ручного Stripe-гейтвею).
+      // Для такого бізнесу бейдж "Наживо" і алерт "Дохід впав" могли
+      // постійно показувати $0 / мовчати, поки реальна виручка йшла нормально.
+      //
+      // Простіший і швидший фікс, ніж окремий rolling-запит до Shopify
+      // Orders API: беремо вже порахований посуточний revenue з
+      // metrics_computed (його пише shopify-sync.mjs через
+      // upsertShopifyRevenue за КОЖЕН синк) за сьогодні/вчора замість
+      // ковзного 24-годинного вікна по Stripe-чарджах. Це наближення
+      // (календарний день, а не строге ковзне вікно), але воно узгоджено з
+      // тим, що вже показують графіки і сам дашборд для Shopify-бізнесів.
+      if (shopifyRevenueAuthoritative) {
+        const todayLocalStr = localDateStr(bizTimezone, nowSec);
+        const yesterdayLocalStr = localDateStr(bizTimezone, todayMidnightSec - 24 * 3600);
+        const { data: shopifyRows, error: shopifyRowsErr } = await admin
+          .from("metrics_computed")
+          .select("date, revenue, orders")
+          .eq("business_id", business.id)
+          .in("date", [todayLocalStr, yesterdayLocalStr]);
+        if (shopifyRowsErr) {
+          console.error(`sync-stripe-core: failed to load Shopify-authoritative rolling metrics for ${business.id}:`, shopifyRowsErr.message);
+        } else {
+          const todayRow = shopifyRows?.find((r) => r.date === todayLocalStr);
+          const yesterdayRow = shopifyRows?.find((r) => r.date === yesterdayLocalStr);
+          // stripeFee лишаємо 0 — у Shopify-режимі Stripe тут не платіжний
+          // гейтвей, комісію Stripe окремо не рахуємо (собівартість і так
+          // приходить через expenses/COGS, див. costPct нижче).
+          last24h = {
+            revenue: Number(todayRow?.revenue || 0),
+            orders: Number(todayRow?.orders || 0),
+            stripeFee: 0,
+          };
+          prev24h = {
+            revenue: Number(yesterdayRow?.revenue || 0),
+            orders: Number(yesterdayRow?.orders || 0),
+            stripeFee: 0,
+          };
+        }
+      }
 
       const costPct = shopifyConnected ? 0 : Number(business.cost_pct) || 30;
 
@@ -518,10 +563,13 @@ async function main(businessId, options = {}) {
         // відпрацював останнім (Stripe чи Shopify), цифра стрибала б туди-
         // сюди. shopify-sync.mjs (upsertShopifyRevenue) лишається єдиним,
         // хто пише revenue за цю дату в такому режимі.
-        // ВІДОМЕ ОБМЕЖЕННЯ: rolling_metrics (бейдж "Наживо" на дашборді) і
-        // поріг revenue_drop нижче за текстом досі рахуються тільки зі
-        // Stripe-даних навіть у цьому режимі — це наступний крок, не чіпаємо
-        // в цьому проході, щоб не ламати вже робочі алерти наосліп.
+        // ФІКС (аудит #2, знахідка №2): раніше тут був коментар про відоме
+        // обмеження — rolling_metrics/revenue_drop рахувались тільки зі
+        // Stripe навіть коли Shopify авторитетний. Тепер last24h/prev24h
+        // вище вже підмінені на Shopify-дані для цього режиму (див. блок
+        // "shopifyRevenueAuthoritative" вище) — цей if лишається лише для
+        // того, щоб не писати сюди Stripe-revenue в самому metrics_computed
+        // (це й раніше робив виключно shopify-sync.mjs).
         if (!shopifyRevenueAuthoritative) {
           const { error: upsertErr } = await admin.from("metrics_computed").upsert(
             {
@@ -534,6 +582,23 @@ async function main(businessId, options = {}) {
             },
             { onConflict: "business_id,date" }
           );
+          // ФІКС (аудит #2, знахідка №4): раніше помилка тут ніде не
+          // перевірялась і не логувалась — якщо upsert падав для якоїсь
+          // дати (наприклад, реальний onConflict-індекс у проді не
+          // збігається з тим, що очікує код — див. знахідку №3), день
+          // просто не записувався, крон рапортував "успіх", і ніхто про це
+          // не дізнавався. Тепер логуємо так само, як в трьох сусідніх
+          // місцях з такою самою формою помилки (shopify-sync.mjs,
+          // lib/alerts.mjs).
+          if (upsertErr) {
+            console.error(`sync-stripe-core: failed to write metrics_computed for ${business.id} ${date}:`, upsertErr.message);
+            await logError({
+              source: "sync-stripe-core:metrics_computed_upsert",
+              message: upsertErr.message,
+              details: { date, revenue: agg.revenue, cost, orders: agg.orders },
+              businessId: business.id,
+            });
+          }
         }
 
         if (date !== latestDate) continue; // см. комментарий про фикс спама выше

@@ -10,9 +10,9 @@ export async function POST(req) {
   // email больше не берём из body — это самая опасная из дыр п. 1.1:
   // раньше зная чужой email можно было необратимо удалить чужой аккаунт
   // целиком, без входа в него.
-  let email;
+  let email, authUserId;
   try {
-    ({ email } = await requireUser());
+    ({ email, id: authUserId } = await requireUser());
   } catch (e) {
     if (e instanceof UnauthorizedError) return Response.json({ error: "unauthorized" }, { status: 401 });
     throw e;
@@ -21,6 +21,15 @@ export async function POST(req) {
   const { data: user } = await admin.from("users").select("id").eq("email", email).maybeSingle();
   if (!user) return Response.json({ error: "Account not found" }, { status: 404 });
 
+  // ФІКС (аудит #2, знахідка №8): userId нижче — це public.users.id,
+  // потрібен для чистки ВСІХ таблиць застосунку (вони посилаються саме на
+  // нього). Але для видалення логіну через admin.auth.admin.deleteUser()
+  // потрібен auth.users.id — це ДРУГИЙ, окремий UUID (задокументовано і в
+  // create-order/index.ts через колонку auth_user_id). Раніше сюди
+  // помилково передавався public.users.id: усі дані стирались, але
+  // Auth-логін лишався — людина могла й далі залогінитись тим самим
+  // паролем після "Видалити акаунт". authUserId беремо напряму з
+  // requireUser() (auth.getUser().id), а не з таблиці users.
   const userId = user.id;
 
   try {
@@ -57,7 +66,16 @@ export async function POST(req) {
 
     // И сам логин в Supabase Auth — без этого человек мог бы снова
     // войти с тем же email/паролем, хотя все данные уже удалены.
-    await admin.auth.admin.deleteUser(userId);
+    // ФІКС (знахідка №8): правильний auth.users.id + перевірка помилки
+    // (раніше повертана помилка взагалі нігде не перевірялась).
+    const { error: authDeleteErr } = await admin.auth.admin.deleteUser(authUserId);
+    if (authDeleteErr) {
+      console.error("delete-account: failed to delete auth user:", authDeleteErr.message);
+      return Response.json(
+        { error: "Account data deleted, but login removal failed — contact support" },
+        { status: 500 }
+      );
+    }
 
     return Response.json({ success: true });
   } catch (err) {

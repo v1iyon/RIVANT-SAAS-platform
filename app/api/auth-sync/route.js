@@ -1,10 +1,20 @@
 import { createClient } from "@supabase/supabase-js";
 import { getSessionUser } from "@/lib/require-user";
+import { getClientIp, checkRateLimit } from "@/lib/rate-limit";
 
 const admin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_KEY
 );
+
+// ФІКС (аудит #2, знахідка №7): цей роут навмисно приймає POST без сесії
+// (кейс (a) нижче — одразу після signUp(), до підтвердження email). Але
+// без сесії будь-хто міг слати POST з довільним email і: (1) по коду
+// відповіді (200 новий / 401 вже є) дізнаватись, чи email вже
+// зареєстрований у нас — енумерація бази клієнтів для таргетованого
+// фішингу; (2) без ліміту заливати таблицю users сміттєвими рядками
+// ботом. Той самий IP rate-limit, що вже стоїть на /api/contact.
+const RATE_LIMIT = { limit: 10, windowMs: 60 * 60 * 1000 };
 
 // auth-sync — особый случай в списке п.1.1: его вызывают в двух местах —
 // (a) сразу после supabase.auth.signUp() (components/navbar.tsx), когда
@@ -40,6 +50,15 @@ const admin = createClient(
 // часы триала стартуют в момент первого реального захода в кабинет, а не
 // по произвольному POST-запросу с чужим email в теле.
 export async function POST(req) {
+  const ip = getClientIp(req);
+  const { allowed, retryAfterSeconds } = checkRateLimit(`auth-sync:${ip}`, RATE_LIMIT);
+  if (!allowed) {
+    return Response.json(
+      { error: "too many requests" },
+      { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } }
+    );
+  }
+
   const { email, language } = await req.json();
   if (!email) return Response.json({ error: "email required" }, { status: 400 });
   const lang = ["EN", "DE", "UA"].includes(language) ? language : "EN";

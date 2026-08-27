@@ -88,13 +88,27 @@ function localDateStr(tz, dateInput) {
   }
 }
 
+// ФІКС (аудит #2, знахідка №5 — SSRF): раніше, якщо в домені вже БУЛА
+// крапка (а крапка є в БУДЬ-ЯКОМУ зовнішньому домені або IP-адресі), домен
+// пропускався як є без жодної перевірки. Будь-який клієнт міг підключити
+// "Shopify"-інтеграцію з shop_domain "169.254.169.254" (IP
+// cloud-metadata сервісу AWS/GCP) або довільним доменом — і сервер сам
+// ходив туди HTTPS POST-запитом із реальним Shopify access token у
+// заголовках (класичний SSRF: сканування внутрішньої мережі, крадіжка
+// cloud credentials, використання інфраструктури як проксі).
+//
+// Тепер приймаємо ТІЛЬКИ валідний *.myshopify.com хостнейм (єдиний формат,
+// у якому Shopify взагалі видає access tokens при підключенні магазину).
+// Все інше — null, і виклик далі по ланцюгу повинен трактувати null як
+// помилку підключення, а не намагатись синкати.
 function normalizeShopDomain(raw) {
-  let domain = (raw || "").trim().replace(/^https?:\/\//, "").replace(/\/$/, "");
+  let domain = (raw || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
   if (!domain) return null;
-  if (!domain.endsWith(".myshopify.com") && !domain.includes(".")) {
+  if (!domain.includes(".")) {
     domain = `${domain}.myshopify.com`;
   }
-  return domain;
+  const valid = /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(domain);
+  return valid ? domain : null;
 }
 
 // Извлекает числовой ID из Shopify GraphQL GID вида "gid://shopify/Order/123456".

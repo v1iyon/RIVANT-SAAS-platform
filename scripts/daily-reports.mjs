@@ -25,6 +25,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { getUserContact, sendDailyReport } from "../lib/alerts.mjs";
 import { logError } from "../lib/log-error.js";
+import { getFullMarginForDay } from "../lib/margin.js";
 
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
@@ -114,16 +115,25 @@ export async function runDailyReports() {
       if (kind === "morning") {
         // Вчорашній ПОВНИЙ день — останній рядок metrics_computed до сьогодні
         // (сьогодні — за локальною датою бізнесу, не UTC/Київ).
+        //
+        // ФІКС (аудит #2, знахідка №1): раніше тут бралось "сире" значення
+        // metrics_computed.margin_pct без витрат (реклама Meta/Google Ads,
+        // реальна собівартість з Shopify) — тому дайджест показував ІНШУ
+        // маржу, ніж кабінет/бот-команда "Метрики"/прогноз за той самий
+        // день. Тепер, як і всі інші три поверхні, доливаємо expenses через
+        // спільну getFullMarginForDay() з lib/margin.js.
         const { data: yesterday } = await admin
           .from("metrics_computed")
-          .select("revenue, margin_pct")
+          .select("date, revenue, cost")
           .eq("business_id", business.id)
           .lt("date", today)
           .order("date", { ascending: false })
           .limit(1)
           .maybeSingle();
         revenue = yesterday?.revenue ?? 0;
-        marginPct = yesterday?.margin_pct ?? 0;
+        marginPct = yesterday
+          ? (await getFullMarginForDay(business.id, yesterday.date, revenue, yesterday.cost)).marginPct
+          : 0;
 
         const { data: openAlerts } = await admin
           .from("alerts_log")
@@ -133,14 +143,17 @@ export async function runDailyReports() {
         count = openAlerts?.length || 0;
       } else {
         // Сьогоднішній день (ще накопичується) — саме те, що бачить власник у "Огляд".
+        // Той самий фікс, що і для ранкової гілки вище — доливаємо expenses.
         const { data: todayRow } = await admin
           .from("metrics_computed")
-          .select("revenue, margin_pct")
+          .select("revenue, cost")
           .eq("business_id", business.id)
           .eq("date", today)
           .maybeSingle();
         revenue = todayRow?.revenue ?? 0;
-        marginPct = todayRow?.margin_pct ?? 0;
+        marginPct = todayRow
+          ? (await getFullMarginForDay(business.id, today, revenue, todayRow.cost)).marginPct
+          : 0;
 
         const { data: newAlerts } = await admin
           .from("alerts_log")

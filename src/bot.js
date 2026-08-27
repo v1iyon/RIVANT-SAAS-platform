@@ -1,6 +1,7 @@
 const { Bot, InlineKeyboard, Keyboard } = require("grammy");
 const { supabase } = require("./supabase");
 const { getDict, formatMoney } = require("./i18n");
+const { getFullMarginForDay } = require("../lib/margin");
 
 const bot = new Bot(process.env.BOT_TOKEN);
 const SITE_URL = process.env.SITE_URL || "https://rivant-os.vercel.app";
@@ -26,22 +27,8 @@ function localDateStr(tz) {
   }
 }
 
-// Доливає в margin_pct/cost реальні витрати (Shopify shipping, Meta/Google
-// Ads) за конкретний день — той самий крок, що вже робить /api/metrics для
-// кабінету (getFullMargin у sync-stripe-core.mjs для Telegram-алертів).
-// РАНІШЕ бот читав margin_pct напряму з metrics_computed (лише
-// Stripe-комісія/COGS-оцінка), тому показував іншу маржу, ніж кабінет.
-async function getFullMarginForDay(businessId, date, revenue, baseCost) {
-  const { data: expenseRows } = await supabase
-    .from("expenses")
-    .select("amount")
-    .eq("business_id", businessId)
-    .eq("date", date);
-  const extraTotal = (expenseRows || []).reduce((s, r) => s + Number(r.amount || 0), 0);
-  const fullCost = Number((Number(baseCost || 0) + extraTotal).toFixed(2));
-  const marginPct = revenue > 0 ? Number((((revenue - fullCost) / revenue) * 100).toFixed(1)) : 0;
-  return { fullCost, marginPct };
-}
+// getFullMarginForDay вынесена в lib/margin.js (аудит #2, находка №1) —
+// теперь единая формула для кабинета, бота, прогноза и дайджеста.
 
 function mainMenu(lang) {
   const d = getDict(lang);

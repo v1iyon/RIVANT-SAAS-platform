@@ -13,6 +13,17 @@ const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUP
 
 const TEAM_MEMBER_LIMIT = 10; // защита от злоупотребления одной ссылкой
 
+// ФІКС (аудит #2, знахідка №6): раніше expires_at взагалі не передавався
+// сюди — покладались на дефолт колонки в БД, який неможливо перевірити
+// (team_invites не в git-міграціях). Якщо дефолту нема, expires_at
+// приходить null, new Date(null) дає 1970 рік, і активація в bot.js
+// (`new Date(invite.expires_at) < new Date()`) мовчки ламається для всіх
+// нових інвайтів. Тепер передаємо явно, як уже зроблено для link_tokens у
+// telegram-connect/route.js. 7 днів — інвайт лишається дійсним ланкою, яку
+// власник надсилає учаснику команди, а не миттєвим one-time токеном для
+// логіну (у link_tokens — 30 хв), тож потрібен довший запас часу.
+const TEAM_INVITE_TTL_MS = 7 * 24 * 3600 * 1000;
+
 // Владелец выбирает категории ПРИ создании ссылки (например, "только
 // inventory" для логиста). Если фронт ничего не передал — оставляем
 // поведение как раньше (человек видит всё), а не молча режем доступ.
@@ -77,11 +88,13 @@ export async function POST(req) {
   }
 
   const token = "tm_" + crypto.randomUUID();
+  const expiresAt = new Date(Date.now() + TEAM_INVITE_TTL_MS).toISOString();
   const { error } = await admin.from("team_invites").insert({
     token,
     business_id: business.id,
     created_by: appUser.id,
     categories: safeCategories,
+    expires_at: expiresAt,
   });
   if (error) return Response.json({ error: error.message }, { status: 500 });
 

@@ -28,6 +28,18 @@ function looksLikeAKey(value) {
   return typeof value === "string" && value.trim().length >= 8;
 }
 
+// ФІКС (аудит #2, знахідка №5 — SSRF, друга лінія захисту): та сама
+// перевірка, що й normalizeShopDomain у scripts/shopify-sync.mjs — тепер
+// невалідний shop_domain (довільний зовнішній домен або IP, напр.
+// cloud-metadata "169.254.169.254") відхиляється тут же, при збереженні,
+// 400-кою, а не тільки мовчки під час наступного синку.
+function isValidShopifyDomain(raw) {
+  let domain = (raw || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
+  if (!domain) return false;
+  if (!domain.includes(".")) domain = `${domain}.myshopify.com`;
+  return /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(domain);
+}
+
 // Shopify (с 1 января 2026, Dev Dashboard): домен магазина + Client ID —
 // сам ключ (apiKey) для Shopify теперь означает Client Secret, а не готовый
 // shpat_ токен (см. lib/shopify-token.mjs). Meta Ads требует одно доп. поле
@@ -70,6 +82,9 @@ export async function POST(req) {
     const missingField = requiredFields.find((f) => !config?.[f]?.trim());
     if (missingField) {
       return Response.json({ error: `${missingField} is required for ${provider}` }, { status: 400 });
+    }
+    if (provider === "shopify" && !isValidShopifyDomain(config?.shop_domain)) {
+      return Response.json({ error: "invalid_shop_domain" }, { status: 400 });
     }
 
     const { data: user } = await admin.from("users").select("id").eq("email", email).maybeSingle();
