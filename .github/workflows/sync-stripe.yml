@@ -1,8 +1,20 @@
 name: Sync integrations (Stripe, Shopify, Meta Ads, Google Ads)
 
+# п.7 аудита: "0 * * * *" — ровно начало часа, самая перегруженная минута
+# во всём GitHub Actions, из-за чего запуски регулярно опаздывали или
+# пропускались целиком (и вместе с ними — утренний/вечерний дайджест,
+# который зависит от того, что этот job вообще выполнился внутри своего
+# 3-4-часового окна). Два фикса разом:
+#   1) время сдвинуто с :00 на :17 — вне пиковой минуты;
+#   2) запуск дважды в час (:17 и :47) вместо одного раза — если один
+#      прогон GitHub всё равно задержит/пропустит, второй в течение того
+#      же часа с высокой вероятностью попадёт в окно дайджеста (8-11 /
+#      20-23 по времени бизнеса) и в дедуп process-service-orders/
+#      backfill ниже. Не бесплатно по Actions-минутам, но каждый прогон
+#      короткий (несколько HTTP-запросов), а не iterating бизнес-логика.
 on:
   schedule:
-    - cron: "0 * * * *"
+    - cron: "17,47 * * * *"
   workflow_dispatch: {}
 
 jobs:
@@ -27,3 +39,22 @@ jobs:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: node scripts/run-sync.mjs
+
+      # п.9 аудита: раньше доставка допуслуг (What-If отчёт, дайджест) и
+      # бекфил истории при подключении интеграции зависели ТОЛЬКО от
+      # ручного клика в админке — process-service-orders и
+      # backfill-historical никогда никем не вызывались автоматически.
+      # Теперь оба дергаются тем же hourly-джобом, что и остальной синк —
+      # без ручного одобрения. continue-on-error, чтобы сбой одного не
+      # блокировал остальное (та же логика, что и в run-sync.mjs).
+      - name: Process pending service orders (What-If reports, etc.)
+        continue-on-error: true
+        run: |
+          curl -sf -X GET "https://rivant-os.vercel.app/api/cron/process-service-orders" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"
+
+      - name: Backfill historical data for newly connected integrations
+        continue-on-error: true
+        run: |
+          curl -sf -X GET "https://rivant-os.vercel.app/api/cron/backfill-historical" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"

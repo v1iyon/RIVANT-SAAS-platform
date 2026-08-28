@@ -1,12 +1,30 @@
 // app/api/cron/process-service-orders/route.js
-// Запускать раз в 2-3 хвилини (див. vercel.json) — це і є той "результат за
-// 5 хвилин без участі людини", про який йшлося: клієнт платить -> вебхук
-// створює pending service_order -> цей крон його підхоплює й доставляє.
+//
+// п.9 аудита: раньше этот роут не висел ни на каком расписании — только
+// ручная кнопка в админке. Теперь дергается дважды в час из GitHub Actions
+// (.github/workflows/sync-stripe.yml, тот же job, что и остальной синк) —
+// клиент платит -> вебхук создаёт pending service_order -> этот крон
+// подхватывает и доставляет, без ручного одобрения. Задержка доставки —
+// до ~30 минут вместо "раз в 2-3 минуты", как было в комментарии ниже
+// изначально (тот темп требовал бы Vercel Pro-крона — см. п.6/9 аудита);
+// ~30 минут — приемлемый компромисс для отчёта, который и так генерируется
+// не мгновенно.
 
 import { createClient } from "@supabase/supabase-js";
 import { isValidSecret } from "@/lib/verify-secret";
 import { buildReport } from "../../../../lib/whatif-report.mjs";
 import { renderServiceReportPdf } from "../../../../lib/service-report-pdf.mjs";
+
+// НАЙДЕНО при повторном аудите: в отличие от /api/sync-now (maxDuration=60),
+// этот роут вообще не объявлял maxDuration — а он последовательно рендерит
+// PDF и шлёт Telegram/email. Теперь этот роут дергается автоматически из
+// GitHub Actions (см. .github/workflows/sync-stripe.yml, п.9). Значение
+// ниже — на будущее, если перейдёшь на Vercel Pro; на подтверждённом Hobby
+// (см. п.6) оно ничего не меняет — жёсткий лимит 10с всё равно применяется
+// первым. Основная защита от таймаута теперь не здесь, а в виде обработки
+// по одному заказу за прогон + самоисцеления зависших "processing" — см.
+// комментарий в начале GET() ниже.
+export const maxDuration = 60;
 
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
@@ -79,11 +97,46 @@ export async function GET(req) {
   const isVercelCron = isValidSecret(bearerToken, process.env.CRON_SECRET);
   if (!isValidSecret(secret, process.env.CRON_SECRET) && !isVercelCron) return Response.json({ error: "unauthorized" }, { status: 401 });
 
+  // НАЙДЕНО при повторном аудите (после подтверждения, что план — Vercel
+  // Hobby): maxDuration=60 выше ничего не даёт — на Hobby жёсткий лимит 10с
+  // применяется независимо от объявленного значения (см. п.6 аудита). Раньше
+  // это была теоретическая проблема ("могут не уложиться"), но теперь роут
+  // дёргается автоматически каждые ~30 минут (см. sync-stripe.yml, п.9), а
+  // не по ручному клику раз в сколько-то дней — риск стал регулярным.
+  //
+  // Реальная опасность — не просто таймаут одного прогона, а ОСИРОТЕВШИЕ
+  // заказы: если платформа убьёт функцию посреди работы над заказом, он
+  // остаётся в статусе "processing" НАВСЕГДА — таблица не имеет колонки
+  // "когда начали processing", а select ниже фильтрует только "pending", то
+  // есть "processing"-заказ больше никогда и никем не подхватывается и
+  // отчёт клиенту не придёт, без какой-либо ошибки в логах.
+  //
+  // Фикс из двух частей:
+  //  1) Самоисцеление: в начале каждого прогона возвращаем в "pending"
+  //     любые заказы, всё ещё висящие в "processing" — раз прогоны не
+  //     параллелятся (один cron tick = один вызов) и каждый прогон занимает
+  //     не больше своего же таймаута, "processing"-заказ, доживший до
+  //     СЛЕДУЮЩЕГО прогона, гарантированно осиротел, а не "ещё обрабатывается".
+  //  2) Обрабатываем по ОДНОМУ заказу за прогон (было — до 20 подряд
+  //     последовательно) — тот же принцип, что уже применён в
+  //     backfill-historical, чтобы одна PDF-генерация + отправка укладывались
+  //     в 10с с запасом, а не гарантированно ловили таймаут на 3-4 заказе
+  //     очереди. При двух прогонах в час этого достаточно для текущего
+  //     объёма (см. п.9 аудита — "объём небольшой").
+  const { error: recoverErr } = await admin
+    .from("service_orders")
+    .update({ status: "pending" })
+    .eq("status", "processing");
+  if (recoverErr) {
+    console.error("process-service-orders: failed to recover stuck 'processing' orders:", recoverErr.message);
+  }
+
   const { data: orders } = await admin
     .from("service_orders")
     .select("*")
     .eq("status", "pending")
-    .limit(20);
+    .order("created_at", { ascending: true })
+    .limit(1);
 
   if (!orders?.length) return Response.json({ processed: 0 });
 
