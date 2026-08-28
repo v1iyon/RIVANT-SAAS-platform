@@ -56,7 +56,7 @@ async function sendEmail(to, subject, text) {
   await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from: "RIVANT Reports <onboarding@resend.dev>", to, subject, text }),
+    body: JSON.stringify({ from: "RIVANT Reports <hello@rivant-os.com>", to, subject, text }),
   });
 }
 
@@ -66,7 +66,7 @@ async function sendEmailWithAttachment(to, subject, text, buffer, filename) {
     method: "POST",
     headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      from: "RIVANT Reports <onboarding@resend.dev>",
+      from: "RIVANT Reports <hello@rivant-os.com>",
       to,
       subject,
       text,

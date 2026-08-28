@@ -61,7 +61,7 @@ export async function POST(req) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      from: "RIVANT Contact <onboarding@resend.dev>",
+      from: "RIVANT Contact <hello@rivant-os.com>",
       to: process.env.CONTACT_EMAIL,
       reply_to: email,
       subject: `New demo request from ${name} (${company || "no company"})`,
@@ -87,7 +87,7 @@ export async function POST(req) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: "RIVANT <onboarding@resend.dev>",
+        from: "RIVANT <hello@rivant-os.com>",
         to: email,
         subject: "We've received your request — RIVANT",
         text: `Hi,\n\nThanks for reaching out to RIVANT. We've received your request and will get back to you within 24 hours.\n\nIf it's urgent, you can also message us directly on Telegram: https://t.me/official_rivant\n\n— RIVANT Team`,
