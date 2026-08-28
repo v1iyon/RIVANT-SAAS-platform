@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { CheckCircle, AlertCircle, Lock } from "lucide-react";
 import { useLanguage } from "@/lib/translations";
+import { getMaxSlots, getIntegrationLockReason } from "@/lib/plan-slots";
 
 type LockReason = "expired" | "plan" | "selection" | null;
 
@@ -14,15 +15,21 @@ interface Props {
   placeholder: string;
   hint: string;
   isExpiredTrial?: boolean;
-  // "trial" даёт доступ як Growth (одна додаткова інтеграція), "growth" — одна,
-  // "scale" — без обмежень, "starter"/null — додаткові інтеграції недоступні.
+  // Кількість слотів залежить від тарифу (див. lib/plan-slots.js):
+  // "starter" — 1 слот, "growth" — 2, "scale"/"trial" — без обмежень,
+  // null/невідомий тариф — 0 (немає активної підписки).
   planTier?: string | null;
   // Поточний зафіксований вибір на billing-період (з subscriptions.integrations_selected).
   selectedProviders?: string[];
   onLockedClick?: () => void;
-  // Викликається після успішного підключення на Growth/Trial — щоб батьківський
-  // компонент одразу оновив selectedProviders і заблокував інші картки без релоаду.
-  onSelected?: (provider: string) => void;
+  // Викликається після успішного підключення, якщо на цьому тарифі ще був
+  // вільний слот — щоб батьківський компонент одразу оновив selectedProviders
+  // (повний, змерджений масив, а не тільки цей provider) і заблокував інші
+  // картки без релоаду. Раніше сюди передавався лише один provider і
+  // батьківський стан ПЕРЕЗАПИСУВАВСЯ (setSelectedProviders([p])) — це
+  // губило раніше обраний слот на Growth (2 слоти) при підключенні другого
+  // провайдера. Тепер картка сама рахує змерджений масив і віддає його.
+  onSelected?: (providers: string[]) => void;
   // Деяким провайдерам (Shopify — домен магазину, Meta Ads — Ad Account ID) мало
   // самого ключа. Якщо задано — рендериться друге поле, обов'язкове для підключення.
   extraField?: { key: string; label: string; placeholder: string };
@@ -44,11 +51,6 @@ interface Props {
   refreshToken?: number;
   syncFailed?: boolean;
 }
-
-// Trial навмисно НЕ в цьому списку: під час трайлу доступ повний, як на Scale,
-// щоб людина побачила всю цінність продукту до оплати. Обмеження на 1 інтеграцію
-// діє тільки для платного тарифу Growth.
-const SINGLE_PICK_TIERS = ["growth"];
 
 export function IntegrationConnectCard({
   email,
@@ -193,17 +195,26 @@ export function IntegrationConnectCard({
     };
   }, []);
 
-  // Визначаємо причину блокування, за пріоритетом: trial/план закінчився >
-  // немає доступу до додаткових інтеграцій на цьому тарифі > вибір уже
-  // зафіксований на іншому провайдері цього billing-періоду.
-  const lockReason: LockReason = isExpiredTrial
-    ? "expired"
-    : !planTier || planTier === "starter"
-    ? "plan"
-    : SINGLE_PICK_TIERS.includes(planTier) && selectedProviders.length > 0 && !selectedProviders.includes(provider)
-    ? "selection"
-    : null;
+  // ФІКС: раніше тут був захардкоджений `planTier === "starter" ? "plan"`,
+  // тобто Starter завжди трактувався як "інтеграція недоступна на цьому
+  // тарифі" — навіть коли бекенд (integrations-select/route.js) вже давно
+  // дозволяє Starter обрати 1 слот (Stripe АБО Shopify). Через це вже
+  // підключений і синкающийся Shopify показував червоний замок "доступно
+  // на Growth", а якщо синк ламався — юзер не міг сам ввести нові дані
+  // (кнопка "Підключити"/"Оновити підключення" перехоплювалась як locked
+  // ще ДО запиту на бекенд). Тепер логіка слотів одна на весь фронтенд і
+  // бекенд (lib/plan-slots.js) — Starter дає 1 слот, Growth 2, Scale/Trial
+  // безліміт, і карта блокується лише тоді, коли вільних слотів реально
+  // немає (selectedProviders.length >= maxSlots) і зайнятий слот — не цей
+  // provider.
+  const lockReason = getIntegrationLockReason({
+    isExpiredTrial,
+    planTier,
+    selectedProviders,
+    provider,
+  }) as LockReason;
 
+  const maxSlots = getMaxSlots(planTier);
   const locked = lockReason !== null;
 
   const triggerLockedToast = () => {
@@ -248,15 +259,29 @@ export function IntegrationConnectCard({
         return;
       }
 
-      // Тариф з обмеженням в 1 додаткову інтеграцію — одразу фіксуємо вибір.
-      if (planTier && SINGLE_PICK_TIERS.includes(planTier) && selectedProviders.length === 0) {
+      // Тариф з обмеженою кількістю слотів (Starter — 1, Growth — 2) — якщо
+      // ще лишався вільний слот і його ще не зайняв саме цей provider,
+      // одразу фіксуємо вибір. ФІКС: раніше тут перевірялось лише
+      // `selectedProviders.length === 0` і відправлявся масив з ОДНИМ
+      // provider — тобто підключення другого провайдера на Growth (2
+      // слоти) перезаписувало вибір і ГУБИЛО перший слот замість того, щоб
+      // додатись до нього. Тепер мерджимо з уже обраними і шлемо повний
+      // масив; повідомляємо батьківський компонент саме цим повним
+      // масивом (onSelected), а не одним provider.
+      if (
+        maxSlots !== undefined &&
+        maxSlots !== null &&
+        selectedProviders.length < maxSlots &&
+        !selectedProviders.includes(provider)
+      ) {
+        const merged = [...selectedProviders, provider];
         try {
           const selRes = await fetch("/api/integrations-select", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email, providers: [provider] }),
+            body: JSON.stringify({ email, providers: merged }),
           });
-          if (selRes.ok) onSelected?.(provider);
+          if (selRes.ok) onSelected?.(merged);
         } catch (e) {
           console.error("Failed to lock integration selection", e);
         }
@@ -378,6 +403,20 @@ export function IntegrationConnectCard({
     revenueModeSaving: language === "UA" ? "Зберігаємо..." : language === "DE" ? "Speichere..." : "Saving...",
   };
 
+  const planLabel = planTier ? planTier.charAt(0).toUpperCase() + planTier.slice(1) : "";
+  const maxSlotsLabel =
+    maxSlots === 1
+      ? language === "UA"
+        ? "1 інтеграцію"
+        : language === "DE"
+        ? "1 Integration"
+        : "1 integration"
+      : language === "UA"
+      ? `${maxSlots} інтеграції`
+      : language === "DE"
+      ? `${maxSlots} Integrationen`
+      : `${maxSlots} integrations`;
+
   const lockedTexts: Record<Exclude<LockReason, null>, { title: string; body: string; cta: string }> = {
     expired: {
       title: language === "UA" ? "Тариф не активний" : language === "DE" ? "Kein aktiver Tarif" : "No active plan",
@@ -390,14 +429,14 @@ export function IntegrationConnectCard({
       cta: language === "UA" ? "Переглянути тарифи" : language === "DE" ? "Tarife ansehen" : "View plans",
     },
     plan: {
-      title: language === "UA" ? "Доступно на тарифі Growth" : language === "DE" ? "Verfügbar im Growth-Tarif" : "Available on Growth plan",
+      title: language === "UA" ? "Потрібен активний тариф" : language === "DE" ? "Aktiver Tarif erforderlich" : "Active plan required",
       body:
         language === "UA"
-          ? `${displayName} доступний на тарифі Growth (1 інтеграція на вибір) або Scale (усі інтеграції).`
+          ? `Щоб підключити ${displayName}, потрібен активний тариф з вільним слотом інтеграції.`
           : language === "DE"
-          ? `${displayName} ist im Growth-Tarif (1 Integration nach Wahl) oder Scale-Tarif (alle Integrationen) verfügbar.`
-          : `${displayName} is available on the Growth plan (pick 1) or the Scale plan (all integrations).`,
-      cta: language === "UA" ? "Оновити тариф" : language === "DE" ? "Upgraden" : "Upgrade",
+          ? `Um ${displayName} zu verbinden, benötigen Sie einen aktiven Tarif mit einem freien Integrations-Slot.`
+          : `You need an active plan with a free integration slot to connect ${displayName}.`,
+      cta: language === "UA" ? "Переглянути тарифи" : language === "DE" ? "Tarife ansehen" : "View plans",
     },
     selection: {
       title:
@@ -408,11 +447,11 @@ export function IntegrationConnectCard({
           : "Selection locked",
       body:
         language === "UA"
-          ? `На тарифі Growth доступна 1 додаткова інтеграція. Ви вже обрали ${selectedProviders[0] || "іншу"} на цей billing-період — змінити можна після продовження підписки або переходу на Scale.`
+          ? `На тарифі ${planLabel} доступно ${maxSlotsLabel}. Зараз зайнято: ${selectedProviders.join(", ") || "інша інтеграція"} — щоб підключити ${displayName}, відключіть одну з них або перейдіть на тариф з більшою кількістю слотів.`
           : language === "DE"
-          ? `Der Growth-Tarif erlaubt 1 zusätzliche Integration. Sie haben bereits ${selectedProviders[0] || "eine andere"} für diesen Abrechnungszeitraum gewählt — Änderung ist erst nach Verlängerung oder Upgrade auf Scale möglich.`
-          : `Growth plan allows 1 additional integration. You've already picked ${selectedProviders[0] || "another one"} for this billing period — change it after renewal or by upgrading to Scale.`,
-      cta: language === "UA" ? "Перейти на Scale" : language === "DE" ? "Auf Scale upgraden" : "Upgrade to Scale",
+          ? `Der ${planLabel}-Tarif bietet ${maxSlotsLabel}. Aktuell belegt: ${selectedProviders.join(", ") || "eine andere Integration"} — trennen Sie eine davon oder upgraden Sie, um ${displayName} zu verbinden.`
+          : `The ${planLabel} plan gives you ${maxSlotsLabel}. Currently used by: ${selectedProviders.join(", ") || "another integration"} — disconnect one of them or upgrade to connect ${displayName}.`,
+      cta: language === "UA" ? "Переглянути тарифи" : language === "DE" ? "Tarife ansehen" : "View plans",
     },
   };
 

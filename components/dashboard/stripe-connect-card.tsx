@@ -4,11 +4,28 @@ import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { CheckCircle, AlertCircle, Lock } from "lucide-react";
 import { useLanguage } from "@/lib/translations";
+import { getMaxSlots, getIntegrationLockReason } from "@/lib/plan-slots";
+
+type LockReason = "expired" | "plan" | "selection" | null;
 
 interface Props {
   email: string;
-  locked?: boolean;
+  isExpiredTrial?: boolean;
+  // ФІКС: раніше Stripe взагалі не брав участі у системі слотів
+  // (integrations_selected) — картка була завжди "розблокована" незалежно
+  // від тарифу чи вибору, зробленого на Shopify/Meta Ads/Google Ads.
+  // Бекенд (/api/connect-stripe) вже давно вимагає, щоб на Starter/Growth
+  // "stripe" був у integrations_selected — а якщо Starter-клієнт обрав
+  // єдиним слотом Shopify, Stripe реально підключити було не можна, але
+  // картка мовчала про це до першого кліку "Підключити" (і то показувала
+  // сирий текст помилки з бекенду замість проактивного замка, як в інших
+  // картках). Тепер Stripe отримує ті самі planTier/selectedProviders/
+  // onSelected, що й IntegrationConnectCard, і рахує lockReason за тією ж
+  // спільною логікою (lib/plan-slots.js).
+  planTier?: string | null;
+  selectedProviders?: string[];
   onLockedClick?: () => void;
+  onSelected?: (providers: string[]) => void;
   /**
    * Forces the "connected" visual with demo data, regardless of the real
    * Stripe status fetched from /api/business-status. Used only by the
@@ -20,7 +37,15 @@ interface Props {
   demoConnected?: boolean;
 }
 
-export function StripeConnectCard({ email, locked = false, onLockedClick, demoConnected = false }: Props) {
+export function StripeConnectCard({
+  email,
+  isExpiredTrial = false,
+  planTier = null,
+  selectedProviders = [],
+  onLockedClick,
+  onSelected,
+  demoConnected = false,
+}: Props) {
   const { language } = useLanguage();
   const [apiKey, setApiKey] = useState("");
   const [status, setStatus] = useState<"checking" | "idle" | "loading" | "connected" | "error">("checking");
@@ -62,6 +87,18 @@ export function StripeConnectCard({ email, locked = false, onLockedClick, demoCo
     toastTimerRef.current = setTimeout(() => setShowLockedToast(false), 6000);
   };
 
+  // Та сама спільна логіка слотів, що й у IntegrationConnectCard (Shopify/
+  // Meta Ads/Google Ads) — див. lib/plan-slots.js. Раніше Stripe в ній
+  // взагалі не брав участі.
+  const lockReason = getIntegrationLockReason({
+    isExpiredTrial,
+    planTier,
+    selectedProviders,
+    provider: "stripe",
+  }) as LockReason;
+  const maxSlots = getMaxSlots(planTier);
+  const locked = lockReason !== null;
+
   // Ничего из реального состояния (status/keyPreview/lastSynced) не
   // трогаем и не перезаписываем — просто подменяем то, что рендерится,
   // пока идёт демо-шаг тура. Как только тур уходит с этого шага
@@ -91,6 +128,31 @@ export function StripeConnectCard({ email, locked = false, onLockedClick, demoCo
         setErrorMsg(data.error || "Connection failed");
         return;
       }
+
+      // Той самий механізм фіксації слоту, що й у IntegrationConnectCard —
+      // якщо на цьому тарифі ще лишався вільний слот, одразу зберігаємо
+      // "stripe" в integrations_selected, мерджачи з уже обраним (а не
+      // перезаписуючи його), щоб не загубити паралельно обраний Shopify/
+      // Meta Ads/Google Ads на Growth (2 слоти).
+      if (
+        maxSlots !== undefined &&
+        maxSlots !== null &&
+        selectedProviders.length < maxSlots &&
+        !selectedProviders.includes("stripe")
+      ) {
+        const merged = [...selectedProviders, "stripe"];
+        try {
+          const selRes = await fetch("/api/integrations-select", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, providers: merged }),
+          });
+          if (selRes.ok) onSelected?.(merged);
+        } catch (e) {
+          console.error("Failed to lock integration selection", e);
+        }
+      }
+
       setApiKey("");
       loadStatus();
       // Не ждём часовой cron — сразу дёргаем синк для этого бизнеса.
@@ -108,7 +170,13 @@ export function StripeConnectCard({ email, locked = false, onLockedClick, demoCo
   };
 
   const handleDisconnect = async () => {
-    if (locked) {
+    // Навмисно перевіряємо лише isExpiredTrial, а не повний locked — так
+    // само, як у IntegrationConnectCard: відключення вже підключеної
+    // інтеграції має лишатись доступним навіть якщо (гіпотетично) слот
+    // зайнятий, інакше клієнт не зможе звільнити його сам. selectedProviders
+    // свідомо НЕ звільняється тут — вибір лишається зафіксованим до кінця
+    // billing-періоду навіть після відключення.
+    if (isExpiredTrial) {
       triggerLockedToast();
       return;
     }
@@ -144,12 +212,6 @@ export function StripeConnectCard({ email, locked = false, onLockedClick, demoCo
     connecting: language === "UA" ? "Підключення..." : language === "DE" ? "Verbinde..." : "Connecting...",
     placeholder: "rk_test_... / rk_live_...",
     lockedTitle: language === "UA" ? "Тариф не активний" : language === "DE" ? "Kein aktiver Tarif" : "No active plan",
-    lockedBody:
-      language === "UA"
-        ? "Щоб підключити інтеграцію, потрібно оформити тариф."
-        : language === "DE"
-        ? "Um eine Integration zu verbinden, benötigen Sie einen aktiven Tarif."
-        : "You need an active plan to connect this integration.",
     lockedOk: language === "UA" ? "Гаразд" : language === "DE" ? "OK" : "OK",
     lockedViewPlans: language === "UA" ? "Переглянути тарифи" : language === "DE" ? "Tarife ansehen" : "View plans",
     demoDisconnectHint:
@@ -159,6 +221,32 @@ export function StripeConnectCard({ email, locked = false, onLockedClick, demoCo
         ? "Dies ist die Demo-Ansicht der Tour — Trennen ist hier nicht möglich"
         : "This is the tour's demo view — disconnecting isn't available here",
   };
+
+  // Динамічний текст замка залежно від причини (та сама схема, що й у
+  // IntegrationConnectCard) — раніше тут завжди був один статичний текст
+  // "Тариф не активний" незалежно від того, чи реально немає підписки, чи
+  // просто зайняті слоти.
+  const planLabel = planTier ? planTier.charAt(0).toUpperCase() + planTier.slice(1) : "";
+  const lockedTitle =
+    lockReason === "selection"
+      ? language === "UA"
+        ? "Вибір зафіксовано"
+        : language === "DE"
+        ? "Auswahl fixiert"
+        : "Selection locked"
+      : texts.lockedTitle;
+  const lockedBody =
+    lockReason === "selection"
+      ? language === "UA"
+        ? `На тарифі ${planLabel} зараз зайнято: ${selectedProviders.join(", ") || "інша інтеграція"} — щоб підключити Stripe, відключіть одну з них або перейдіть на тариф з більшою кількістю слотів.`
+        : language === "DE"
+        ? `Im ${planLabel}-Tarif ist derzeit belegt: ${selectedProviders.join(", ") || "eine andere Integration"} — trennen Sie eine davon oder upgraden Sie, um Stripe zu verbinden.`
+        : `On the ${planLabel} plan, currently used by: ${selectedProviders.join(", ") || "another integration"} — disconnect one of them or upgrade to connect Stripe.`
+      : language === "UA"
+      ? "Щоб підключити інтеграцію, потрібно оформити тариф."
+      : language === "DE"
+      ? "Um eine Integration zu verbinden, benötigen Sie einen aktiven Tarif."
+      : "You need an active plan to connect this integration.";
 
   if (displayStatus === "checking") {
     return (
@@ -174,7 +262,7 @@ export function StripeConnectCard({ email, locked = false, onLockedClick, demoCo
   return (
     <div className="bg-gray-900/30 rounded-xl p-5 border border-gray-800 relative">
       {locked && (
-        <div className="absolute top-4 right-4 text-red-400" title={texts.lockedTitle}>
+        <div className="absolute top-4 right-4 text-red-400" title={lockedTitle}>
           <Lock className="w-4 h-4" />
         </div>
       )}
@@ -240,8 +328,8 @@ export function StripeConnectCard({ email, locked = false, onLockedClick, demoCo
               <div className="flex items-start gap-2">
                 <Lock className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
                 <div>
-                  <p className="text-sm font-medium text-white">{texts.lockedTitle}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{texts.lockedBody}</p>
+                  <p className="text-sm font-medium text-white">{lockedTitle}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{lockedBody}</p>
                 </div>
               </div>
               <div className="flex gap-2 justify-end">
