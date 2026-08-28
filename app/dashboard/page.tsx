@@ -250,7 +250,18 @@ const sidebarItems = [
 ];
 
 // ========== КОМПОНЕНТ АНИМИРОВАННОГО ЧИСЛА ==========
-function AnimatedNumber({ value, prefix = "", suffix = "", changePercent = 0 }: { value: number; prefix?: string; suffix?: string; changePercent?: number }) {
+// ФІКС: раніше колір ЗАВЖДИ був "зелений якщо зросло" (isPositive =
+// changePercent >= 0), незалежно від того, ЩО саме зросло. Для Витрат чи
+// CAC зростання — це погана новина, а картка все одно радісно фарбувала
+// стрілку вгору в зелений. Тепер напрямок стрілки (вгору/вниз) завжди
+// відображає РЕАЛЬНИЙ напрямок зміни, а колір — чи це добре чи погано для
+// цієї конкретної метрики: `invert=true` для метрик, де зростання = погано
+// (Витрати, CAC).
+//
+// changePercent = null означає "немає осмисленої бази для порівняння"
+// (див. pctChange нижче) — замість вигаданих +100%/+200% показуємо
+// нейтральний прочерк без стрілки, а не число, яке нічого не означає.
+function AnimatedNumber({ value, prefix = "", suffix = "", changePercent = null, invert = false }: { value: number; prefix?: string; suffix?: string; changePercent?: number | null; invert?: boolean }) {
   const [displayValue, setDisplayValue] = useState(value);
   const prevValueRef = useRef(value);
 
@@ -272,13 +283,24 @@ function AnimatedNumber({ value, prefix = "", suffix = "", changePercent = 0 }: 
     prevValueRef.current = value;
   }, [value]);
 
-  const isPositive = changePercent >= 0;
+  if (changePercent === null) {
+    return (
+      <div>
+        <div className="text-2xl font-bold text-white">{prefix}{Math.round(displayValue).toLocaleString()}{suffix}</div>
+        <div className="text-xs text-gray-500 mt-1">–</div>
+      </div>
+    );
+  }
+
+  const wentUp = changePercent > 0;
+  const wentDown = changePercent < 0;
+  const isGood = invert ? changePercent <= 0 : changePercent >= 0;
   return (
     <div>
       <div className="text-2xl font-bold text-white">{prefix}{Math.round(displayValue).toLocaleString()}{suffix}</div>
-      <div className={`text-xs flex items-center gap-0.5 mt-1 ${isPositive ? "text-green-400" : "text-red-400"}`}>
-        {changePercent > 0 ? "+" : ""}{changePercent}%
-        {changePercent > 0 ? <ArrowUpRight className="w-3 h-3" /> : changePercent < 0 ? <ArrowDownRight className="w-3 h-3" /> : null}
+      <div className={`text-xs flex items-center gap-0.5 mt-1 ${isGood ? "text-green-400" : "text-red-400"}`}>
+        {changePercent > 0 ? "+" : ""}{changePercent.toFixed(1)}%
+        {wentUp ? <ArrowUpRight className="w-3 h-3" /> : wentDown ? <ArrowDownRight className="w-3 h-3" /> : null}
       </div>
     </div>
   );
@@ -2556,7 +2578,19 @@ if (!subInfo) {
                     className="relative bg-gray-800/30 hover:bg-gray-800/50"
                   >
                     <Bell className="w-5 h-5 text-gray-400" />
-                    {notificationsEnabled && (
+                    {/* ФІКС: раніше бейдж показував alertCount (реальні
+                        рядки з alerts_log) незалежно від тарифу — Starter/
+                        Trial-без-Growth власник бачив число та повний
+                        список "старих" ризиків у дзвіночку, хоча вкладка
+                        "Ризики" тут же нижче каже "Доступно на тарифі
+                        Growth". Розбіжність через те, що sync-скрипти
+                        (lib/alerts.mjs sendAlert/sendAlertToBusiness)
+                        взагалі не дивляться на тариф при записі в
+                        alerts_log — це окрема backend-проблема (сповіщення
+                        в Telegram/email теж ідуть безкоштовним тарифам),
+                        але тут на фронті ховаємо сам бейдж і список,
+                        якщо real-time risk detection не входить у тариф. */}
+                    {notificationsEnabled && hasGrowthAccessForTour && (
                       <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-yellow-500 text-[10px] font-bold flex items-center justify-center text-white">
                         {alertCount}
                       </span>
@@ -2567,39 +2601,61 @@ if (!subInfo) {
                   <div className="p-3 border-b border-gray-800">
                     <h3 className="font-medium text-foreground">{getTranslation("notifications", "Notifications")}</h3>
                   </div>
-                  <div data-tour="notifications-content" className="max-h-80 overflow-auto">
-                    {risks.slice(0, 3).map((alert) => {
-                      const sev = getSeverityColorClasses(alert.severity);
-                      return (
-                        <div key={alert.id} className="p-3 hover:bg-gray-800/50 border-b border-gray-800/30 last:border-0">
-                          <div className="flex items-start gap-3">
-                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${sev.bg} ${sev.text}`}>
-                              {getCategoryIcon(alert.category)}
+                  {hasGrowthAccessForTour ? (
+                    <>
+                      <div data-tour="notifications-content" className="max-h-80 overflow-auto">
+                        {risks.slice(0, 3).map((alert) => {
+                          const sev = getSeverityColorClasses(alert.severity);
+                          return (
+                            <div key={alert.id} className="p-3 hover:bg-gray-800/50 border-b border-gray-800/30 last:border-0">
+                              <div className="flex items-start gap-3">
+                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${sev.bg} ${sev.text}`}>
+                                  {getCategoryIcon(alert.category)}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-sm text-foreground truncate">{alert.title}</p>
+                                  <p className="text-xs text-muted-foreground mt-0.5">{alert.time}</p>
+                                </div>
+                              </div>
                             </div>
-                            <div className="min-w-0">
-                              <p className="text-sm text-foreground truncate">{alert.title}</p>
-                              <p className="text-xs text-muted-foreground mt-0.5">{alert.time}</p>
-                            </div>
+                          );
+                        })}
+                        {risks.length === 0 && (
+                          <div className="p-4 text-center text-sm text-muted-foreground">
+                            {T.demoNoActiveRisks || "No active risks. All systems normal."}
                           </div>
-                        </div>
-                      );
-                    })}
-                    {risks.length === 0 && (
-                      <div className="p-4 text-center text-sm text-muted-foreground">
-                        {T.demoNoActiveRisks || "No active risks. All systems normal."}
+                        )}
                       </div>
-                    )}
-                  </div>
-                  <div className="p-2 border-t border-gray-800">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="w-full text-blue-400 hover:bg-blue-500/10"
-                      onClick={() => { setActiveView("risks"); setNotifOpen(false); }}
-                    >
-                      {getTranslation("viewAllAlerts", "View all alerts")}
-                    </Button>
-                  </div>
+                      <div className="p-2 border-t border-gray-800">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="w-full text-blue-400 hover:bg-blue-500/10"
+                          onClick={() => { setActiveView("risks"); setNotifOpen(false); }}
+                        >
+                          {getTranslation("viewAllAlerts", "View all alerts")}
+                        </Button>
+                      </div>
+                    </>
+                  ) : (
+                    <div data-tour="notifications-content" className="p-4 text-center">
+                      <AlertTriangle className="w-8 h-8 mx-auto mb-2 text-gray-600" />
+                      <p className="text-sm text-gray-400 mb-3">
+                        {language === "UA"
+                          ? "Виявлення ризиків у реальному часі доступне на тарифі Growth."
+                          : language === "DE"
+                          ? "Echtzeit-Risikoerkennung ist Teil des Growth-Tarifs."
+                          : "Real-time risk detection is part of the Growth plan."}
+                      </p>
+                      <Button
+                        size="sm"
+                        className="bg-blue-600 hover:bg-blue-700"
+                        onClick={() => { setNotifOpen(false); router.push("/#pricing"); }}
+                      >
+                        {language === "UA" ? "Оновити тариф" : language === "DE" ? "Upgraden" : "Upgrade"}
+                      </Button>
+                    </div>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
