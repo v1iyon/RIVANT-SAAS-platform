@@ -2,8 +2,20 @@
 
 import Link from "next/link";
 import { Mail, Send } from "lucide-react";
-import { Linkedin } from "lucide-react";
 import { useLanguage } from "@/lib/translations";
+
+// lucide-react не содержит официальный логотип X (Twitter) — только
+// старую птицу под именем "Twitter", которая уже не соответствует
+// текущему бренду. Поэтому здесь — тот же самый path, что и в
+// официальном X SVG-гайде бренда, просто как React-компонент, чтобы не
+// тащить лишний npm-пакет ради одной иконки.
+function XIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
+      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+    </svg>
+  );
+}
 
 export function Footer() {
   const { t } = useLanguage();
@@ -16,7 +28,9 @@ export function Footer() {
     ],
     social: [
       { name: "Telegram", href: "https://t.me/official_rivant", icon: Send },
-      { name: "LinkedIn", href: "#", icon: Linkedin },
+      // TODO: заменить на реальную ссылку на твой аккаунт, например
+      // "https://x.com/твой_юзернейм".
+      { name: "X", href: "https://x.com/rivant_os", icon: XIcon },
       { name: "Email", href: "mailto:official.rivant@gmail.com", icon: Mail },
     ],
     legal: [
