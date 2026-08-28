@@ -307,7 +307,7 @@ function AnimatedNumber({ value, prefix = "", suffix = "", changePercent = null,
 }
 
 // ========== КОМПОНЕНТ ТИКЕР-СПАРКЛАЙНА ==========
-function TickerSparkline({ history, color, currentValue, previousValue }: { history: number[]; color: string; currentValue: number; previousValue: number }) {
+function TickerSparkline({ history, color, currentValue, previousValue, invert = false }: { history: number[]; color: string; currentValue: number; previousValue: number; invert?: boolean }) {
   const [items, setItems] = useState(history);
   const [isAnimating, setIsAnimating] = useState(false);
   const prevHistoryLengthRef = useRef(history.length);
@@ -324,7 +324,10 @@ function TickerSparkline({ history, color, currentValue, previousValue }: { hist
   const maxValue = Math.max(...items);
   const minValue = Math.min(...items);
   const range = maxValue - minValue;
-  const isPositive = currentValue >= previousValue;
+  // Той самий фікс, що й в AnimatedNumber: для витрат/CAC (invert=true)
+  // зростання останнього стовпчика — це погана новина, тож фарбуємо його в
+  // червоний, а не в зелений.
+  const isPositive = invert ? currentValue <= previousValue : currentValue >= previousValue;
   
 
   return (
@@ -752,20 +755,21 @@ const WIDGET_DOT_CLASS: Record<WidgetId, string> = {
   expenses: "bg-red-500",
 };
 
-function MetricCard({ title, value, change, color, prefix = "$", suffix = "", sparklineData, prevValue, subtitle }: {
-  title: string; value: number; change: number; color: string; prefix?: string; suffix?: string;
-  sparklineData: number[]; prevValue: number; subtitle?: string;
+function MetricCard({ title, value, change, color, prefix = "$", suffix = "", sparklineData, prevValue, subtitle, invert = false }: {
+  title: string; value: number; change: number | null; color: string; prefix?: string; suffix?: string;
+  sparklineData: number[]; prevValue: number; subtitle?: string; invert?: boolean;
 }) {
   const theme = METRIC_CARD_THEMES[color] || METRIC_CARD_THEMES["bg-blue-500"];
   return (
   <div className={`bg-gradient-to-br ${theme.from} to-transparent rounded-xl p-4 pb-5 border ${theme.border}`}>
       <div className={`text-xs font-semibold mb-1 uppercase ${theme.text}`}>{title}{subtitle ? <span className="text-gray-500 normal-case font-normal"> · {subtitle}</span> : null}</div>
-      <AnimatedNumber value={value} prefix={prefix} suffix={suffix} changePercent={change} />
+      <AnimatedNumber value={value} prefix={prefix} suffix={suffix} changePercent={change} invert={invert} />
       <TickerSparkline
         history={sparklineData}
         color={theme.ticker}
         currentValue={value}
         previousValue={prevValue}
+        invert={invert}
       />
     </div>
   );
@@ -779,7 +783,7 @@ function MetricCard({ title, value, change, color, prefix = "$", suffix = "", sp
 interface CacPanelData {
   label: string;
   value: number | null;
-  change: number;
+  change: number | null;
   prev: number | null;
   sparklineData: number[];
 }
@@ -840,7 +844,9 @@ function SwipeableCacCard({ panels, language, symbol = "$" }: { panels: CacPanel
 
     <div className="mb-1 min-h-[52px]">
       {hasValue ? (
-        <AnimatedNumber value={panel.value as number} prefix={symbol} changePercent={panel.change} />
+        // CAC (вартість залучення клієнта) — витрата: зростання = погано,
+        // тому invert=true (стрілка вгору червона, а не зелена).
+        <AnimatedNumber value={panel.value as number} prefix={symbol} changePercent={panel.change} invert />
       ) : (
         <p className="text-xs text-gray-500 mt-2">
           {language === "UA" ? "Немає даних для цього джерела" : language === "DE" ? "Keine Daten für diese Quelle" : "No data for this source yet"}
@@ -854,6 +860,7 @@ function SwipeableCacCard({ panels, language, symbol = "$" }: { panels: CacPanel
           color={theme.ticker}
           currentValue={panel.value as number}
           previousValue={panel.prev ?? (panel.value as number)}
+          invert
         />
       ) : (
         <div className="h-8 mt-2" aria-hidden="true" />
@@ -1782,14 +1789,25 @@ useEffect(() => {
   // - Якщо реально більш ніж подвоїлось/впало більш ніж наполовину (тобто
   //   "перебили попередній період" ще й з запасом) -> ширша межа ±200%,
   //   а не голе число в тисячі відсотків.
-  const pctChange = (curr: number, prev: number) => {
-    if (!prev || prev <= 0) {
-      return curr > 0 ? "100.0" : "0.0";
+  // ФІКС: раніше ця функція НІКОЛИ не повертала null, хоча коментар у
+  // AnimatedNumber (вище) прямо описує, що null = "немає осмисленої бази
+  // для порівняння" -> нейтральний прочерк без стрілки. Замість цього тут
+  // завжди повертався якийсь "красивий" рядок: "100.0" коли prev <= 0, або
+  // число, зажате в межах ±100/±200. Якщо prev близький до нуля (не строго
+  // 0, а копійки — типово для нового акаунта чи дня без реальних витрат),
+  // (curr - prev) / prev вибухає до тисяч відсотків і щоразу впирається в
+  // стелю +200%, навіть якщо реальної зміни не було. Користувачу це
+  // виглядає як "стабільно +200%, хоча оплат не було" — саме той баг.
+  // Тепер: немає осмисленої бази (prev відсутній або менший за поріг) ->
+  // повертаємо null, картка показує "–" замість вигаданого числа.
+  const MEANINGFUL_BASE = 1; // мінімальна попередня сума (у валюті бізнесу), нижче якої % не рахуємо
+  const pctChange = (curr: number, prev: number): number | null => {
+    if (prev === null || prev === undefined || Math.abs(prev) < MEANINGFUL_BASE) {
+      return null;
     }
     const raw = ((curr - prev) / prev) * 100;
     const cap = Math.abs(raw) > 100 ? 200 : 100;
-    const clamped = Math.max(-cap, Math.min(cap, raw));
-    return clamped.toFixed(1);
+    return Number(Math.max(-cap, Math.min(cap, raw)).toFixed(1));
   };
   // "Наживо" — сравнение тоже должно быть живым: последние 24ч vs
   // предыдущие 24ч (тот же движок, что уже считает это для бота), а не
@@ -1803,12 +1821,12 @@ useEffect(() => {
   const profitChange = rollingMetrics
     ? pctChange(rollingMetrics.profit_last24h, rollingMetrics.profit_prev24h)
     : pctChange(currentProfit, prevProfit);
-  const marginChange = rollingMetrics
-    ? (rollingMetrics.margin_last24h - rollingMetrics.margin_prev24h).toFixed(1)
-    : (currentMargin - prevMargin).toFixed(1);
-  const cacChange = currentCac != null && prevCac ? pctChange(currentCac, prevCac) : "0.0";
-  const cacMetaChange = currentCacMeta != null && prevCacMeta ? pctChange(currentCacMeta, prevCacMeta) : "0.0";
-  const cacGoogleChange = currentCacGoogle != null && prevCacGoogle ? pctChange(currentCacGoogle, prevCacGoogle) : "0.0";
+  const marginChange = Number((rollingMetrics
+    ? (rollingMetrics.margin_last24h - rollingMetrics.margin_prev24h)
+    : (currentMargin - prevMargin)).toFixed(1));
+  const cacChange = currentCac != null && prevCac ? pctChange(currentCac, prevCac) : null;
+  const cacMetaChange = currentCacMeta != null && prevCacMeta ? pctChange(currentCacMeta, prevCacMeta) : null;
+  const cacGoogleChange = currentCacGoogle != null && prevCacGoogle ? pctChange(currentCacGoogle, prevCacGoogle) : null;
 
   const currentOrders = sumBy(currentMonthRows, (r) => r.orders);
   const prevOrders = prevMonthRows.length ? sumBy(prevMonthRows, (r) => r.orders) : currentOrders;
@@ -1849,52 +1867,57 @@ useEffect(() => {
     switch (id) {
       case "revenue":
         return (
-          <MetricCard key={id} title={(t as any).revenue || "Revenue"} value={convert(currentRevenue)} change={parseFloat(revenueChange)}
+          <MetricCard key={id} title={(t as any).revenue || "Revenue"} value={convert(currentRevenue)} change={revenueChange}
             color="bg-blue-500" prefix={symbol} subtitle={(t as any).thisMonth} sparklineData={revenueQueue} prevValue={prevRevenue} />
         );
       case "profit":
         return (
-          <MetricCard key={id} title={(t as any).profit || "Profit"} value={convert(currentProfit)} change={parseFloat(profitChange)}
+          <MetricCard key={id} title={(t as any).profit || "Profit"} value={convert(currentProfit)} change={profitChange}
             color="bg-green-500" prefix={symbol} subtitle={(t as any).thisMonth} sparklineData={profitQueue} prevValue={prevProfit} />
         );
       case "margin":
         return (
-          <MetricCard key={id} title={(t as any).margin || "Margin"} value={currentMargin} change={parseFloat(marginChange)}
+          <MetricCard key={id} title={(t as any).margin || "Margin"} value={currentMargin} change={marginChange}
             color="bg-purple-500" prefix="" suffix="%" subtitle={(t as any).thisMonth} sparklineData={marginQueue} prevValue={prevMargin} />
         );
       case "cac":
+        // CAC (вартість залучення клієнта) — це витрата: якщо вона росте,
+        // це погана новина, тож invert=true (стрілка вгору = червона).
         return (
           <SwipeableCacCard
             key={id}
             language={language}
             symbol={symbol}
             panels={[
-              { label: "Meta Ads", value: convertOrNull(currentCacMeta), change: parseFloat(cacMetaChange), prev: convertOrNull(prevCacMeta), sparklineData: cacMetaQueue },
+              { label: "Meta Ads", value: convertOrNull(currentCacMeta), change: cacMetaChange, prev: convertOrNull(prevCacMeta), sparklineData: cacMetaQueue },
               {
                 label: language === "UA" ? "Загальне" : language === "DE" ? "Gesamt" : "Combined",
                 value: convertOrNull(currentCac),
-                change: parseFloat(cacChange),
+                change: cacChange,
                 prev: convertOrNull(prevCac),
                 sparklineData: cacQueue,
               },
-              { label: "Google Ads", value: convertOrNull(currentCacGoogle), change: parseFloat(cacGoogleChange), prev: convertOrNull(prevCacGoogle), sparklineData: cacGoogleQueue },
+              { label: "Google Ads", value: convertOrNull(currentCacGoogle), change: cacGoogleChange, prev: convertOrNull(prevCacGoogle), sparklineData: cacGoogleQueue },
             ]}
           />
         );
       case "orders":
         return (
-          <MetricCard key={id} title={widgetLabel("orders")} value={currentOrders} change={parseFloat(ordersChange)}
+          <MetricCard key={id} title={widgetLabel("orders")} value={currentOrders} change={ordersChange}
             color="bg-cyan-500" prefix="" subtitle={(t as any).thisMonth} sparklineData={ordersQueue} prevValue={prevOrders} />
         );
       case "aov":
         return (
-          <MetricCard key={id} title={widgetLabel("aov")} value={convert(currentAov)} change={parseFloat(aovChange)}
+          <MetricCard key={id} title={widgetLabel("aov")} value={convert(currentAov)} change={aovChange}
             color="bg-pink-500" prefix={symbol} subtitle={(t as any).thisMonth} sparklineData={aovQueue} prevValue={prevAov} />
         );
       case "expenses":
+        // Витрати — це метрика, де ЗРОСТАННЯ = погано, тож invert=true:
+        // стрілка вгору тепер червона, а не зелена (раніше invert ніде не
+        // передавався, і зростання витрат помилково фарбувалось у зелений).
         return (
-          <MetricCard key={id} title={widgetLabel("expenses")} value={convert(currentExpenses)} change={parseFloat(expensesChange)}
-            color="bg-red-500" prefix={symbol} subtitle={(t as any).thisMonth} sparklineData={expensesQueue} prevValue={prevExpenses} />
+          <MetricCard key={id} title={widgetLabel("expenses")} value={convert(currentExpenses)} change={expensesChange}
+            color="bg-red-500" prefix={symbol} subtitle={(t as any).thisMonth} sparklineData={expensesQueue} prevValue={prevExpenses} invert />
         );
       default:
         return null;
