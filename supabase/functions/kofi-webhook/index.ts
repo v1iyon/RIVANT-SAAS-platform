@@ -371,13 +371,19 @@ Deno.serve(async (req: Request) => {
     const periodEnd = new Date(Date.now() + SUBSCRIPTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
     const now = new Date().toISOString();
 
+    // ФІКС (аудит #3, критична знахідка №1): реальна таблиця
+    // public.subscriptions (schema_dump_27_08.sql) має колонку "plan", а не
+    // "plan_id", і НЕ має колонки "updated_at" взагалі. Upsert із цими
+    // іменами мовчки падав з помилкою "column does not exist" — sub error
+    // ловився нижче, писався в error_logs, а вебхуку все одно повертався
+    // 200 OK (Ko-fi не ретраїв). Тобто реальний платіж проходив, а доступ
+    // ніколи не активувався. Тепер пишемо в реальні колонки.
     const { error: subError } = await supabase.from("subscriptions").upsert(
       {
         user_id: userId,
-        plan_id: resolvedPlan.plan_id,
+        plan: resolvedPlan.plan_id,
         access_status: "active",
         current_period_end: periodEnd,
-        updated_at: now,
       },
       { onConflict: "user_id" },
     );

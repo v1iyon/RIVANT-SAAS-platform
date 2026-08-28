@@ -450,6 +450,17 @@ serve(async (req) => {
 
     const periodEnd = new Date(now.getTime() + SUBSCRIPTION_PERIOD_DAYS * 24 * 60 * 60_000);
 
+    // FIX (audit #3, critical finding #1): the real public.subscriptions
+    // table (schema_dump_27_08.sql) has a "plan" column, not "plan_id" —
+    // and has no "updated_at" / "last_order_id" / "last_tx_hash" columns
+    // at all (those are leftovers from an old, superseded migration that
+    // no longer matches the live schema). The upsert below was silently
+    // failing with "column does not exist" on every crypto payment — the
+    // order got marked "paid" (separate, valid update above), but the
+    // subscription was never actually activated. tx_hash is already
+    // recorded on the `orders` row itself (see the update a few lines up),
+    // so nothing is lost by not also duplicating it here.
+    //
     // Single source of truth: UPSERT subscriptions. Every part of the
     // product reads access from this table, not from `users` or `orders`.
     const { error: subUpsertErr } = await admin
@@ -457,12 +468,9 @@ serve(async (req) => {
       .upsert(
         {
           user_id: matchedOrder.user_id,
-          plan_id: matchedOrder.plan_id,
+          plan: matchedOrder.plan_id,
           access_status: "active",
           current_period_end: periodEnd.toISOString(),
-          last_order_id: matchedOrder.id,
-          last_tx_hash: hash,
-          updated_at: now.toISOString(),
         },
         { onConflict: "user_id" },
       );
