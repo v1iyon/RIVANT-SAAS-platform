@@ -215,7 +215,13 @@ export function IntegrationConnectCard({
   }) as LockReason;
 
   const maxSlots = getMaxSlots(planTier);
-  const locked = lockReason !== null;
+  // ФІКС: та сама причина, що й у stripe-connect-card.tsx — lockReason
+  // спирається лише на subscriptions.integrations_selected, і якщо провайдер
+  // реально підключений (row.connected === true з /api/integrations-status),
+  // а вибір слоту з якоїсь причини не зафіксовано/загублено, картка
+  // показувала замок поверх робочої інтеграції. Реальний статус
+  // "connected" тепер має пріоритет над записом вибору слоту.
+  const locked = lockReason !== null && status !== "connected";
 
   const triggerLockedToast = () => {
     setShowLockedToast(true);

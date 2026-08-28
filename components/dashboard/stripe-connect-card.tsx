@@ -97,7 +97,17 @@ export function StripeConnectCard({
     provider: "stripe",
   }) as LockReason;
   const maxSlots = getMaxSlots(planTier);
-  const locked = lockReason !== null;
+  // ФІКС: lockReason рахується ЛИШЕ з subscriptions.integrations_selected —
+  // якщо Stripe реально підключений (є ключ, синк працює), але з якихось
+  // причин "stripe" ніколи не потрапив у integrations_selected (типовий
+  // кейс — підключення було зроблено ДО того, як з'явився механізм
+  // фіксації слоту, або запис у selected пізніше злетів/не зберігся), картка
+  // все одно показувала червоний замок і текст "Потрібен активний тариф"
+  // поверх реально працюючої, синхронізованої інтеграції. Тепер замок не
+  // показуємо, якщо картка сама щойно підтвердила статус "connected" через
+  // /api/business-status — реальний факт підключення важливіший за
+  // потенційно застарілий/відсутній запис вибору слоту.
+  const locked = lockReason !== null && status !== "connected";
 
   // Ничего из реального состояния (status/keyPreview/lastSynced) не
   // трогаем и не перезаписываем — просто подменяем то, что рендерится,
