@@ -8,7 +8,7 @@ const content = {
     title: "Terms of Service",
     updated: "Last updated: July 2026",
     intro:
-      'These Terms of Service ("Terms") govern your access to and use of RIVANT ("RIVANT", "we", "us", "our"), a business analytics dashboard available at rivant-os.vercel.app. By creating an account or using RIVANT, you agree to these Terms.',
+      'These Terms of Service ("Terms") govern your access to and use of RIVANT ("RIVANT", "we", "us", "our"), a business analytics dashboard available at rivant-os.com. By creating an account or using RIVANT, you agree to these Terms.',
     s1heading: "1. The Service",
     s1: "RIVANT provides business analytics, forecasting, and alerting tools based on data you connect (including but not limited to Stripe, Google Ads, Meta Ads, Shopify, QuickBooks, and CSV uploads). Features available depend on your subscription plan (Starter, Growth, Scale).",
     s2heading: "2. Accounts",
@@ -34,7 +34,7 @@ const content = {
     title: "Умови надання послуг",
     updated: "Востаннє оновлено: липень 2026",
     intro:
-      'Ці Умови надання послуг ("Умови") регулюють ваш доступ до RIVANT ("RIVANT", "ми", "нас", "наш") — дашборду бізнес-аналітики, доступного за адресою rivant-os.vercel.app, та користування ним. Створюючи обліковий запис або користуючись RIVANT, ви погоджуєтеся з цими Умовами.',
+      'Ці Умови надання послуг ("Умови") регулюють ваш доступ до RIVANT ("RIVANT", "ми", "нас", "наш") — дашборду бізнес-аналітики, доступного за адресою rivant-os.com, та користування ним. Створюючи обліковий запис або користуючись RIVANT, ви погоджуєтеся з цими Умовами.',
     s1heading: "1. Сервіс",
     s1: "RIVANT надає інструменти бізнес-аналітики, прогнозування та сповіщень на основі даних, які ви підключаєте (зокрема, але не виключно, Stripe, Google Ads, Meta Ads, Shopify, QuickBooks та завантаження CSV). Доступні функції залежать від вашого тарифного плану (Starter, Growth, Scale).",
     s2heading: "2. Облікові записи",
@@ -60,7 +60,7 @@ const content = {
     title: "Allgemeine Geschäftsbedingungen",
     updated: "Zuletzt aktualisiert: Juli 2026",
     intro:
-      'Diese Allgemeinen Geschäftsbedingungen ("Bedingungen") regeln Ihren Zugang zu und die Nutzung von RIVANT ("RIVANT", "wir", "uns", "unser"), einem unter rivant-os.vercel.app verfügbaren Business-Analytics-Dashboard. Durch die Erstellung eines Kontos oder die Nutzung von RIVANT stimmen Sie diesen Bedingungen zu.',
+      'Diese Allgemeinen Geschäftsbedingungen ("Bedingungen") regeln Ihren Zugang zu und die Nutzung von RIVANT ("RIVANT", "wir", "uns", "unser"), einem unter rivant-os.com verfügbaren Business-Analytics-Dashboard. Durch die Erstellung eines Kontos oder die Nutzung von RIVANT stimmen Sie diesen Bedingungen zu.',
     s1heading: "1. Der Dienst",
     s1: "RIVANT bietet Werkzeuge für Geschäftsanalysen, Prognosen und Benachrichtigungen auf Basis der von Ihnen verbundenen Daten (u. a. Stripe, Google Ads, Meta Ads, Shopify, QuickBooks und CSV-Uploads). Der Funktionsumfang hängt von Ihrem Abonnement ab (Starter, Growth, Scale).",
     s2heading: "2. Konten",

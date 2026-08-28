@@ -50,11 +50,11 @@ jobs:
       - name: Process pending service orders (What-If reports, etc.)
         continue-on-error: true
         run: |
-          curl -sf -X GET "https://rivant-os.vercel.app/api/cron/process-service-orders" \
+          curl -sf -X GET "https://rivant-os.com/api/cron/process-service-orders" \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"
 
       - name: Backfill historical data for newly connected integrations
         continue-on-error: true
         run: |
-          curl -sf -X GET "https://rivant-os.vercel.app/api/cron/backfill-historical" \
+          curl -sf -X GET "https://rivant-os.com/api/cron/backfill-historical" \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"

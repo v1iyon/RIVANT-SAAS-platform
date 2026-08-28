@@ -4,7 +4,7 @@ const { getDict, formatMoney } = require("./i18n");
 const { getFullMarginForDay } = require("../lib/margin");
 
 const bot = new Bot(process.env.BOT_TOKEN);
-const SITE_URL = process.env.SITE_URL || "https://rivant-os.vercel.app";
+const SITE_URL = process.env.SITE_URL || "https://rivant-os.com";
 
 // Локальна дата бізнесу (не UTC) — той самий підхід, що й у
 // scripts/daily-reports.mjs (localDateStr). Продубльовано тут навмисно:

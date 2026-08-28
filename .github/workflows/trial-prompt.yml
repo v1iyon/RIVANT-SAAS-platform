@@ -11,5 +11,5 @@ jobs:
     steps:
       - name: Trigger trial prompt cron
         run: |
-          curl -f -X GET "https://rivant-os.vercel.app/api/cron/trial-prompt" \
+          curl -f -X GET "https://rivant-os.com/api/cron/trial-prompt" \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"

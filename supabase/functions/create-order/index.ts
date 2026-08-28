@@ -57,7 +57,7 @@ const MAX_OFFSET_ATTEMPTS = 25;
 // домену RIVANT (той самий SITE_URL/фолбек, що вже використовується в
 // src/bot.js), через env-змінну, щоб не хардкодити продакшн-домен прямо в
 // Deno-функції (staging/preview деплої можуть відрізнятись).
-const ALLOWED_ORIGIN = Deno.env.get("SITE_URL") || "https://rivant-os.vercel.app";
+const ALLOWED_ORIGIN = Deno.env.get("SITE_URL") || "https://rivant-os.com";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
