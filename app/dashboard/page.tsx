@@ -3281,7 +3281,10 @@ if (!subInfo) {
                 <div data-tour="integrations-demo-connected">
                   <StripeConnectCard
                     email={profileEmail}
-                    locked={isExpiredTrial}
+                    isExpiredTrial={isExpiredTrial}
+                    planTier={subInfo?.plan ?? null}
+                    selectedProviders={selectedProviders}
+                    onSelected={(providers) => setSelectedProviders(providers)}
                     onLockedClick={() => router.push("/#pricing")}
                     demoConnected={integrationsDemoOpen}
                   />
@@ -3300,7 +3303,7 @@ if (!subInfo) {
                       isExpiredTrial={isExpiredTrial}
                       planTier={subInfo?.plan ?? null}
                       selectedProviders={selectedProviders}
-                      onSelected={(p) => setSelectedProviders([p])}
+                      onSelected={(providers) => setSelectedProviders(providers)}
                       onLockedClick={() => router.push("/#pricing")}
                       refreshToken={integrationRefreshToken}
                       syncFailed={failedSyncProviders.includes("shopify")}
@@ -3336,7 +3339,7 @@ if (!subInfo) {
                       isExpiredTrial={isExpiredTrial}
                       planTier={subInfo?.plan ?? null}
                       selectedProviders={selectedProviders}
-                      onSelected={(p) => setSelectedProviders([p])}
+                      onSelected={(providers) => setSelectedProviders(providers)}
                       onLockedClick={() => router.push("/#pricing")}
                       refreshToken={integrationRefreshToken}
                       syncFailed={failedSyncProviders.includes("meta_ads")}
@@ -3364,7 +3367,7 @@ if (!subInfo) {
                       isExpiredTrial={isExpiredTrial}
                       planTier={subInfo?.plan ?? null}
                       selectedProviders={selectedProviders}
-                      onSelected={(p) => setSelectedProviders([p])}
+                      onSelected={(providers) => setSelectedProviders(providers)}
                       onLockedClick={() => router.push("/#pricing")}
                       refreshToken={integrationRefreshToken}
                       syncFailed={failedSyncProviders.includes("google_ads")}
