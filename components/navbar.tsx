@@ -27,6 +27,15 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
   const [mfaStep, setMfaStep] = useState(false);
   const [mfaCode, setMfaCode] = useState("");
   const [mfaFactorId, setMfaFactorId] = useState("");
+  // OTP-верификация email после signUp() — заменяет старый флоу "перейди по
+  // ссылке в письме". otpEmail хранится отдельно от loginEmail, потому что
+  // loginEmail очищается в конце успешного логина/регистрации, а нам нужен
+  // email именно для verifyOtp()/resend() на этом отдельном шаге.
+  const [otpStep, setOtpStep] = useState(false);
+  const [otpEmail, setOtpEmail] = useState("");
+  const [otpCode, setOtpCode] = useState("");
+  const [otpResendCooldown, setOtpResendCooldown] = useState(0);
+  const [otpResendMessage, setOtpResendMessage] = useState("");
   // "Забули пароль?" — з'являється під формою входу ПІСЛЯ невдалої спроби
   // з невірним паролем (не одразу, щоб не захаращувати форму для тих, хто
   // просто вперше бачить логін). isForgotPassword перемикає саму модалку
@@ -136,6 +145,16 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
+
+  // Обратный отсчёт для кнопки "Отправить код ещё раз" на OTP-шаге —
+  // обычный setInterval, тикает раз в секунду, пока otpResendCooldown > 0.
+  useEffect(() => {
+    if (otpResendCooldown <= 0) return;
+    const id = setInterval(() => {
+      setOtpResendCooldown((s) => Math.max(0, s - 1));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [otpResendCooldown]);
 
   // Позволяет другим компонентам (например, кнопкам тарифов в
   // pricing-section) открыть модалку регистрации, не поднимая стейт
@@ -379,6 +398,22 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
         setAuthLoading(false);
         return;
       }
+
+      // FIX (OTP-верификация): раньше отсюда падали в общий хвост функции
+      // (setIsLoggedIn(true) + router.push("/dashboard")) сразу после
+      // signUp(), хотя подтверждение email в проекте включено — сессии на
+      // этот момент ЕЩЁ НЕТ (supabase.auth.signUp() без подтверждения не
+      // возвращает session), человека просто кидало на /dashboard без
+      // реального входа. Теперь вместо этого показываем экран ввода
+      // 6-значного кода из письма (см. handleVerifySignupOtp ниже) — сессия
+      // появляется только после успешного verifyOtp().
+      setOtpEmail(loginEmail);
+      setOtpCode("");
+      setOtpResendMessage("");
+      setOtpResendCooldown(30);
+      setOtpStep(true);
+      setAuthLoading(false);
+      return;
    } else {
       const { error } = await supabase.auth.signInWithPassword({
         email: loginEmail,
@@ -415,6 +450,73 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
     setLoginEmail("");
     setLoginPassword("");
     router.push("/dashboard");
+  };
+
+  // Подтверждение 6-значного кода из письма после signUp(). type: "signup" —
+  // Supabase различает OTP разных типов (signup / recovery / email_change и
+  // т.д.), присланный код валиден только для того типа, для которого его
+  // сгенерировали.
+  const handleVerifySignupOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError("");
+    setAuthLoading(true);
+
+    const { data, error } = await supabase.auth.verifyOtp({
+      email: otpEmail,
+      token: otpCode,
+      type: "signup",
+    });
+
+    setAuthLoading(false);
+
+    if (error || !data.session) {
+      setAuthError(T.otpInvalidCode ?? translateAuthError(error?.message || "invalid code"));
+      return;
+    }
+
+    // Тот же самый хвост, что и в handleLogin — теперь у нас есть реальная
+    // сессия (data.session), так что переход в /dashboard корректен.
+    localStorage.setItem("rivant_has_account", "1");
+    setIsLoggedIn(true);
+    setOtpStep(false);
+    setOtpCode("");
+    setOtpEmail("");
+    setIsLoginModalOpen(false);
+    setLoginEmail("");
+    setLoginPassword("");
+    router.push("/dashboard");
+  };
+
+  // "Отправить код ещё раз" — resend() с тем же типом "signup" генерирует
+  // новый OTP и шлёт новое письмо; старый код при этом становится
+  // недействительным на стороне Supabase. Клиентский cooldown (30с) — просто
+  // защита от случайного даблклика, не rate-limit сам по себе (это делает
+  // сам Supabase на своей стороне).
+  const handleResendSignupOtp = async () => {
+    if (otpResendCooldown > 0) return;
+    setAuthError("");
+    setOtpResendMessage("");
+    setAuthLoading(true);
+    const { error } = await supabase.auth.resend({
+      type: "signup",
+      email: otpEmail,
+    });
+    setAuthLoading(false);
+    if (error) {
+      setAuthError(translateAuthError(error.message));
+      return;
+    }
+    setOtpResendMessage(T.otpResendSuccess ?? "New code sent.");
+    setOtpResendCooldown(30);
+  };
+
+  // "Использовать другой email" — возврат с OTP-шага на форму регистрации,
+  // не теряя выбранный язык/режим формы.
+  const handleBackFromOtp = () => {
+    setOtpStep(false);
+    setOtpCode("");
+    setAuthError("");
+    setOtpResendMessage("");
   };
 
   // NEW: вход через Google. signInWithOAuth() делает редирект браузера на
@@ -795,6 +897,65 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
                     </button>
                   </>
                 )}
+              </>
+            ) : otpStep ? (
+              <>
+                <h2 className="text-2xl font-bold text-white mb-2">
+                  {T.otpTitle ?? "Check your email"}
+                </h2>
+                <p className="text-gray-400 text-sm mb-6">
+                  {T.otpSubtitle ?? "We've sent a 6-digit code to"}{" "}
+                  <span className="text-gray-300 font-medium">{otpEmail}</span>
+                </p>
+                <form onSubmit={handleVerifySignupOtp} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1">
+                      {T.otpCodeLabel ?? "Verification code"}
+                    </label>
+                    <input
+                      value={otpCode}
+                      onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      maxLength={6}
+                      className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white text-lg text-center tracking-[0.4em] focus:outline-none focus:ring-2 focus:ring-blue-600"
+                      placeholder={T.otpCodePlaceholder ?? "123456"}
+                      autoFocus
+                      required
+                    />
+                  </div>
+                  {authError && <p className="text-red-400 text-sm">{authError}</p>}
+                  {!authError && otpResendMessage && (
+                    <p className="text-green-400 text-sm">{otpResendMessage}</p>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={authLoading || otpCode.length !== 6}
+                    className="w-full py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {authLoading ? "..." : T.otpVerifyBtn ?? "Verify"}
+                  </button>
+                </form>
+                <button
+                  type="button"
+                  onClick={handleResendSignupOtp}
+                  disabled={authLoading || otpResendCooldown > 0}
+                  className="w-full text-center text-sm text-gray-400 hover:text-gray-200 mt-4 disabled:opacity-50 disabled:hover:text-gray-400"
+                >
+                  {otpResendCooldown > 0
+                    ? (T.otpResendCooldown ?? "Resend in {seconds}s").replace(
+                        "{seconds}",
+                        String(otpResendCooldown)
+                      )
+                    : T.otpResendBtn ?? "Resend code"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleBackFromOtp}
+                  className="w-full text-center text-sm text-gray-500 hover:text-gray-300 mt-2"
+                >
+                  ← {T.otpChangeEmail ?? "Use a different email"}
+                </button>
               </>
             ) : mfaStep ? (
               <>
