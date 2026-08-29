@@ -14,8 +14,12 @@
 //     useOrderStatus().
 //
 // Locales: en / uk / de only (no Russian — matches the site-wide rule).
-// Plan ids match public.plans: "starter" | "growth" | "premium" (the
-// user-facing "Scale" tier's DB id is "premium", not "scale").
+// Plan ids match public.plans: "starter" | "growth" | "scale". (Used to be
+// "premium" in the DB while the UI said "Scale" everywhere — renamed in
+// migration 20260829000000_rename_premium_to_scale.sql because that split
+// silently broke slot limits / Growth-feature access / admin plan
+// validation for every Scale customer — they all checked for the literal
+// string "scale", which never matched the real "premium" row.)
 //
 // Ko-fi Shop Item links are wired in below as DEFAULT_KOFI_LINKS. The
 // kofi-webhook matches these by direct_link_code (the part after /s/ in
@@ -79,7 +83,7 @@ import { KofiRedirectConfirm } from "./kofi-redirect-confirm";
 import { CreditCard, Coins, ShieldCheck, ArrowRight } from "lucide-react";
 
 type Locale = "en" | "uk" | "de";
-type PlanType = "starter" | "growth" | "premium";
+type PlanType = "starter" | "growth" | "scale";
 type Method = "card" | "crypto";
 type Phase =
   | "picker"
@@ -92,7 +96,7 @@ type Phase =
 const PLAN_LABELS: Record<PlanType, { name: string; price: string }> = {
   starter: { name: "Starter", price: "$99" },
   growth: { name: "Growth", price: "$299" },
-  premium: { name: "Scale", price: "$499" }, // display "Scale", DB id "premium"
+  scale: { name: "Scale", price: "$499" },
 };
 
 const DICT: Record<
@@ -162,7 +166,7 @@ const DICT: Record<
 const DEFAULT_KOFI_LINKS: Record<PlanType, string> = {
   starter: "https://ko-fi.com/s/10eb6d89bf",
   growth: "https://ko-fi.com/s/9dcfdf1c5b",
-  premium: "https://ko-fi.com/s/ed50f0bf6a",
+  scale: "https://ko-fi.com/s/ed50f0bf6a",
 };
 
 interface PaymentModalProps {

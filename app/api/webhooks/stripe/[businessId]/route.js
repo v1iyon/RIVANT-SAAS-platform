@@ -39,7 +39,15 @@ const admin = createClient(
   process.env.SUPABASE_SERVICE_KEY
 );
 
-const RELEVANT_EVENTS = new Set(["charge.succeeded", "payment_intent.succeeded"]);
+// ФІКС (аудит #4): раніше тут було ["charge.succeeded",
+// "payment_intent.succeeded"] — обидві події приходять на ОДНУ й ту саму
+// успішну оплату майже одночасно, і кожна незалежно додавала revenueDelta
+// нижче -> подвійний рахунок виручки в живому лічильнику до наступного
+// годинного reconciliation. Лишаємо лише charge.succeeded. Список подій,
+// на які клієнтський webhook endpoint реально підписаний у Stripe,
+// заданий у lib/stripe-webhook.mjs (STRIPE_WEBHOOK_EVENTS) — тримати їх
+// синхронізованими навмисно.
+const RELEVANT_EVENTS = new Set(["charge.succeeded"]);
 
 // Той самий підхід, що вже в sync-stripe-core.mjs/daily-reports.mjs/bot.js —
 // "сьогодні" по ЛОКАЛЬНІЙ даті бізнесу, не по UTC і не по даті сервера.

@@ -58,15 +58,21 @@ interface KofiPayload {
 
 // ---------------------------------------------------------------
 // Маппинг Ko-fi Tier -> plans.id из вашей БД.
-// ВНИМАНИЕ: тир в Ko-fi называется "Scale", но в таблице `plans`
-// его id — "premium" (несовпадение видно на самой странице:
-// display_name="Premium", а на сайте показывается как "Scale").
-// Если переименуете тир в Ko-fi — поправьте ключ слева.
+// ФІКС (аудит #4): раніше тут стояло "premium", бо саме такий id мала
+// строка Scale в таблиці `plans`, хоча всюди в UI/Ko-fi/PaymentModal
+// тир називався "Scale". Через це ж розходження ~8 access-control
+// перевірок в коді (lib/plan-slots.js, connect-integration,
+// connect-stripe, forecast/route.ts, admin/users і т.д.) шукали
+// буквальний рядок "scale" і ніколи не знаходили — Scale-клієнти
+// отримували заблоковані картки інтеграцій і втрачали Growth-фічі,
+// хоча платили найбільше. Див. migration
+// 20260829000000_rename_premium_to_scale.sql — id в `plans` і всі
+// існуючі subscriptions.plan='premium' перейменовані на 'scale'.
 // ---------------------------------------------------------------
 const TIER_TO_PLAN_ID: Record<string, { plan_id: string; amount_cents: number }> = {
   "Starter": { plan_id: "starter", amount_cents: 9900 },
   "Growth": { plan_id: "growth", amount_cents: 29900 },
-  "Scale": { plan_id: "premium", amount_cents: 49900 },
+  "Scale": { plan_id: "scale", amount_cents: 49900 },
 };
 
 // Ko-fi Shop Item direct_link_code -> plan_id. Самый надёжный способ
@@ -77,7 +83,7 @@ const TIER_TO_PLAN_ID: Record<string, { plan_id: string; amount_cents: number }>
 const DIRECT_LINK_CODE_TO_PLAN_ID: Record<string, string> = {
   "10eb6d89bf": "starter",
   "9dcfdf1c5b": "growth",
-  "ed50f0bf6a": "premium",
+  "ed50f0bf6a": "scale",
 };
 
 // ---------------------------------------------------------------
