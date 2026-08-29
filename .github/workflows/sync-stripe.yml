@@ -13,8 +13,6 @@ name: Sync integrations (Stripe, Shopify, Meta Ads, Google Ads)
 #      backfill ниже. Не бесплатно по Actions-минутам, но каждый прогон
 #      короткий (несколько HTTP-запросов), а не iterating бизнес-логика.
 on:
-  schedule:
-    - cron: "17,47 * * * *"
   workflow_dispatch: {}
 
 jobs:
