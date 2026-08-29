@@ -31,7 +31,7 @@ export function Footer() {
       // TODO: заменить на реальную ссылку на твой аккаунт, например
       // "https://x.com/твой_юзернейм".
       { name: "X", href: "https://x.com/rivant_os", icon: XIcon },
-      { name: "Email", href: "mailto:official.rivant@gmail.com", icon: Mail },
+      { name: "Email", href: "mailto:hello@rivant-os.com", icon: Mail },
     ],
     legal: [
       { name: "Privacy Policy", href: "/privacy" },

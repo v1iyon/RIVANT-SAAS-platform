@@ -1,0 +1,48 @@
+name: Backfill integrations_selected (manual, one-off)
+
+# Запускает scripts/backfill-integrations-selected.mjs без необходимости
+# ставить Node и тащить SUPABASE_SERVICE_KEY на свою машину — использует
+# те же секреты, что уже лежат в репозитории для sync-stripe.yml.
+#
+# По умолчанию (apply = false) — DRY RUN: скрипт только печатает, что бы
+# сделал, ничего не пишет в БД. Смотришь Summary/логи рана, и если всё
+# ок — запускаешь ещё раз с apply = true через "Run workflow" в Actions.
+#
+# После того как реально применишь (apply = true) один раз, этот файл
+# можно удалить — он одноразовый, не по расписанию.
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "true = реально записать изменения в БД, false = только dry run"
+        required: true
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: npm install @supabase/supabase-js
+
+      - name: Run backfill script
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          if [ "${{ github.event.inputs.apply }}" = "true" ]; then
+            node scripts/backfill-integrations-selected.mjs --apply
+          else
+            node scripts/backfill-integrations-selected.mjs
+          fi
