@@ -75,6 +75,60 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
     });
   }, []);
 
+  // NEW: слушатель на смену auth-состояния — нужен специально для Google-входа.
+  // Google-логин делает полный редирект (сайт -> google.com -> обратно на
+  // redirectTo), поэтому обычный код после signInWithOAuth() в
+  // handleGoogleSignIn никогда не выполняется (компонент к этому моменту уже
+  // размонтирован/страница перезагружена). onAuthStateChange — единственный
+  // надёжный способ поймать момент "человек только что вошёл через Google" и
+  // на этот момент дозаписать профиль через /api/auth-sync, как это делается
+  // для обычной регистрации email+паролем.
+  //
+  // ВАЖНО: Navbar не рендерится на /dashboard (см. `if (isDashboard) return
+  // null` ниже), НО хуки всё равно выполняются на каждом рендере компонента
+  // независимо от того, что возвращает JSX — поэтому этот слушатель будет
+  // работать и тогда, когда человек уже физически на /dashboard.
+  //
+  // Предполагается, что /api/auth-sync идемпотентен (безопасно вызывать
+  // повторно для уже существующего пользователя — например, делает upsert,
+  // а не insert). Если это не так и повторный вызов на каждый вход через
+  // Google создаёт дубликаты — нужно поправить сам /api/auth-sync, а не эту
+  // логику.
+  useEffect(() => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event !== "SIGNED_IN" || !session) return;
+
+      const provider = session.user?.app_metadata?.provider;
+      if (provider !== "google") return;
+
+      try {
+        const syncRes = await fetch("/api/auth-sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: session.user.email,
+            language,
+          }),
+        });
+        if (!syncRes.ok) {
+          console.error("auth-sync failed after Google sign-in:", syncRes.status);
+        }
+      } catch (e) {
+        console.error("auth-sync network error after Google sign-in:", e);
+      }
+
+      localStorage.setItem("rivant_has_account", "1");
+      setIsLoggedIn(true);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 10);
@@ -361,6 +415,26 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
     setLoginEmail("");
     setLoginPassword("");
     router.push("/dashboard");
+  };
+
+  // NEW: вход через Google. signInWithOAuth() делает редирект браузера на
+  // google.com — код после него в этой функции обычно не успевает
+  // выполниться (кроме случая ошибки ДО редиректа, например неверно
+  // настроенный provider). Основная логика "что делать после успешного
+  // входа" — в слушателе onAuthStateChange выше.
+  const handleGoogleSignIn = async () => {
+    setAuthError("");
+    setAuthLoading(true);
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${window.location.origin}/dashboard`,
+      },
+    });
+    if (error) {
+      setAuthLoading(false);
+      setAuthError(translateAuthError(error.message));
+    }
   };
 
   const handleVerifyMfa = async () => {
@@ -754,6 +828,30 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
 <p className="text-gray-400 text-sm mb-6">
   {authMode === "signup" ? t.registerSubtitle : t.loginSubtitle}
 </p>
+
+<button
+  type="button"
+  onClick={handleGoogleSignIn}
+  disabled={authLoading}
+  className="w-full flex items-center justify-center gap-3 py-3 mb-4 bg-white text-gray-800 rounded-lg font-medium hover:bg-gray-100 disabled:opacity-50 border border-gray-300"
+>
+  <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+    <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z"/>
+    <path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.81.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z"/>
+    <path fill="#FBBC05" d="M3.97 10.72A5.4 5.4 0 0 1 3.69 9c0-.6.1-1.18.28-1.72V4.95H.96A9 9 0 0 0 0 9c0 1.45.35 2.83.96 4.05l3.01-2.33z"/>
+    <path fill="#EA4335" d="M9 3.58c1.32 0 2.51.45 3.44 1.35l2.58-2.58C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z"/>
+  </svg>
+  {language === "UA" ? "Увійти через Google" : language === "DE" ? "Mit Google anmelden" : "Continue with Google"}
+</button>
+
+<div className="flex items-center gap-3 mb-4">
+  <div className="flex-1 h-px bg-gray-700" />
+  <span className="text-xs text-gray-500">
+    {language === "UA" ? "або" : language === "DE" ? "oder" : "or"}
+  </span>
+  <div className="flex-1 h-px bg-gray-700" />
+</div>
+
             <form onSubmit={handleLogin} className="space-y-4">
   <div>
     <label className="block text-sm font-medium text-gray-300 mb-1">
