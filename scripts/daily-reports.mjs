@@ -91,6 +91,22 @@ export async function runDailyReports() {
       // хоче другий дотик за день.
       if (business.digest_frequency === "morning_only" && kind === "evening") continue;
 
+      // ФІКС (обговорення 30.08.2026): раніше дайджест ішов БЕЗУМОВНО для
+      // кожного бізнесу з контактом, навіть якщо жодної інтеграції ще не
+      // підключено — новий користувач отримував "Revenue: $0 (margin 0%).
+      // No issues detected today." двічі на день просто тому, що завів
+      // акаунт. Це шум, а не корисна інформація: нема ще жодного джерела
+      // даних — нема що показувати. Тепер, поки в integrations немає жодного
+      // рядка для цього бізнесу, дайджест взагалі не рахуємо й не шлемо —
+      // без запису дедупу нижче, щоб щогодинний прогін перевіряв знову і
+      // почав слати одразу, як тільки з'явиться перша інтеграція (не чекаючи
+      // завтрашнього дня).
+      const { count: integrationsCount } = await admin
+        .from("integrations")
+        .select("id", { count: "exact", head: true })
+        .eq("business_id", business.id);
+      if (!integrationsCount) continue;
+
       const digestType = kind === "morning" ? "daily_digest_morning" : "daily_digest_evening";
       const today = localDateStr(tz);
 

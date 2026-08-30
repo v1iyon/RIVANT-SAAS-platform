@@ -231,6 +231,25 @@ export async function DELETE(req) {
       .eq("business_id", business.id)
       .eq("provider", provider);
 
+    // ФІКС (обговорення 30.08.2026, той самий принцип, що і в
+    // /api/stripe-disconnect): резолвимо алерти цього провайдера, щоб вони
+    // не висіли "open" назавжди після відключення й не потрапляли в
+    // майбутні звіти/Risks tab про джерело, якого вже немає.
+    const ALERT_TYPE_BY_PROVIDER = {
+      meta_ads: ["sync_failure_meta_ads"],
+      google_ads: ["sync_failure_google_ads"],
+      shopify: ["sync_failure_shopify"],
+    };
+    const alertTypes = ALERT_TYPE_BY_PROVIDER[provider];
+    if (alertTypes) {
+      await admin
+        .from("alerts_log")
+        .update({ status: "resolved" })
+        .eq("business_id", business.id)
+        .eq("status", "open")
+        .in("type", alertTypes);
+    }
+
     return Response.json({ success: true });
   } catch (err) {
     if (err instanceof UnauthorizedError) return Response.json({ error: "unauthorized" }, { status: 401 });

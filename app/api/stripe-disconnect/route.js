@@ -52,6 +52,19 @@ export async function POST(req) {
       .eq("business_id", business.id)
       .eq("provider", "stripe");
 
+    // ФІКС (обговорення 30.08.2026): раніше при disconnect алерти, пов'язані
+    // з цим провайдером (sync_failure_stripe, revenue_drop, payment_silence_stripe),
+    // лишались зі status "open" НАЗАВЖДИ — жоден роут ніколи їх не резолвив,
+    // окрім повного видалення акаунта. Клієнт, який давно відключив Stripe,
+    // продовжував бачити "N alert(s) open" у щоденних звітах і на вкладці
+    // Risks — про джерело даних, якого вже нема.
+    await admin
+      .from("alerts_log")
+      .update({ status: "resolved" })
+      .eq("business_id", business.id)
+      .eq("status", "open")
+      .in("type", ["sync_failure_stripe", "revenue_drop", "payment_silence_stripe"]);
+
     return Response.json({ success: true });
   } catch (err) {
     if (err instanceof UnauthorizedError) return Response.json({ error: "unauthorized" }, { status: 401 });
