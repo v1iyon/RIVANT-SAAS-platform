@@ -172,6 +172,7 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
       setAuthError("");
       setShowForgotHint(false);
       setIsForgotPassword(false);
+      setOtpStep(false);
       setIsLoginModalOpen(true);
       setIsMobileMenuOpen(false);
     };
@@ -182,7 +183,7 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent | TouchEvent) => {
       if (modalRef.current && !modalRef.current.contains(e.target as Node)) {
-        setIsLoginModalOpen(false);
+        closeLoginModal();
       }
       // FIX: игнорируем клики по самой кнопке-переключателю,
       // иначе tap по X сначала закрывает меню через этот обработчик,
@@ -253,8 +254,18 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
   const openLogin = () => {
     setShowForgotHint(false);
     setIsForgotPassword(false);
+    setOtpStep(false);
     setIsLoginModalOpen(true);
     setIsMobileMenuOpen(false);
+  };
+
+  // Закрытие модалки крестиком/кликом по фону — сбрасываем otpStep, чтобы
+  // при повторном открытии модалки (например, через "Cabinet" в шапке)
+  // человек не увидел зависший экран ввода кода от прошлой попытки
+  // регистрации вместо обычной формы входа.
+  const closeLoginModal = () => {
+    setIsLoginModalOpen(false);
+    setOtpStep(false);
   };
 
   // FIX (аудит п.5): раньше кнопка "Cabinet" всегда открывала модалку логина,
@@ -825,13 +836,13 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
 
       {isLoginModalOpen && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/90" onClick={() => setIsLoginModalOpen(false)} />
+          <div className="absolute inset-0 bg-black/90" onClick={closeLoginModal} />
           <div
             ref={modalRef}
             className="relative w-full max-w-md bg-gray-900 rounded-2xl p-6 border border-white/10"
           >
             <button
-              onClick={() => setIsLoginModalOpen(false)}
+              onClick={closeLoginModal}
               className="absolute top-4 right-4 text-gray-400 hover:text-white p-3 -m-1"
             >
               <X className="w-5 h-5" />
