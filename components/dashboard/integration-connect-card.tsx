@@ -104,6 +104,10 @@ export function IntegrationConnectCard({
           app_not_installed: "Застосунок RIVANT не встановлено в Shopify.",
           access_denied: "Перевірте доступ застосунку та токен Shopify.",
           store_not_found: "Перевірте адресу магазину Shopify.",
+          // ФІКС (аудит 30.08.2026, знахідка №1): sync-stripe-core.mjs тепер
+          // призупиняє синк і пише саме цю причину для тестових (rk_test_)
+          // ключів Stripe, підключених до фіксу в connect-stripe/route.js.
+          test_key_not_synced: "Підключено тестовий ключ Stripe (rk_test_...) — синхронізація призупинена. Підключіть бойовий ключ (rk_live_...).",
           connection_failed: `Не вдалося синхронізувати ${displayName}. Перевірте доступ.`,
         }
       : language === "DE"
@@ -111,12 +115,14 @@ export function IntegrationConnectCard({
           app_not_installed: "Die RIVANT-App ist nicht in Shopify installiert.",
           access_denied: "Prüfen Sie App-Zugriff und Shopify-Token.",
           store_not_found: "Prüfen Sie die Shopify-Shop-Adresse.",
+          test_key_not_synced: "Ein Stripe-Testschlüssel (rk_test_...) ist verbunden — Synchronisierung pausiert. Verbinden Sie einen Live-Schlüssel (rk_live_...).",
           connection_failed: `${displayName} konnte nicht synchronisiert werden. Prüfen Sie den Zugriff.`,
         }
       : {
           app_not_installed: "The RIVANT app is not installed in Shopify.",
           access_denied: "Check the Shopify app access and token.",
           store_not_found: "Check the Shopify store address.",
+          test_key_not_synced: "A Stripe test key (rk_test_...) is connected — sync paused. Connect a live key (rk_live_...).",
           connection_failed: `Couldn't sync ${displayName}. Check the access.`,
         };
     return messages[reason as keyof typeof messages] || messages.connection_failed;

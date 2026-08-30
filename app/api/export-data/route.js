@@ -47,6 +47,31 @@ export async function GET(req) {
     ? await admin.from("expenses").select("*").in("business_id", businessIds)
     : { data: [] };
 
+  // ФІКС (аудит 30.08.2026, знахідка №5): delete-account/route.js вже
+  // явно чистить team_members і addon_subscriptions як персональні дані
+  // (список запрошених колег з telegram_id/username; активні допуслуги) —
+  // export-data мовчки не віддавав ці ж самі таблиці, тобто "скачати мої
+  // дані" було вужчим за те, що реально видаляється. Приводимо у відповідність.
+  const { data: teamMembers } = businessIds.length
+    ? await admin.from("team_members").select("*").in("business_id", businessIds)
+    : { data: [] };
+
+  const { data: addonSubscriptions } = businessIds.length
+    ? await admin.from("addon_subscriptions").select("*").in("business_id", businessIds)
+    : { data: [] };
+
+  // Список підключених інтеграцій — без ключів/секретів (api_key_encrypted,
+  // config.webhook_secret_encrypted тощо), лише факт "що підключено і коли":
+  // саме ці рядки видаляються в delete-account, і людина має право бачити,
+  // що з цього приводу про неї зберігається.
+  const { data: integrationsRaw } = businessIds.length
+    ? await admin
+        .from("integrations")
+        .select("business_id, provider, status, key_preview, last_synced_at, created_at")
+        .in("business_id", businessIds)
+    : { data: [] };
+  const integrations = integrationsRaw || [];
+
   const { data: subscription } = await admin
     .from("subscriptions")
     .select("plan, access_status, current_period_end, created_at")
@@ -58,9 +83,12 @@ export async function GET(req) {
     account: user,
     subscription,
     businesses,
+    integrations,
     metrics,
     expenses,
     alerts,
+    team_members: teamMembers,
+    addon_subscriptions: addonSubscriptions,
   };
 
   return new Response(JSON.stringify(exportPayload, null, 2), {

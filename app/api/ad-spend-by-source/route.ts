@@ -2,7 +2,12 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getPrimaryBusinessId } from "@/lib/get-primary-business";
-import { requireUser, UnauthorizedError } from "@/lib/require-user";
+import { UnauthorizedError } from "@/lib/require-user";
+import {
+  requireActiveSubscription,
+  SubscriptionInactiveError,
+  subscriptionErrorResponse,
+} from "@/lib/require-active-subscription";
 
 export const dynamic = "force-dynamic";
 
@@ -21,11 +26,19 @@ const admin = createClient(
 );
 
 export async function GET(req: Request) {
+  // ФІКС (аудит 30.08.2026, п. 4): цей роут — платні CAC-дані (той самий
+  // клас, що metrics/forecast/alerts), але раніше перевіряв лише
+  // requireUser() ("залогінений хоч якось"), а не активність підписки.
+  // Користувач з простроченим трайлом/заблокованою підпискою міг і далі
+  // необмежено отримувати ці дані, поки решта платних роутів (metrics.ts,
+  // forecast.ts, alerts.ts) вже давно ріжуть доступ через
+  // requireActiveSubscription(). Приводимо до того самого стандарту.
   let email: string;
   try {
-    ({ email } = await requireUser());
+    ({ email } = await requireActiveSubscription());
   } catch (e) {
     if (e instanceof UnauthorizedError) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (e instanceof SubscriptionInactiveError) return subscriptionErrorResponse(e);
     throw e;
   }
 

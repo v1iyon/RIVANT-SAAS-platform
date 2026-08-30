@@ -250,6 +250,52 @@ async function main(businessId, options = {}) {
     try {
       const apiKey = decrypt(integ.api_key_encrypted);
 
+      // ФІКС (аудит 30.08.2026, знахідка №1, self-heal): connect-stripe/route.js
+      // тепер відхиляє тестові ключі при ПІДКЛЮЧЕННІ, але інтеграції,
+      // підключені ДО цього фіксу (наприклад, тестовий акаунт, залишений
+      // для перевірки логіки), все ще можуть мати rk_test_ у базі. Синкати
+      // такий ключ — значить далі писати тестові charges у
+      // metrics_computed як реальну виручку. Пропускаємо синк для таких
+      // інтеграцій і позначаємо статус, замість того щоб мовчки продовжити
+      // як раніше.
+      if (!apiKey.startsWith("rk_live_")) {
+        console.warn(`Skipping Stripe sync for integration ${integ.id}: test-mode key (not rk_live_)`);
+        const alreadyFlagged = integ.config?.sync_error_reason === "test_key_not_synced";
+        await admin
+          .from("integrations")
+          .update({ status: "error", config: { ...(integ.config || {}), sync_error_reason: "test_key_not_synced" } })
+          .eq("id", integ.id);
+        // Повідомляємо один раз (не на кожному прогоні кожні 15 хв) — той
+        // самий принцип дедупу, що і в решті alert'ів цього файлу.
+        if (!alreadyFlagged) {
+          const { data: failedBusiness } = await admin
+            .from("businesses")
+            .select("user_id")
+            .eq("id", integ.business_id)
+            .maybeSingle();
+          if (failedBusiness?.user_id) {
+            const contact = await getUserContact(failedBusiness.user_id);
+            const TEST_KEY_MESSAGE = {
+              UA: "Підключено тестовий ключ Stripe",
+              EN: "A Stripe test-mode key is connected",
+              DE: "Ein Stripe-Testmodus-Schlüssel ist verbunden",
+            };
+            const TEST_KEY_EXPLANATION = {
+              UA: "Синхронізація призупинена: цей ключ (rk_test_...) не бойовий, дані з нього не відповідають реальній виручці. Підключіть бойовий ключ (rk_live_...) у налаштуваннях інтеграцій.",
+              EN: "Sync paused: this key (rk_test_...) is not a live key, so its data doesn't reflect real revenue. Connect a live key (rk_live_...) in integration settings.",
+              DE: "Synchronisierung pausiert: dieser Schlüssel (rk_test_...) ist kein Live-Schlüssel, seine Daten spiegeln keinen echten Umsatz wider. Verbinden Sie einen Live-Schlüssel (rk_live_...) in den Integrationseinstellungen.",
+            };
+            await sendAlertToBusiness(integ.business_id, contact, {
+              type: "sync_failure_stripe",
+              severity: "high",
+              message: (TEST_KEY_MESSAGE[contact.userLang] || TEST_KEY_MESSAGE.EN),
+              aiExplanation: (TEST_KEY_EXPLANATION[contact.userLang] || TEST_KEY_EXPLANATION.EN),
+            });
+          }
+        }
+        continue;
+      }
+
       // ФІКС (аудит #2, знахідка №9, self-heal): для інтеграцій, підключених
       // ДО цього фіксу (або де перша спроба зареєструвати webhook не
       // вдалась — наприклад, ключ на той момент не мав потрібного права),
