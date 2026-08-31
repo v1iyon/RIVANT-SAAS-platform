@@ -1821,9 +1821,12 @@ useEffect(() => {
   const profitChange = rollingMetrics
     ? pctChange(rollingMetrics.profit_last24h, rollingMetrics.profit_prev24h)
     : pctChange(currentProfit, prevProfit);
-  const marginChange = Number((rollingMetrics
-    ? (rollingMetrics.margin_last24h - rollingMetrics.margin_prev24h)
-    : (currentMargin - prevMargin)).toFixed(1));
+   const marginBaseRevenue = rollingMetrics ? rollingMetrics.revenue_prev24h : prevRevenue;
+  const marginChange = (marginBaseRevenue === null || marginBaseRevenue === undefined || Math.abs(marginBaseRevenue) < MEANINGFUL_BASE)
+    ? null
+    : Number((rollingMetrics
+        ? (rollingMetrics.margin_last24h - rollingMetrics.margin_prev24h)
+        : (currentMargin - prevMargin)).toFixed(1));
   const cacChange = currentCac != null && prevCac ? pctChange(currentCac, prevCac) : null;
   const cacMetaChange = currentCacMeta != null && prevCacMeta ? pctChange(currentCacMeta, prevCacMeta) : null;
   const cacGoogleChange = currentCacGoogle != null && prevCacGoogle ? pctChange(currentCacGoogle, prevCacGoogle) : null;
