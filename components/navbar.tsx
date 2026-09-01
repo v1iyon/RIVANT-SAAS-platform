@@ -374,9 +374,18 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
     setAuthLoading(true);
 
     if (authMode === "signup") {
+      // FIX (язык письма подтверждения): раньше язык сайта нигде не попадал
+      // в сам signUp() и, соответственно, в user_metadata пользователя.
+      // Он уходил только в /api/auth-sync (для записи в таблицу users), а
+      // само письмо с кодом подтверждения формируется Supabase ДО того, как
+      // auth-sync вообще успевает отработать — и не могло знать, на каком
+      // языке слать текст. Добавляем language прямо в options.data, чтобы
+      // он был доступен в user.user_metadata.language уже в момент отправки
+      // письма (используется в Send Email Hook, supabase/functions/send-email).
       const { error } = await supabase.auth.signUp({
         email: loginEmail,
         password: loginPassword,
+        options: { data: { language } },
       });
       setAuthLoading(false);
       if (error) {
