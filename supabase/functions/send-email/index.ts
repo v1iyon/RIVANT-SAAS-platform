@@ -1,6 +1,6 @@
 import { Webhook } from "https://esm.sh/standardwebhooks@1.0.0";
 
-const hookSecret = Deno.env.get("SEND_EMAIL_HOOK_SECRET")!;
+const hookSecret = Deno.env.get("SEND_EMAIL_HOOK_SECRET")!.replace("v1,whsec_", "");
 const resendApiKey = Deno.env.get("RESEND_API_KEY")!;
 
 const templates: Record<string, (code: string) => { subject: string; html: string }> = {
