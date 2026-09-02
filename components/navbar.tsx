@@ -130,6 +130,23 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
 
       localStorage.setItem("rivant_has_account", "1");
       setIsLoggedIn(true);
+
+      // FIX: раньше этот слушатель проставлял isLoggedIn, но никогда не
+      // делал router.push("/dashboard"). Пока сам OAuth-редирект честно
+      // приземлялся ровно на /dashboard (как задано в redirectTo ниже),
+      // это было незаметно. Но если Supabase Redirect URLs allowlist
+      // (Dashboard -> Authentication -> URL Configuration) не содержит
+      // ТОЧНО такой redirectTo (например, там есть только корень домена
+      // без /dashboard, или указан другой домен, чем реально открыт в
+      // браузере — rivant-os.com vs *.vercel.app), GoTrue молча
+      // подменяет redirectTo на Site URL проекта и человек возвращается
+      // на главную ПОЛНОСТЬЮ ВОШЕДШИМ, но физически на лендинге — этот
+      // слушатель отрабатывает (SIGNED_IN действительно происходит), но
+      // никуда не переводит. Явный push сюда закрывает это независимо от
+      // того, куда именно вернул браузер OAuth-редирект.
+      if (pathname !== "/dashboard") {
+        router.push("/dashboard");
+      }
     });
 
     return () => {
