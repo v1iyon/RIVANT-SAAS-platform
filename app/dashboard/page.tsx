@@ -1520,12 +1520,62 @@ useEffect(() => {
 }, [profileEmail, profileSettingsLoaded, language, currency]);
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data }: any) => {
-      if (!data.session) {
+    // FIX (аудит preLaunch, продолжение): раньше здесь стоял прямой
+    // supabase.auth.getSession().then(...) — если сессии ещё нет, тут же
+    // router.push("/"). Для обычного возврата (просто открыли /dashboard
+    // с уже существующей сессией в storage) это мгновенно и корректно. Но
+    // сразу после Google-редиректа (?code=... в PKCE-флоу) обмен кода на
+    // сессию идёт асинхронно и физически может не успеть завершиться к
+    // моменту этого вызова — даже с синглтон-клиентом (см. фикс в
+    // lib/supabase-browser.ts). getSession() в этот момент честно
+    // возвращает null, человека кидает на "/", и только через несколько
+    // секунд, когда обмен всё же завершается, его спасает отдельный
+    // слушатель в components/navbar.tsx (он есть, но срабатывает уже на
+    // главной, с заметной задержкой/миганием).
+    //
+    // Правильный источник истины для "определился ли auth-статус после
+    // возможного редиректа" — не разовый getSession(), а onAuthStateChange:
+    // supabase-js гарантированно шлёт туда "INITIAL_SESSION" ПОСЛЕ того,
+    // как клиент закончил и восстановление сессии из storage, и (если он
+    // есть) обмен code -> session из URL. Это ровно то, что рекомендует
+    // сама документация Supabase: "to react to sign-in events (including
+    // post-redirect events) you should subscribe to onAuthStateChange".
+    // Редиректим на "/" только после этого события, а не раньше.
+    let cancelled = false;
+    let settled = false;
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((event: string, session: any) => {
+      if (settled) return;
+      if (event === "INITIAL_SESSION" || event === "SIGNED_IN" || event === "SIGNED_OUT") {
+        settled = true;
+        // Опциональная цепочка на случай, если колбэк по какой-то реализации
+        // клиента срабатывает синхронно, до того как authListener успел
+        // получить значение из onAuthStateChange() ниже.
+        authListener?.subscription?.unsubscribe();
+        handleResolvedSession(session);
+      }
+    });
+
+    // Подстраховка: если по какой-то причине INITIAL_SESSION/SIGNED_IN/
+    // SIGNED_OUT так и не пришли (не должно случаться, но лучше не
+    // держать человека на пустом экране бесконечно) — через 4 секунды
+    // берём обычный getSession() как есть и решаем по нему.
+    const fallbackTimer = setTimeout(async () => {
+      if (settled || cancelled) return;
+      settled = true;
+      authListener.subscription.unsubscribe();
+      const { data } = await supabase.auth.getSession();
+      handleResolvedSession(data.session);
+    }, 4000);
+
+    async function handleResolvedSession(session: any) {
+      clearTimeout(fallbackTimer);
+      if (cancelled) return;
+      if (!session) {
         router.push("/");
         return;
       }
-      const email = data.session.user.email || "";
+      const email = session.user.email || "";
       setProfileSettingsLoaded(false);
       // A Supabase Auth session can exist before the matching application user
       // row does (for example after an interrupted first login). Ensure it
@@ -1749,7 +1799,13 @@ if (bizData.business) {
       const verifiedFactor = factorsData?.totp?.find((f: any) => f.status === "verified");
       setTwoFactorEnabled(!!verifiedFactor);
       if (verifiedFactor) setMfaFactorId(verifiedFactor.id);
-    });
+    }
+
+    return () => {
+      cancelled = true;
+      clearTimeout(fallbackTimer);
+      authListener.subscription.unsubscribe();
+    };
   }, [router]);
 
  const isExpiredTrial = subInfo?.access_status === "expired";
