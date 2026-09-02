@@ -404,11 +404,28 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
         password: loginPassword,
         options: { data: { language } },
       });
-      setAuthLoading(false);
       if (error) {
+        setAuthLoading(false);
         setAuthError(translateAuthError(error.message));
         return;
       }
+      // FIX (гонка "unauthorized" при регистрации не через Google): раньше
+      // здесь стоял setAuthLoading(false) сразу после успешного signUp(),
+      // ДО завершения следующего fetch("/api/auth-sync") ниже. Кнопка
+      // "Створити акаунт" на это время снова становилась активной (она
+      // управляется только authLoading), и повторный клик — обычное дело на
+      // медленном соединении или при обычном "нетерпеливом" двойном клике —
+      // запускал ВТОРОЙ handleLogin(): второй supabase.auth.signUp() (не
+      // возвращает ошибку повторно для ещё не подтверждённого email — это
+      // штатная защита Supabase от энумерации почт) и второй
+      // POST /api/auth-sync с тем же email. Первый auth-sync успевал создать
+      // строку в users и вернуть ok=true, а второй уже находил
+      // существующего пользователя без сессии (email ещё не подтверждён —
+      // сессии в принципе не будет вплоть до ввода OTP-кода) и отвечал
+      // 401 {"error":"unauthorized"} — именно этот ответ и всплывал в форме,
+      // хотя аккаунт по факту уже был создан первым запросом. Держим кнопку
+      // заблокированной (authLoading=true) до самого конца этой ветки —
+      // единственная явная точка sync-запроса.
       try {
         const syncRes = await fetch("/api/auth-sync", {
           method: "POST",

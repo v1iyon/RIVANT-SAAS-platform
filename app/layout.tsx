@@ -12,6 +12,13 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: 'RIVANT - Business Visibility System',
   description: 'Nothing Stays Hidden. RIVANT provides real-time business analytics, anomaly detection, and operational visibility.',
+  icons: {
+    icon: [
+      { url: '/icon.png', type: 'image/png' },
+    ],
+    shortcut: '/icon.png',
+    apple: '/apple-touch-icon.jpg',
+  },
 }
 
 export const viewport: Viewport = {
