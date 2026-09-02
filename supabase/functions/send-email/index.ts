@@ -18,6 +18,17 @@ const templates: Record<string, (code: string) => { subject: string; html: strin
   }),
 };
 
+// FIX (аудит preLaunch): Deno.Response для строкового тела по умолчанию
+// отдаёт "text/plain;charset=UTF-8", а не "application/json". Supabase Auth
+// Send Email Hook требует строго application/json в ответе — иначе GoTrue
+// отклоняет ЛЮБОЙ вызов signUp()/resend() с ошибкой
+// "hook_payload_invalid_content_type", даже если сам хук отработал верно и
+// письмо успешно ушло через Resend. При этом попытка уже израсходована в
+// счётчике Supabase — несколько таких неудачных регистраций подряд быстро
+// упирались в "over_email_send_rate_limit", хотя реальных писем не уходило
+// ни одного. Явно проставляем Content-Type на каждый возврат.
+const JSON_HEADERS = { "Content-Type": "application/json" };
+
 Deno.serve(async (req) => {
   const payload = await req.text();
   const headers = Object.fromEntries(req.headers);
@@ -27,7 +38,10 @@ Deno.serve(async (req) => {
   try {
     data = wh.verify(payload, headers);
   } catch (e) {
-    return new Response(JSON.stringify({ error: (e as Error).message }), { status: 401 });
+    return new Response(JSON.stringify({ error: (e as Error).message }), {
+      status: 401,
+      headers: JSON_HEADERS,
+    });
   }
 
   const { user, email_data } = data;
@@ -37,7 +51,7 @@ Deno.serve(async (req) => {
   // намеренно пропускаем без обработки — их продолжит слать сам Supabase
   // через стандартный механизм, если этот хук вернёт успех без действия.
   if (email_data?.email_action_type !== "signup") {
-    return new Response(JSON.stringify({}), { status: 200 });
+    return new Response(JSON.stringify({}), { status: 200, headers: JSON_HEADERS });
   }
 
   const lang = ["UA", "EN", "DE"].includes(user?.user_metadata?.language)
@@ -60,8 +74,11 @@ Deno.serve(async (req) => {
   });
 
   if (!res.ok) {
-    return new Response(JSON.stringify({ error: await res.text() }), { status: 500 });
+    return new Response(JSON.stringify({ error: await res.text() }), {
+      status: 500,
+      headers: JSON_HEADERS,
+    });
   }
 
-  return new Response(JSON.stringify({}), { status: 200 });
+  return new Response(JSON.stringify({}), { status: 200, headers: JSON_HEADERS });
 });
