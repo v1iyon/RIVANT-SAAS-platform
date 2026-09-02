@@ -544,7 +544,15 @@ export function OnboardingTour({ language, onNavigate, onFinish, onStepAction }:
       const el = document.querySelector(selector);
       if (el) {
         targetElRef.current = el;
-        el.scrollIntoView({ block: "center", behavior: "smooth" });
+        // Land the target a bit above true vertical center (~42% down the
+        // viewport, not 50%) instead of `scrollIntoView({ block: "center" })`.
+        // Dead-center left "top"-placed popovers and the "scroll for more"
+        // hint cramped against the bottom of the screen on mobile; stopping
+        // a little higher gives them consistent breathing room below.
+        const r = el.getBoundingClientRect();
+        const desiredY = window.innerHeight * 0.42;
+        const delta = r.top + r.height / 2 - desiredY;
+        window.scrollBy({ top: delta, behavior: "smooth" });
 
         const doMeasure = () => {
           if (cancelled) return;
@@ -797,14 +805,22 @@ export function OnboardingTour({ language, onNavigate, onFinish, onStepAction }:
         <h3 className={`font-semibold text-white pr-6 ${isNarrow ? "text-xs mb-1" : "text-base mb-1.5"}`}>{current.title[language]}</h3>
         <p className={`text-gray-400 leading-relaxed pr-6 ${isNarrow ? "text-[11px] mb-2.5" : "text-sm mb-5"}`}>{current.desc[language]}</p>
 
-        <div className="flex items-center justify-between gap-2">
+        {/* `flex-wrap` + Skip forced onto its own full-width row (order-first
+            basis-full) is the fix for the compact/narrow popover (200px wide):
+            Skip + Back + Next never fit on one line for longer labels
+            ("Пропустити"/"Überspringen"), which used to push Next past the
+            card's right edge. Wrapping degrades gracefully at any width
+            instead of relying on the row barely fitting. */}
+        <div className={`flex items-center gap-2 ${isNarrow ? "flex-wrap" : ""}`}>
           <button
             onClick={onFinish}
-            className={`text-gray-500 hover:text-gray-300 transition-colors ${isNarrow ? "text-[11px] px-1 py-1.5" : "text-xs px-2 py-2"}`}
+            className={`text-gray-500 hover:text-gray-300 transition-colors ${
+              isNarrow ? "order-1 basis-full text-left px-1 py-1 text-[11px]" : "text-xs px-2 py-2"
+            }`}
           >
             {UI.skip[language]}
           </button>
-          <div className={`flex items-center ${isNarrow ? "gap-1.5" : "gap-2"}`}>
+          <div className={`flex items-center ${isNarrow ? "order-2 ml-auto gap-1.5" : "ml-auto gap-2"}`}>
             {!isFirst && (
               <button
                 onClick={() => goTo(step - 1)}

@@ -1,0 +1,78 @@
+diff --git a/components/navbar.tsx b/components/navbar.tsx
+index 8ed8630..6b541c2 100644
+--- a/components/navbar.tsx
++++ b/components/navbar.tsx
+@@ -409,30 +409,42 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
+         setAuthError(translateAuthError(error.message));
+         return;
+       }
+-      // FIX (гонка "unauthorized" при регистрации не через Google): раньше
+-      // здесь стоял setAuthLoading(false) сразу после успешного signUp(),
+-      // ДО завершения следующего fetch("/api/auth-sync") ниже. Кнопка
+-      // "Створити акаунт" на это время снова становилась активной (она
+-      // управляется только authLoading), и повторный клик — обычное дело на
+-      // медленном соединении или при обычном "нетерпеливом" двойном клике —
+-      // запускал ВТОРОЙ handleLogin(): второй supabase.auth.signUp() (не
+-      // возвращает ошибку повторно для ещё не подтверждённого email — это
+-      // штатная защита Supabase от энумерации почт) и второй
+-      // POST /api/auth-sync с тем же email. Первый auth-sync успевал создать
+-      // строку в users и вернуть ok=true, а второй уже находил
+-      // существующего пользователя без сессии (email ещё не подтверждён —
+-      // сессии в принципе не будет вплоть до ввода OTP-кода) и отвечал
+-      // 401 {"error":"unauthorized"} — именно этот ответ и всплывал в форме,
+-      // хотя аккаунт по факту уже был создан первым запросом. Держим кнопку
+-      // заблокированной (authLoading=true) до самого конца этой ветки —
+-      // единственная явная точка sync-запроса.
++      // FIX #1 (двойной клик, уже было): держим кнопку заблокированной
++      // (authLoading=true) до конца этой ветки, чтобы повторный клик не
++      // запускал handleLogin() второй раз, пока первый ещё не завершился.
++      //
++      // FIX #2 (настоящий корень "unauthorized" — оказался глубже, чем
++      // двойной клик): в БД есть триггер handle_new_user() на INSERT INTO
++      // auth.users (см. supabase/migrations/…_baseline_catchup.sql). Он
++      // срабатывает СИНХРОННО, прямо внутри транзакции самого
++      // supabase.auth.signUp() — то есть строка в public.users создаётся
++      // триггером ещё ДО того, как этот fetch("/api/auth-sync") вообще
++      // успевает уйти. В результате auth-sync почти всегда находит
++      // "уже существующего" пользователя (это его же собственная,
++      // только что созданную триггером, строка) и, поскольку сессии ещё
++      // нет (email не подтверждён — а сессии не будет вплоть до ввода
++      // OTP-кода), защита от энумерации email (см. комментарии в самом
++      // route.js) справедливо, но ошибочно в ЭТОМ случае, отвечает
++      // 401 {"error":"unauthorized"}. Раньше это ошибочно принималось за
++      // провал регистрации и человека останавливало прямо тут — хотя
++      // аккаунт (и его язык — signUp() уже положил его в user_metadata
++      // выше) на самом деле успешно создан триггером.
++      //
++      // Различить два разных 401 без доступа к паролю здесь нельзя, но
++      // для конкретно этой ветки (сразу после успешного signUp() этим же
++      // браузером, тем же email, без сессии) 401 от auth-sync не является
++      // сигналом реальной проблемы — регистрация уже состоялась. Поэтому
++      // здесь эта ошибка больше не блокирует переход к OTP: она просто
++      // логируется. Настоящие сбои (нет сети, 500 и т.п.) по-прежнему
++      // должны быть видны — на них показываем сообщение, но НЕ 401 сразу
++      // после signUp().
+       try {
+         const syncRes = await fetch("/api/auth-sync", {
+           method: "POST",
+           headers: { "Content-Type": "application/json" },
+           body: JSON.stringify({ email: loginEmail, language }),
+         });
+-        if (!syncRes.ok) {
++        if (!syncRes.ok && syncRes.status !== 401) {
+           const errBody = await syncRes.json().catch(() => ({}));
+           console.error("auth-sync failed:", syncRes.status, errBody);
+           setAuthError(
+@@ -446,6 +458,12 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
+           setAuthLoading(false);
+           return;
+         }
++        if (syncRes.status === 401) {
++          console.warn(
++            "auth-sync returned 401 right after signUp() — expected when the DB trigger " +
++            "already created the users row before this request landed; not treated as failure."
++          );
++        }
+       } catch (e) {
+         console.error("auth-sync network error:", e);
+         setAuthError(translateAuthError("failed to fetch"));
