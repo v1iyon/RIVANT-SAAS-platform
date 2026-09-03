@@ -417,6 +417,50 @@ function rectsOverlap(a: { top: number; left: number; width: number; height: num
 
 const OPPOSITE: Record<Placement, Placement> = { top: "bottom", bottom: "top", left: "right", right: "left" };
 
+// Finds every actually-scrollable ancestor of `el`, from innermost to
+// outermost (window last). The dashboard's root layout is `h-screen
+// overflow-hidden` — the page itself never scrolls; the real scroll
+// container is an inner `overflow-auto` div (and popovers/panels can add
+// their own scrollable wrappers on top of that). A plain `window.scrollBy`
+// call was a no-op here, which is why steps whose target sat below the
+// fold of that inner container (forecast analysis text, notifications
+// digest, alerts/2FA/export rows in settings, …) got spotlighted but never
+// actually scrolled into view — the highlight would land on-screen while
+// the real content stayed clipped below it.
+function getScrollParents(el: Element): (Element | Window)[] {
+  const parents: (Element | Window)[] = [];
+  let node: HTMLElement | null = el.parentElement;
+  while (node && node !== document.body && node !== document.documentElement) {
+    const style = window.getComputedStyle(node);
+    const canScrollY = /(auto|scroll|overlay)/.test(style.overflowY);
+    if (canScrollY && node.scrollHeight > node.clientHeight + 1) {
+      parents.push(node);
+    }
+    node = node.parentElement;
+  }
+  parents.push(window);
+  return parents;
+}
+
+// Scrolls whichever container(s) actually control `el`'s position so it
+// lands near `desiredYRatio` of the viewport height — walking from the
+// innermost scrollable ancestor outward, since a target can be nested
+// inside more than one scroll container (e.g. a dropdown panel inside the
+// dashboard's main content area).
+function scrollTargetIntoView(el: Element, desiredYRatio = 0.42) {
+  const desiredY = window.innerHeight * desiredYRatio;
+  for (const parent of getScrollParents(el)) {
+    const r = el.getBoundingClientRect();
+    const delta = r.top + r.height / 2 - desiredY;
+    if (Math.abs(delta) < 2) continue;
+    if (parent === window) {
+      window.scrollBy({ top: delta, behavior: "smooth" });
+    } else {
+      (parent as HTMLElement).scrollBy({ top: delta, behavior: "smooth" });
+    }
+  }
+}
+
 // A thin, continuous progress bar reads as "almost there" at any step count,
 // where a wall of per-step dots (or even a sliding window of them) still
 // telegraphs "this is a long tour" and invites an immediate Skip. This is
@@ -549,10 +593,10 @@ export function OnboardingTour({ language, onNavigate, onFinish, onStepAction }:
         // Dead-center left "top"-placed popovers and the "scroll for more"
         // hint cramped against the bottom of the screen on mobile; stopping
         // a little higher gives them consistent breathing room below.
-        const r = el.getBoundingClientRect();
-        const desiredY = window.innerHeight * 0.42;
-        const delta = r.top + r.height / 2 - desiredY;
-        window.scrollBy({ top: delta, behavior: "smooth" });
+        // Scrolls every real scroll container in the chain (not just
+        // `window`, which is a no-op on the dashboard's `overflow-hidden`
+        // root) — see scrollTargetIntoView above.
+        scrollTargetIntoView(el, 0.42);
 
         const doMeasure = () => {
           if (cancelled) return;
@@ -805,22 +849,20 @@ export function OnboardingTour({ language, onNavigate, onFinish, onStepAction }:
         <h3 className={`font-semibold text-white pr-6 ${isNarrow ? "text-xs mb-1" : "text-base mb-1.5"}`}>{current.title[language]}</h3>
         <p className={`text-gray-400 leading-relaxed pr-6 ${isNarrow ? "text-[11px] mb-2.5" : "text-sm mb-5"}`}>{current.desc[language]}</p>
 
-        {/* `flex-wrap` + Skip forced onto its own full-width row (order-first
-            basis-full) is the fix for the compact/narrow popover (200px wide):
-            Skip + Back + Next never fit on one line for longer labels
-            ("Пропустити"/"Überspringen"), which used to push Next past the
-            card's right edge. Wrapping degrades gracefully at any width
-            instead of relying on the row barely fitting. */}
-        <div className={`flex items-center gap-2 ${isNarrow ? "flex-wrap" : ""}`}>
-          <button
-            onClick={onFinish}
-            className={`text-gray-500 hover:text-gray-300 transition-colors ${
-              isNarrow ? "order-1 basis-full text-left px-1 py-1 text-[11px]" : "text-xs px-2 py-2"
-            }`}
-          >
-            {UI.skip[language]}
-          </button>
-          <div className={`flex items-center ${isNarrow ? "order-2 ml-auto gap-1.5" : "ml-auto gap-2"}`}>
+        {/* On narrow viewports the text "Skip" button used to wrap onto its
+            own row whenever the label was long ("Пропустити"/"Überspringen"),
+            which made the popover noticeably taller than Back/Next alone
+            needed. Skip and the X button (top-right) do the same thing
+            (onFinish), so on mobile we drop the redundant text button and
+            keep everything — including the X — usable, letting Back/Next
+            sit on a single compact row instead of wrapping to a second. */}
+        <div className="flex items-center gap-2">
+          {!isNarrow && (
+            <button onClick={onFinish} className="text-gray-500 hover:text-gray-300 transition-colors text-xs px-2 py-2">
+              {UI.skip[language]}
+            </button>
+          )}
+          <div className={`flex items-center ${isNarrow ? "ml-auto gap-1.5" : "ml-auto gap-2"}`}>
             {!isFirst && (
               <button
                 onClick={() => goTo(step - 1)}
