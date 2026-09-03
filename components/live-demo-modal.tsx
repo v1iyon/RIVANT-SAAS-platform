@@ -1255,11 +1255,12 @@ const [googleAdsExtraValues, setGoogleAdsExtraValues] = useState<Record<string, 
     return () => clearTimeout(timeoutId);
   }, [isOpen, generateAndShowAlert]);
 
-  // Попап "14 днів безкоштовно": показуємо один раз за сесію демо — коли
-  // людина доходить до останньої вкладки (Integrations, останній пункт
-  // sidebarItems) АБО через 60 секунд перебування в демо, залежно від того,
-  // що станеться раніше. Скидаємо прапорець при закритті демо, щоб він міг
-  // з'явитись знову, якщо людина відкриє демо ще раз.
+  // Попап "14 днів безкоштовно": показуємо один раз за сесію демо, чистим
+  // таймером від моменту відкриття демо-вікна.
+  // FIX: раніше був ще й миттєвий тригер по вкладці Integrations — на
+  // практиці він спрацьовував ЩОЙНО людина туди переходила, обриваючи
+  // огляд на середині ("не встигла подивитись інтеграції"). Прибрано —
+  // лишився тільки таймер, і скорочено з 60с до 20с (за проханням).
   useEffect(() => {
     if (!isOpen) {
       trialPromptShownRef.current = false;
@@ -1271,15 +1272,9 @@ const [googleAdsExtraValues, setGoogleAdsExtraValues] = useState<Record<string, 
         trialPromptShownRef.current = true;
         setShowTrialPrompt(true);
       }
-    }, 60000);
+    }, 20000);
     return () => clearTimeout(timeoutId);
   }, [isOpen]);
-
-  useEffect(() => {
-    if (!isOpen || activeView !== "integrations" || trialPromptShownRef.current) return;
-    trialPromptShownRef.current = true;
-    setShowTrialPrompt(true);
-  }, [isOpen, activeView]);
 
   const handleTrialTry = () => {
     setShowTrialPrompt(false);

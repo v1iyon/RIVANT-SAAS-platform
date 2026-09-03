@@ -36,7 +36,7 @@ export async function POST(req) {
 
     if (!apiKey.startsWith("rk_")) {
       return Response.json(
-        { error: "Please use a restricted key (starts with rk_test_ or rk_live_), not a full secret key" },
+        { error: "Please use a restricted key (starts with rk_live_), not a full secret key" },
         { status: 400 }
       );
     }
@@ -53,7 +53,7 @@ export async function POST(req) {
     // ж фейкову картину.
     //
     // Формат restricted-ключа сам містить режим у префіксі
-    // (rk_live_... / rk_test_...) — Stripe API-виклик для цього не
+    // (rk_live_...) — Stripe API-виклик для цього не
     // потрібен. Продакшн приймає лише live-ключі; тестові — з чіткою
     // помилкою, а не мовчки.
     if (!apiKey.startsWith("rk_live_")) {

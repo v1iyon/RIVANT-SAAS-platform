@@ -220,7 +220,7 @@ export function StripeConnectCard({
     connectBtn: language === "UA" ? "Підключити Stripe" : language === "DE" ? "Stripe verbinden" : "Connect Stripe",
     disconnectBtn: language === "UA" ? "Відключити" : language === "DE" ? "Trennen" : "Disconnect",
     connecting: language === "UA" ? "Підключення..." : language === "DE" ? "Verbinde..." : "Connecting...",
-    placeholder: "rk_test_... / rk_live_...",
+    placeholder: "rk_live_...",
     lockedTitle: language === "UA" ? "Тариф не активний" : language === "DE" ? "Kein aktiver Tarif" : "No active plan",
     lockedOk: language === "UA" ? "Гаразд" : language === "DE" ? "OK" : "OK",
     lockedViewPlans: language === "UA" ? "Переглянути тарифи" : language === "DE" ? "Tarife ansehen" : "View plans",
