@@ -70,7 +70,7 @@ type ViewType = "overview" | "risks" | "forecast" | "integrations" | "settings";
 
 // Реальні назви місяців, що йдуть від поточної дати (не хардкод) — використовується
 // у вкладці "Прогноз" для тарифу Scale/Trial (90 днів = 3 місяці наперед). Якщо зараз
-// серпень — покаже "Сер, Вер, Жов"; наступного місяця саме собою стане "Вер, Жов, Лис".
+// серпень — покаже "Сер, Вер, Жов", наступного місяця саме собою стане "Вер, Жов, Лис".
 const MONTH_NAMES_BY_LANG: Record<string, string[]> = {
   EN: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
   UA: ["Січ", "Лют", "Бер", "Кві", "Тра", "Чер", "Лип", "Сер", "Вер", "Жов", "Лис", "Гру"],
@@ -684,7 +684,7 @@ function RevenueExpensesChart({ history, timezone }: {
             <div className="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-wider leading-tight">{T.totalExpenses || "Total Expenses"}</div>
           </div>
           <div className="text-base sm:text-lg font-bold text-rose-400">{symbol}{(convert(totalExpenses) / 1000).toFixed(0)}k</div>
-          <div className="text-[10px] text-gray-500 mt-0.5">{((totalExpenses / totalRevenue) * 100).toFixed(0)}% {T.demoOfRevenue || "of revenue"}</div>
+          <div className="text-[10px] text-gray-500 mt-0.5">{expenseEfficiency}% {T.demoOfRevenue || "of revenue"}</div>
         </div>
         <div className="bg-green-500/10 rounded-xl p-2 sm:p-2.5 border border-green-500/20 flex flex-col items-center text-center">
           <div className="flex flex-col items-center gap-0.5 mb-0.5">
@@ -1537,8 +1537,8 @@ useEffect(() => {
     // возможного редиректа" — не разовый getSession(), а onAuthStateChange:
     // supabase-js гарантированно шлёт туда "INITIAL_SESSION" ПОСЛЕ того,
     // как клиент закончил и восстановление сессии из storage, и (если он
-    // есть) обмен code -> session из URL. Это ровно то, что рекомендует
-    // сама документация Supabase: "to react to sign-in events (including
+    // есть) обмен code -> session из URL. Это ровно те, что рекомендует
+    // сама документація Supabase: "to react to sign-in events (including
     // post-redirect events) you should subscribe to onAuthStateChange".
     // Редиректим на "/" только после этого события, а не раньше.
     let cancelled = false;
@@ -1604,7 +1604,7 @@ useEffect(() => {
       // його запустити. Раніше він стартував ПІСЛЯ /api/metrics — це зайвий
       // послідовний round-trip, який тільки збільшував час до появи карток
       // (widgetPrefsLoaded). Тепер летить паралельно з усім іншим, а
-      // await — там же, де він реально потрібен, нижче.
+      // await — там же, где він реально потрібен, нижче.
       const widgetPrefsPromise = fetch(`/api/widget-prefs?email=${encodeURIComponent(email)}`, { cache: "no-store" }).then((r) => r.json());
       const prefsRes = await fetch(`/api/notification-prefs?email=${encodeURIComponent(email)}`);
       const prefs = await prefsRes.json();
@@ -1777,7 +1777,7 @@ if (bizData.business) {
         // автоматично закривались в scripts/sync-stripe-core.mjs, коли
         // виручка відновлювалась, і просто зникали з вкладки "Ризики" без
         // сліду. Тепер бекенд віддає їх окремо (/api/alerts -> resolvedAlerts),
-        // і ми показуємо їх у вкладці "Історія", щоб нічого не губилось з виду.
+        // и ми показуємо їх у вкладці "Історія", щоб нічого не губилось з виду.
         const mappedResolved: Risk[] = (alertsData.resolvedAlerts || []).map(mapRisk);
         setRisks(mapped);
         setResolvedRisks(mappedResolved);

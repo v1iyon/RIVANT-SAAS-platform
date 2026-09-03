@@ -10,7 +10,7 @@ import {
   LayoutDashboard, AlertTriangle, TrendingUp, Link2, 
   Bell, X, AlertCircle, ArrowUpRight, ArrowDownRight, Trash2,
   TrendingDown, DollarSign, BarChart3, Zap, Package, CreditCard, Truck, Users, Activity,
-  CheckCircle, Wifi, WifiOff, Settings, Link, ChevronLeft, ChevronRight, Filter, Receipt
+  CheckCircle, Wifi, WifiOff, Settings, Link, ChevronLeft, ChevronRight, Filter, Receipt, Sparkles
 } from "lucide-react";
 
 interface LiveDemoModalProps {
@@ -785,7 +785,7 @@ function RevenueExpensesChart() {
   const totalExpenses = history.reduce((sum, d) => sum + d.expenses, 0);
   const totalProfit = totalRevenue - totalExpenses;
   const avgMargin = history.reduce((sum, d) => sum + d.margin, 0) / history.length;
-  const expenseEfficiency = (totalExpenses / totalRevenue * 100).toFixed(1);
+  const expenseEfficiency = totalRevenue > 0 ? (totalExpenses / totalRevenue * 100).toFixed(1) : "0.0";
   const bestDay = history.reduce((best, d, i) => d.margin > history[best].margin ? i : best, 0);
   const worstDay = history.reduce((worst, d, i) => d.margin < history[worst].margin ? i : worst, 0);
   
@@ -886,7 +886,7 @@ function RevenueExpensesChart() {
             <div className="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-wider truncate">{T.demoExpenses || "Total Expenses"}</div>
           </div>
           <div className="text-base sm:text-xl font-bold text-white truncate">{symbol}{(convert(totalExpenses) / 1000).toFixed(0)}k</div>
-          <div className="text-[9px] sm:text-[10px] text-gray-500 mt-1 truncate">{((totalExpenses / totalRevenue) * 100).toFixed(0)}% {T.demoOfRevenue || "of revenue"}</div>
+          <div className="text-[9px] sm:text-[10px] text-gray-500 mt-1 truncate">{expenseEfficiency}% {T.demoOfRevenue || "of revenue"}</div>
         </div>
         <div className="bg-green-500/10 rounded-xl p-2 sm:p-3 border border-green-500/20 overflow-hidden flex flex-col items-center text-center">
           <div className="flex items-center justify-center gap-1 sm:gap-1.5 mb-1">
@@ -2055,7 +2055,7 @@ const [googleAdsExtraValues, setGoogleAdsExtraValues] = useState<Record<string, 
                       <p className="text-xs text-gray-400">{risks[0]?.description || ""}</p>
                     </div>
                   </div>
-                  <p className="text-sm text-gray-400 mb-4">{T.demoConnectTelegram || "Get real-time alerts in Telegram when anomalies are detected."}</p>
+                  <p className="text-sm text-gray-400 mb-4">{T.demoConnectTelegramDesc || "Get real-time alerts in Telegram when anomalies are detected."}</p>
                   <Button className="w-full bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 font-semibold py-2">{T.demoConnectTelegram || "Connect Telegram →"}</Button>
                 </div>
               </div>
