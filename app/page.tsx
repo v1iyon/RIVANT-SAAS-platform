@@ -15,8 +15,17 @@ export default function Home() {
   const [isDemoOpen, setIsDemoOpen] = useState(false);
   const calculatorRef = useRef<HTMLDivElement>(null);
 
+  // FIX: elementRef.scrollIntoView({block:"start"}) ставит блок калькулятора
+  // впритул до самого верху екрана (під навбаром на десктопі це виглядає
+  // затиснутим, на мобільному — ще й під фіксованим хедером). Рахуємо
+  // позицію самі і скролимо з невеликим відступом зверху — однаково і на
+  // телефоні, і на ноуті, замість жорсткого block:"start".
   const handleOpenCalculator = () => {
-    calculatorRef.current?.scrollIntoView({ behavior: "smooth" });
+    const el = calculatorRef.current;
+    if (!el) return;
+    const offset = window.innerWidth < 1024 ? 72 : 88; // висота фіксованого навбара + невеликий "дихальний" відступ
+    const top = el.getBoundingClientRect().top + window.scrollY - offset;
+    window.scrollTo({ top, behavior: "smooth" });
   };
 
   const handleOpenDemo = () => setIsDemoOpen(true);

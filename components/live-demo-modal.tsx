@@ -682,9 +682,10 @@ function shuffleArray<T>(arr: T[]): T[] {
   return a;
 }
 
-// Интервал между уведомлениями — 15-20 секунд
-const MIN_ALERT_INTERVAL = 15000;
-const MAX_ALERT_INTERVAL = 20000;
+// Интервал между уведомлениями — 24-32 секунды (было 15-20: слишком часто
+// сыпало риски одно за другим, не давая рассмотреть предыдущее).
+const MIN_ALERT_INTERVAL = 24000;
+const MAX_ALERT_INTERVAL = 32000;
 // Сколько уведомление "висит" в виде тоста, прежде чем исчезнуть
 const NOTIFICATION_VISIBLE_MS = 3000;
 // Максимум уведомлений, которые храним во вкладке "Риски"
@@ -1023,6 +1024,11 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
   const [alertCount, setAlertCount] = useState(0);
   const [showTelegramPopup, setShowTelegramPopup] = useState(false);
   const [lastNotification, setLastNotification] = useState<Risk | null>(null);
+  // Попап "спробувати 14 днів безкоштовно" — з'являється один раз за сесію
+  // демо: коли людина доходить до останньої вкладки (Integrations) АБО
+  // через хвилину перебування в демо, залежно від того, що станеться раніше.
+  const [showTrialPrompt, setShowTrialPrompt] = useState(false);
+  const trialPromptShownRef = useRef(false);
   const modalRef = useRef<HTMLDivElement>(null);
   const notificationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -1248,7 +1254,44 @@ const [googleAdsExtraValues, setGoogleAdsExtraValues] = useState<Record<string, 
     scheduleNext();
     return () => clearTimeout(timeoutId);
   }, [isOpen, generateAndShowAlert]);
-  
+
+  // Попап "14 днів безкоштовно": показуємо один раз за сесію демо — коли
+  // людина доходить до останньої вкладки (Integrations, останній пункт
+  // sidebarItems) АБО через 60 секунд перебування в демо, залежно від того,
+  // що станеться раніше. Скидаємо прапорець при закритті демо, щоб він міг
+  // з'явитись знову, якщо людина відкриє демо ще раз.
+  useEffect(() => {
+    if (!isOpen) {
+      trialPromptShownRef.current = false;
+      setShowTrialPrompt(false);
+      return;
+    }
+    const timeoutId = setTimeout(() => {
+      if (!trialPromptShownRef.current) {
+        trialPromptShownRef.current = true;
+        setShowTrialPrompt(true);
+      }
+    }, 60000);
+    return () => clearTimeout(timeoutId);
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || activeView !== "integrations" || trialPromptShownRef.current) return;
+    trialPromptShownRef.current = true;
+    setShowTrialPrompt(true);
+  }, [isOpen, activeView]);
+
+  const handleTrialTry = () => {
+    setShowTrialPrompt(false);
+    onClose();
+    // Той самий підхід, що й кнопки тарифів у pricing-section.tsx —
+    // відкриває модалку реєстрації, не піднімаючи її стейт на рівень
+    // сторінки.
+    window.dispatchEvent(new CustomEvent("rivant:open-signup"));
+  };
+
+  const handleTrialDismiss = () => setShowTrialPrompt(false);
+
   useEffect(() => {
     if (!isOpen) return;
     
@@ -2063,7 +2106,41 @@ const [googleAdsExtraValues, setGoogleAdsExtraValues] = useState<Record<string, 
           </div>
         </div>
 
-        {/* Mobile bottom tab navigation */}
+      {/* "14 днів безкоштовно" — окремий шар над усією демо-модалкою (а не
+          лише над Main Content, як Telegram-попап вище), щоб перекривати й
+          сайдбар, і мобільний нижній таб-бар. */}
+      {showTrialPrompt && (
+        <div className="absolute inset-0 z-[60] bg-black/80 flex items-center justify-center p-4" onClick={handleTrialDismiss}>
+          <div
+            className="bg-gray-900 rounded-2xl p-6 w-full max-w-sm border border-blue-500/30 shadow-2xl text-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-14 h-14 rounded-full bg-blue-500/10 flex items-center justify-center mx-auto mb-4">
+              <Zap className="w-7 h-7 text-blue-400" />
+            </div>
+            <h3 className="text-lg font-bold text-white mb-2">
+              {language === "UA" ? "Сподобалось те, що бачите?" : language === "DE" ? "Gefällt Ihnen, was Sie sehen?" : "Like what you see?"}
+            </h3>
+            <p className="text-sm text-gray-400 mb-6">
+              {language === "UA"
+                ? "Отримайте 14 днів безкоштовного доступу до RIVANT з вашими реальними даними — без картки, скасувати можна в будь-який момент."
+                : language === "DE"
+                ? "Erhalten Sie 14 Tage kostenlosen Zugang zu RIVANT mit Ihren echten Daten — keine Kreditkarte nötig, jederzeit kündbar."
+                : "Get 14 days of free access to RIVANT with your own real data — no card required, cancel anytime."}
+            </p>
+            <div className="flex flex-col gap-2">
+              <Button onClick={handleTrialTry} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5">
+                {language === "UA" ? "Спробувати безкоштовно" : language === "DE" ? "Kostenlos testen" : "Try it free"}
+              </Button>
+              <button onClick={handleTrialDismiss} className="w-full text-sm text-gray-500 hover:text-gray-300 py-2">
+                {language === "UA" ? "Ні, дякую" : language === "DE" ? "Nein, danke" : "No thanks"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mobile bottom tab navigation */}
         <nav className="md:hidden absolute bottom-0 left-0 right-0 z-40 bg-gray-950/95 backdrop-blur-xl border-t border-gray-800 px-2 py-2">
           <div className="flex items-center justify-around">
             {sidebarItems.map((item) => (
