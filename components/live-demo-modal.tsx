@@ -2118,10 +2118,10 @@ const [googleAdsExtraValues, setGoogleAdsExtraValues] = useState<Record<string, 
             </h3>
             <p className="text-sm text-gray-400 mb-6">
               {language === "UA"
-                ? "Підключіть свій магазин і отримайте 14 днів повного доступу до RIVANT — з вашими реальними даними та показниками. Без картки, без зобов’язань"
+                ? "Підключіть свій магазин і отримайте 14 днів безкоштовного доступу до RIVANT з вашими реальними даними та показниками. Скасувати можна в будь-який момент."
                 : language === "DE"
-                ? "Verbinden Sie Ihren Shop und erhalten Sie 14 Tage vollen Zugriff auf RIVANT — mit Ihren echten Daten und Kennzahlen. Keine Kreditkarte, keine Verpflichtungen."
-                : "Connect your store and get 14 days of full RIVANT access — with your own real data and metrics. No card, no commitment."}
+                ? "Verbinden Sie Ihren Shop und erhalten Sie 14 Tage kostenlosen Zugang zu RIVANT mit Ihren echten Daten und Kennzahlen. Sie können jederzeit kündigen."
+                : "Connect your store and get 14 days of RIVANT free with your own real data and metrics. Cancel anytime."}
             </p>
             <div className="flex flex-col gap-2">
               <Button onClick={handleTrialTry} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5">
