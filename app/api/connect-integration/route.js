@@ -12,7 +12,7 @@ const admin = createClient(
   process.env.SUPABASE_SERVICE_KEY
 );
 
-const SUPPORTED_PROVIDERS = ["meta_ads", "google_ads", "shopify", "woocommerce", "quickbooks", "google_analytics", "paypal"];
+const SUPPORTED_PROVIDERS = ["meta_ads", "google_ads", "shopify", "woocommerce", "quickbooks", "google_analytics", "paypal", "mollie"];
 
 // Той самий принцип, що і в app/api/connect-stripe/route.js: Scale/Trial
 // отримують усе без явного вибору слоту, решта планів (starter/growth)
@@ -87,6 +87,17 @@ export async function POST(req) {
     }
     if (!looksLikeAKey(apiKey)) {
       return Response.json({ error: "Key looks too short — check you copied it fully" }, { status: 400 });
+    }
+    // Mollie: один ключ (live_xxx / test_xxx) — сам ключ несе режим у
+    // префіксі, як restricted-ключ Stripe (rk_live_/rk_test_). На відміну
+    // від Stripe тут НЕ блокуємо test_ на вході — mollie-sync.mjs сам
+    // виключає mode!=="live" з виручки, так клієнт може спершу перевірити
+    // підключення тестовим ключем, не боячись фейкових цифр на дашборді.
+    if (provider === "mollie" && !/^(live|test)_\w+$/.test(apiKey.trim())) {
+      return Response.json(
+        { error: "invalid_mollie_key", message: "Ключ Mollie має починатись з live_ або test_" },
+        { status: 400 }
+      );
     }
 
     // Shopify и Meta Ads требуют одно доп. поле помимо ключа, Google Ads — сразу четыре
@@ -294,6 +305,7 @@ export async function DELETE(req) {
       google_ads: ["sync_failure_google_ads"],
       shopify: ["sync_failure_shopify"],
       paypal: ["sync_failure_paypal"],
+      mollie: ["sync_failure_mollie"],
       woocommerce: ["sync_failure_woocommerce", "shipping_spike_woocommerce"],
     };
     const alertTypes = ALERT_TYPE_BY_PROVIDER[provider];

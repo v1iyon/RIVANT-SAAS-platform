@@ -1303,7 +1303,7 @@ const [companySaved, setCompanySaved] = useState(false);
   const supabase = createClient();
   const [subInfo, setSubInfo] = useState<{ plan: string | null; access_status: string; is_blocked?: boolean } | null>(null);
   const [selectedProviders, setSelectedProviders] = useState<string[]>([]);
-  const [integrationsOrder, setIntegrationsOrder] = useState<string[]>(["shopify", "woocommerce", "paypal", "meta_ads", "google_ads"]);
+  const [integrationsOrder, setIntegrationsOrder] = useState<string[]>(["shopify", "woocommerce", "paypal", "mollie", "meta_ads", "google_ads"]);
   const [telegramConnected, setTelegramConnected] = useState(false);
   const [businessName, setBusinessName] = useState("");
   // Раніше тут був захардкожений дефолт "America/New_York" — будь-хто, хто
@@ -1720,7 +1720,7 @@ if (bizData.business) {
         const statusRes = await fetch(`/api/integrations-status?email=${encodeURIComponent(email)}`, { cache: "no-store" });
         const statusData = await statusRes.json();
         const rows: { provider: string; connected: boolean }[] = statusData.integrations || [];
-        const defaultOrder = ["shopify", "woocommerce", "paypal", "meta_ads", "google_ads"];
+        const defaultOrder = ["shopify", "woocommerce", "paypal", "mollie", "meta_ads", "google_ads"];
         const sorted = [...defaultOrder].sort((a, b) => {
           const aConnected = rows.find((r) => r.provider === a)?.connected ? 1 : 0;
           const bConnected = rows.find((r) => r.provider === b)?.connected ? 1 : 0;
@@ -3496,6 +3496,29 @@ if (!subInfo) {
                           : language === "DE"
                           ? "developer.paypal.com → Apps & Credentials → oben auf Live umschalten → Ihre App (erstellen, falls nicht vorhanden) → Client ID und Secret kopieren. Aktuell werden nur Live-Schlüssel unterstützt."
                           : "developer.paypal.com → Apps & Credentials → switch the toggle at the top to Live → your app (create one if you don't have it) → copy the Client ID and Secret. Only live keys are supported for now."
+                      }
+                    />
+                  ),
+                  mollie: (
+                    <IntegrationConnectCard
+                      key="mollie"
+                      email={profileEmail}
+                      provider="mollie"
+                      displayName="Mollie"
+                      placeholder="live_..."
+                      isExpiredTrial={isExpiredTrial}
+                      planTier={subInfo?.plan ?? null}
+                      selectedProviders={selectedProviders}
+                      onSelected={(providers) => setSelectedProviders(providers)}
+                      onLockedClick={() => router.push("/#pricing")}
+                      refreshToken={integrationRefreshToken}
+                      syncFailed={failedSyncProviders.includes("mollie")}
+                      hint={
+                        language === "UA"
+                          ? "Mollie Dashboard → Developers → API keys → перемикач вгорі на Live → скопіюйте Live API key (live_...). iDEAL, Bancontact, BLIK та інші локальні методи Європи підуть у виручку тим самим ключем."
+                          : language === "DE"
+                          ? "Mollie Dashboard → Developers → API keys → oben auf Live umschalten → Live API key (live_...) kopieren. iDEAL, Bancontact, BLIK und andere lokale Zahlmethoden fließen mit demselben Schlüssel in den Umsatz ein."
+                          : "Mollie Dashboard → Developers → API keys → switch the toggle at the top to Live → copy the Live API key (live_...). iDEAL, Bancontact, BLIK and other local European payment methods flow into revenue with this one key."
                       }
                     />
                   ),

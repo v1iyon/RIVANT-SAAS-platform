@@ -10,7 +10,7 @@ const admin = createClient(
 
 // Провайдеры, которыми управляет этот генерик-роут (Stripe остаётся на своих
 // отдельных /api/connect-stripe и /api/stripe-disconnect — не трогаем).
-const SUPPORTED_PROVIDERS = ["meta_ads", "google_ads", "shopify", "woocommerce", "quickbooks", "google_analytics", "paypal"];
+const SUPPORTED_PROVIDERS = ["meta_ads", "google_ads", "shopify", "woocommerce", "quickbooks", "google_analytics", "paypal", "mollie"];
 
 export async function GET(req) {
   let email;

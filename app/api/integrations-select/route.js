@@ -31,7 +31,7 @@ const admin = createClient(
 // "stripe" тепер теж у списку вибору (раніше був мовчазним дефолтом поза
 // цим ендпоінтом) — саме тому, що тепер є альтернатива (Shopify), вибір
 // джерела виручки має бути явним, а не зашитим.
-const SELECTABLE_PROVIDERS = ["stripe", "shopify", "woocommerce", "paypal", "meta_ads", "google_ads", "quickbooks", "google_analytics"];
+const SELECTABLE_PROVIDERS = ["stripe", "shopify", "woocommerce", "paypal", "mollie", "meta_ads", "google_ads", "quickbooks", "google_analytics"];
 
 // Джерела виручки — без ЖОДНОГО з них продукт не працює: немає виручки —
 // немає маржі, revenue_drop, CAC, щоденних звітів (усе це рахується від
@@ -42,7 +42,7 @@ const SELECTABLE_PROVIDERS = ["stripe", "shopify", "woocommerce", "paypal", "met
 // має той самий масив (єдиний "офіційний" список), цей файл історично тримає
 // власну копію замість імпорту звідти; зміна тут зроблена в парі зі зміною там.
 // Тому будь-який НЕпорожній вибір повинен містити щонайменше одне з чотирьох.
-const REVENUE_SOURCE_PROVIDERS = ["stripe", "shopify", "woocommerce", "paypal"];
+const REVENUE_SOURCE_PROVIDERS = ["stripe", "shopify", "woocommerce", "paypal", "mollie"];
 
 // Кількість слотів інтеграцій за планом.
 const PLAN_SLOTS = {
@@ -70,7 +70,7 @@ function validateSelection(plan, providers) {
   // скинув вибір) — вимога "мінімум 1 джерело виручки" стосується тільки
   // НЕпорожнього вибору.
   if (providers.length > 0 && !providers.some((p) => REVENUE_SOURCE_PROVIDERS.includes(p))) {
-    return "Selection must include at least one revenue source (Stripe, Shopify, WooCommerce or PayPal)";
+    return "Selection must include at least one revenue source (Stripe, Shopify, WooCommerce, PayPal or Mollie)";
   }
   return null;
 }

@@ -37,6 +37,7 @@ import { runSync as runWooCommerceSync } from "../../../../scripts/woocommerce-s
 import { runSync as runMetaAdsSync } from "../../../../scripts/meta-ads-sync.mjs";
 import { runSync as runGoogleAdsSync } from "../../../../scripts/google-ads-sync.mjs";
 import { runSync as runPaypalSync } from "../../../../scripts/paypal-sync.mjs";
+import { runSync as runMollieSync } from "../../../../scripts/mollie-sync.mjs";
 
 // Тот же пробел, что и в process-service-orders: maxDuration не был
 // объявлен, а один прогон может тянуть до 365 дней истории из внешнего
@@ -63,6 +64,7 @@ const SYNC_BY_PROVIDER = {
   meta_ads: runMetaAdsSync,
   google_ads: runGoogleAdsSync,
   paypal: runPaypalSync,
+  mollie: runMollieSync,
 };
 
 async function clearBackfillFlag(integration) {
