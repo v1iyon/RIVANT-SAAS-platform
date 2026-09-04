@@ -35,6 +35,7 @@ import { runSync as runStripeSync } from "../../../../scripts/sync-stripe-core.m
 import { runSync as runShopifySync } from "../../../../scripts/shopify-sync.mjs";
 import { runSync as runMetaAdsSync } from "../../../../scripts/meta-ads-sync.mjs";
 import { runSync as runGoogleAdsSync } from "../../../../scripts/google-ads-sync.mjs";
+import { runSync as runPaypalSync } from "../../../../scripts/paypal-sync.mjs";
 
 // Тот же пробел, что и в process-service-orders: maxDuration не был
 // объявлен, а один прогон может тянуть до 365 дней истории из внешнего
@@ -48,7 +49,10 @@ const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUP
 
 // 365 днів — відповідає тому, що продає "AI-Реконструкція минулого"
 // ("12 міс. історії"). Якщо в акаунта реальної історії менше — sync-модулі
-// просто поверне менше рядків, це нормально (не помилка).
+// просто поверне менше рядків, це нормально (не помилка). PayPal сам API
+// дозволяє тягнути аж 3 роки назад (перевірено по офіційній документації
+// 03.09.2026, "lists transactions for the previous three years"), тож 365
+// днів тут — свідоме обмеження продукту, а не стеля з боку PayPal.
 const BACKFILL_SINCE_DAYS = 365;
 
 const SYNC_BY_PROVIDER = {
@@ -56,6 +60,7 @@ const SYNC_BY_PROVIDER = {
   shopify: runShopifySync,
   meta_ads: runMetaAdsSync,
   google_ads: runGoogleAdsSync,
+  paypal: runPaypalSync,
 };
 
 async function clearBackfillFlag(integration) {

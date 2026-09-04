@@ -442,7 +442,14 @@ async function upsertExpense({ businessId, date, amount, category, source, descr
     .eq("category", category);
 
   if (amount > 0) {
-    await admin.from("expenses").insert({
+    // ФІКС (аудит 03.09.2026, той самий, що і причина category:"cost_of_goods"
+    // вище): раніше .insert() тут не перевірявся взагалі — саме тому
+    // constraint violation ('cogs' не в дозволеному ENUM) роками мовчки
+    // губила КОЖЕН запис COGS, і ніхто цього не бачив ні в логах, ні в
+    // /admin. Тепер будь-яка помилка вставки (ця чи будь-яка майбутня —
+    // новий constraint, зміна схеми і т.д.) хоча б потрапляє в error_logs,
+    // замість того щоб просто зникати.
+    const { error } = await admin.from("expenses").insert({
       business_id: businessId,
       amount,
       category,
@@ -450,6 +457,15 @@ async function upsertExpense({ businessId, date, amount, category, source, descr
       date,
       source,
     });
+    if (error) {
+      console.error(`Failed to insert expense (${category}/${source}) for ${businessId} ${date}:`, error.message);
+      await logError({
+        source: "shopify",
+        message: `expenses insert failed: ${category}/${source}`,
+        details: error.message,
+        businessId,
+      });
+    }
   }
 }
 
@@ -524,12 +540,28 @@ async function main(businessId) {
       }
 
       const cogsByDate = await computeCogsByDate(shopDomain, token, orders, bizTimezone);
+      // ФІКС (аудит 03.09.2026, критична знахідка): реальний CHECK-констрейнт
+      // на public.expenses.category (див. supabase/migrations/
+      // 20260828000000_baseline_catchup.sql, дамп продової схеми) дозволяє
+      // ЛИШЕ 'advertising' | 'shipping' | 'cost_of_goods' | 'other'. Тут
+      // раніше писалось category: "cogs" — рядок, якого констрейнт не знає.
+      // upsertExpense() не перевіряє помилку .insert() (мовчки ковтає її),
+      // тому COGS для ВСІХ Shopify-клієнтів ніколи фізично не потрапляв у
+      // expenses — жодного запису, жодного логу. Маржа на дашборді/в
+      // прогнозі/в AI-поясненнях рахувалась БЕЗ реальної собівартості
+      // товару (лише orders/expenses.total, куди cogs теж не потрапляв) —
+      // тобто систематично завищена для кожного Shopify-магазину відтоді,
+      // як цей код почав працювати. Читачі expenses (lib/margin.js,
+      // /api/metrics, forecast) сумують ВСІ рядки без фільтра по category,
+      // тому перейменування тут нічого іншого не ламає — вплив лише на сам
+      // .insert()/detectExpenseAnomaly нижче, куди тепер пишеться і
+      // читається однакове, справжнє значення constraint'у.
       for (const [date, amount] of Object.entries(cogsByDate)) {
         await upsertExpense({
           businessId: integ.business_id,
           date,
           amount: Number(amount.toFixed(2)),
-          category: "cogs",
+          category: "cost_of_goods",
           source: "shopify",
           description: "Shopify cost of goods (auto-synced)",
         });
@@ -626,7 +658,7 @@ async function main(businessId) {
           const anomaly = await detectExpenseAnomaly({
             businessId: integ.business_id,
             source: "shopify",
-            category: "cogs",
+            category: "cost_of_goods",
             date: latestDate,
             todayAmount: cogsByDate[latestDate],
             sensitivityMultiplier,

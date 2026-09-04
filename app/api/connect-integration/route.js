@@ -10,7 +10,7 @@ const admin = createClient(
   process.env.SUPABASE_SERVICE_KEY
 );
 
-const SUPPORTED_PROVIDERS = ["meta_ads", "google_ads", "shopify", "quickbooks", "google_analytics"];
+const SUPPORTED_PROVIDERS = ["meta_ads", "google_ads", "shopify", "quickbooks", "google_analytics", "paypal"];
 
 // Той самий принцип, що і в app/api/connect-stripe/route.js: Scale/Trial
 // отримують усе без явного вибору слоту, решта планів (starter/growth)
@@ -46,10 +46,16 @@ function isValidShopifyDomain(raw) {
 // (Ad Account ID). Google Ads требует сразу четыре: Customer ID, OAuth
 // Client ID/Secret, Developer Token — без них refresh token из основного
 // поля нечем обменять на access token.
+// PayPal: apiKey = Client Secret (шифрується як завжди), config.client_id —
+// публічний ідентифікатор застосунку клієнта в developer.paypal.com, як і
+// client_id у Shopify/Google Ads тут не секрет сам по собі, тому лишається
+// у відкритому config (щоб UI міг показати збережене значення), а не в
+// SENSITIVE_CONFIG_FIELDS нижче.
 const REQUIRED_CONFIG_FIELDS = {
   shopify: ["shop_domain", "client_id"],
   meta_ads: ["ad_account_id"],
   google_ads: ["customer_id", "client_id", "client_secret", "developer_token"],
+  paypal: ["client_id"],
 };
 
 // client_secret и developer_token — секреты не хуже самого API-ключа. /api/integrations-status
@@ -239,6 +245,7 @@ export async function DELETE(req) {
       meta_ads: ["sync_failure_meta_ads"],
       google_ads: ["sync_failure_google_ads"],
       shopify: ["sync_failure_shopify"],
+      paypal: ["sync_failure_paypal"],
     };
     const alertTypes = ALERT_TYPE_BY_PROVIDER[provider];
     if (alertTypes) {

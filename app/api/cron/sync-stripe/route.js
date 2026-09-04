@@ -23,14 +23,15 @@ export async function GET(req) {
     // репозиторію тощо), ранковий/вечірній дайджест не йшов взагалі НІКУДИ,
     // без жодного фолбеку і без жодного сигналу, що щось зламалось. Тепер
     // цей маршрут — справжній fallback, а не лише "half fallback".
-    const [stripe, shopify, metaAds, googleAds, dailyReports] = await Promise.allSettled([
+    const [stripe, shopify, metaAds, googleAds, paypal, dailyReports] = await Promise.allSettled([
       import("../../../../scripts/sync-stripe-core.mjs").then(({ runSync }) => runSync()),
       import("../../../../scripts/shopify-sync.mjs").then(({ runSync }) => runSync()),
       import("../../../../scripts/meta-ads-sync.mjs").then(({ runSync }) => runSync()),
       import("../../../../scripts/google-ads-sync.mjs").then(({ runSync }) => runSync()),
+      import("../../../../scripts/paypal-sync.mjs").then(({ runSync }) => runSync()),
       import("../../../../scripts/daily-reports.mjs").then(({ runDailyReports }) => runDailyReports()),
     ]);
-    const results = { stripe, shopify, metaAds, googleAds, dailyReports };
+    const results = { stripe, shopify, metaAds, googleAds, paypal, dailyReports };
     const failed = Object.entries(results)
       .filter(([, result]) => result.status === "rejected")
       .map(([provider]) => provider);

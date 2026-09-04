@@ -1301,7 +1301,7 @@ const [companySaved, setCompanySaved] = useState(false);
   const supabase = createClient();
   const [subInfo, setSubInfo] = useState<{ plan: string | null; access_status: string; is_blocked?: boolean } | null>(null);
   const [selectedProviders, setSelectedProviders] = useState<string[]>([]);
-  const [integrationsOrder, setIntegrationsOrder] = useState<string[]>(["shopify", "meta_ads", "google_ads"]);
+  const [integrationsOrder, setIntegrationsOrder] = useState<string[]>(["shopify", "paypal", "meta_ads", "google_ads"]);
   const [telegramConnected, setTelegramConnected] = useState(false);
   const [businessName, setBusinessName] = useState("");
   // Раніше тут був захардкожений дефолт "America/New_York" — будь-хто, хто
@@ -1718,7 +1718,7 @@ if (bizData.business) {
         const statusRes = await fetch(`/api/integrations-status?email=${encodeURIComponent(email)}`, { cache: "no-store" });
         const statusData = await statusRes.json();
         const rows: { provider: string; connected: boolean }[] = statusData.integrations || [];
-        const defaultOrder = ["shopify", "meta_ads", "google_ads"];
+        const defaultOrder = ["shopify", "paypal", "meta_ads", "google_ads"];
         const sorted = [...defaultOrder].sort((a, b) => {
           const aConnected = rows.find((r) => r.provider === a)?.connected ? 1 : 0;
           const bConnected = rows.find((r) => r.provider === b)?.connected ? 1 : 0;
@@ -3464,6 +3464,36 @@ if (!subInfo) {
                           : language === "DE"
                           ? "Shopify Dev Dashboard → Ihre App → Settings → Client ID und Client Secret kopieren (seit 1. Januar 2026 zeigt Shopify keinen fertigen shpat_-Token mehr an — nur diese Daten)."
                           : "Shopify Dev Dashboard → your app → Settings → copy the Client ID and Client Secret (since Jan 1, 2026 Shopify no longer shows a ready-made shpat_ token — only these)."
+                      }
+                    />
+                  ),
+                  paypal: (
+                    <IntegrationConnectCard
+                      key="paypal"
+                      email={profileEmail}
+                      provider="paypal"
+                      displayName="PayPal"
+                      placeholder="Client Secret"
+                      isExpiredTrial={isExpiredTrial}
+                      planTier={subInfo?.plan ?? null}
+                      selectedProviders={selectedProviders}
+                      onSelected={(providers) => setSelectedProviders(providers)}
+                      onLockedClick={() => router.push("/#pricing")}
+                      refreshToken={integrationRefreshToken}
+                      syncFailed={failedSyncProviders.includes("paypal")}
+                      extraFields={[
+                        {
+                          key: "client_id",
+                          label: "Client ID",
+                          placeholder: "Client ID",
+                        },
+                      ]}
+                      hint={
+                        language === "UA"
+                          ? "developer.paypal.com → Apps & Credentials → перемикач вгорі на Live → ваш застосунок (створіть, якщо нема) → скопіюйте Client ID і Secret. Наразі підтримуються лише бойові (Live) ключі."
+                          : language === "DE"
+                          ? "developer.paypal.com → Apps & Credentials → oben auf Live umschalten → Ihre App (erstellen, falls nicht vorhanden) → Client ID und Secret kopieren. Aktuell werden nur Live-Schlüssel unterstützt."
+                          : "developer.paypal.com → Apps & Credentials → switch the toggle at the top to Live → your app (create one if you don't have it) → copy the Client ID and Secret. Only live keys are supported for now."
                       }
                     />
                   ),
