@@ -15,46 +15,147 @@ import { businessDateStr, businessMonthStartStr } from "@/lib/business-date";
 import { TrialPromptModal } from "@/components/dashboard/trial-prompt-modal";
 import { OnboardingTour } from "@/components/dashboard/onboarding-tour";
 import { TeamAccessCard } from "@/components/dashboard/team-access-card";
-import {
-  LayoutDashboard,
-  AlertTriangle,
-  TrendingUp,
-  TrendingDown,
-  Link2,
-  Settings,
-  DollarSign,
-  Users,
-  LineChart,
-  Bell,
-  LogOut,
-  AlertCircle,
-  ArrowUpRight,
-  ArrowDownRight,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  X,
-  Trash2,
-  Globe,
-  BarChart3,
-  Calendar,
-  Package,
-  CreditCard,
-  Activity,
-  Wifi,
-  WifiOff,
-  CheckCircle,
-  Shield,
-  User,
-  Building,
-  BellRing,
-  Zap,
-  Truck,
-  Download,
-  RefreshCw,
-  Filter,
-  Receipt,
-} from "lucide-react";
+type IconProps = {
+  className?: string;
+  size?: number;
+  color?: string;
+  strokeWidth?: number;
+};
+
+function BaseIcon({ className, size = 18, color = "currentColor", strokeWidth = 2, children }: IconProps & { children: React.ReactNode }) {
+  return (
+    <svg
+      className={className}
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth={strokeWidth}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      {children}
+    </svg>
+  );
+}
+
+const LayoutDashboard = (props: IconProps) => (
+  <BaseIcon {...props}><path d="M3 13.5V5a2 2 0 0 1 2-2h6v10.5H3Zm12 0V3h4a2 2 0 0 1 2 2v8.5h-6ZM3 18.5v.5a2 2 0 0 0 2 2h4v-3H3Zm12 2h4a2 2 0 0 0 2-2v-1.5h-6V20.5Z" /></BaseIcon>
+);
+const AlertTriangle = (props: IconProps) => (
+  <BaseIcon {...props}><path d="M12 3 2.5 18.5a1.75 1.75 0 0 0 1.5 2.5h16a1.75 1.75 0 0 0 1.5-2.5L12 3Zm0 7v4m0 3h.01" /></BaseIcon>
+);
+const TrendingUp = (props: IconProps) => (
+  <BaseIcon {...props}><path d="M3 17l7-7 4 4 7-9" /><path d="M14 5h7v7" /></BaseIcon>
+);
+const TrendingDown = (props: IconProps) => (
+  <BaseIcon {...props}><path d="M3 7l7 7 4-4 7 9" /><path d="M14 19h7v-7" /></BaseIcon>
+);
+const Link2 = (props: IconProps) => (
+  <BaseIcon {...props}><path d="M10 13a4 4 0 0 1 0-6l1.5-1.5a4 4 0 1 1 5.7 5.7L15.5 13" /><path d="M14 11a4 4 0 0 1 0 6l-1.5 1.5a4 4 0 1 1-5.7-5.7L8.5 11" /></BaseIcon>
+);
+const Settings = (props: IconProps) => (
+  <BaseIcon {...props}><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.86l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.86-.34 1.7 1.7 0 0 0-1 1.56V20a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 9.7 18.4a1.7 1.7 0 0 0-1.86.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.9 15a1.7 1.7 0 0 0-1.56-1H3.25a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 5.6 8.3a1.7 1.7 0 0 0-.34-1.86l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9.7 4.6a1.7 1.7 0 0 0 1-1.56V3a2 2 0 1 1 4 0v.09A1.7 1.7 0 0 0 14.3 4.6a1.7 1.7 0 0 0 1.86-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 18.4 9.7c.12.37.42.67.8.79H19.3a2 2 0 1 1 0 4h-.09c-.38.12-.68.42-.8.79Z" /></BaseIcon>
+);
+const DollarSign = (props: IconProps) => (
+  <BaseIcon {...props}><path d="M12 2v20M17 5.5c0-1.4-1.5-2.5-5-2.5s-5 1.1-5 2.5 1.5 2.5 5 2.5 5 1.1 5 2.5-1.5 2.5-5 2.5-5-1.1-5-2.5" /></BaseIcon>
+);
+const Users = (props: IconProps) => (
+  <BaseIcon {...props}><path d="M16 19v-1a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v1" /><circle cx="10" cy="7" r="3" /><path d="M22 19v-1a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></BaseIcon>
+);
+const LineChart = (props: IconProps) => (
+  <BaseIcon {...props}><path d="M3 19h18" /><path d="M7 15l4-5 3 3 7-9" /></BaseIcon>
+);
+const Bell = (props: IconProps) => (
+  <BaseIcon {...props}><path d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.2V11a6 6 0 1 0-12 0v3.2a2 2 0 0 1-.6 1.4L4 17h5" /><path d="M10 21a2 2 0 0 0 4 0" /></BaseIcon>
+);
+const LogOut = (props: IconProps) => (
+  <BaseIcon {...props}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5" /><path d="M21 12H9" /></BaseIcon>
+);
+const AlertCircle = (props: IconProps) => (
+  <BaseIcon {...props}><circle cx="12" cy="12" r="9" /><path d="M12 8v5" /><path d="M12 16h.01" /></BaseIcon>
+);
+const ArrowUpRight = (props: IconProps) => (
+  <BaseIcon {...props}><path d="M7 17 17 7" /><path d="M8 7h9v9" /></BaseIcon>
+);
+const ArrowDownRight = (props: IconProps) => (
+  <BaseIcon {...props}><path d="M7 7l10 10" /><path d="M17 7v9H8" /></BaseIcon>
+);
+const ChevronDown = (props: IconProps) => (
+  <BaseIcon {...props}><path d="m6 9 6 6 6-6" /></BaseIcon>
+);
+const ChevronLeft = (props: IconProps) => (
+  <BaseIcon {...props}><path d="m15 18-6-6 6-6" /></BaseIcon>
+);
+const ChevronRight = (props: IconProps) => (
+  <BaseIcon {...props}><path d="m9 18 6-6-6-6" /></BaseIcon>
+);
+const X = (props: IconProps) => (
+  <BaseIcon {...props}><path d="m18 6-12 12" /><path d="m6 6 12 12" /></BaseIcon>
+);
+const Trash2 = (props: IconProps) => (
+  <BaseIcon {...props}><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v6M14 11v6" /></BaseIcon>
+);
+const Globe = (props: IconProps) => (
+  <BaseIcon {...props}><circle cx="12" cy="12" r="9" /><path d="M3 12h18" /><path d="M12 3a15 15 0 0 1 0 18" /><path d="M12 3a15 15 0 0 0 0 18" /></BaseIcon>
+);
+const BarChart3 = (props: IconProps) => (
+  <BaseIcon {...props}><path d="M4 20V10" /><path d="M10 20V4" /><path d="M16 20v-7" /><path d="M22 20v-12" /></BaseIcon>
+);
+const Calendar = (props: IconProps) => (
+  <BaseIcon {...props}><rect x="3" y="4" width="18" height="17" rx="2" /><path d="M8 2v4M16 2v4M3 10h18" /></BaseIcon>
+);
+const Package = (props: IconProps) => (
+  <BaseIcon {...props}><path d="M12 2 3 7l9 5 9-5-9-5Z" /><path d="M3 7v10l9 5 9-5V7" /><path d="M12 12v10" /></BaseIcon>
+);
+const CreditCard = (props: IconProps) => (
+  <BaseIcon {...props}><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2 10h20" /></BaseIcon>
+);
+const Activity = (props: IconProps) => (
+  <BaseIcon {...props}><path d="M3 12h4l3-7 5 14 3-7h3" /></BaseIcon>
+);
+const Wifi = (props: IconProps) => (
+  <BaseIcon {...props}><path d="M5 12.5a14 14 0 0 1 14 0" /><path d="M8.5 16a8.5 8.5 0 0 1 7 0" /><path d="M12 20h.01" /></BaseIcon>
+);
+const WifiOff = (props: IconProps) => (
+  <BaseIcon {...props}><path d="M2 6l20 12" /><path d="M5 12.5a14 14 0 0 1 8.2-4.7" /><path d="M8.5 16a8.5 8.5 0 0 1 7 0" /></BaseIcon>
+);
+const CheckCircle = (props: IconProps) => (
+  <BaseIcon {...props}><circle cx="12" cy="12" r="9" /><path d="m8 12 2.5 2.5L16 7" /></BaseIcon>
+);
+const Shield = (props: IconProps) => (
+  <BaseIcon {...props}><path d="M12 3 5 6v6c0 4 2.5 7.6 7 9 4.5-1.4 7-5 7-9V6l-7-3Z" /></BaseIcon>
+);
+const User = (props: IconProps) => (
+  <BaseIcon {...props}><circle cx="12" cy="7" r="4" /><path d="M5 21a7 7 0 0 1 14 0" /></BaseIcon>
+);
+const Building = (props: IconProps) => (
+  <BaseIcon {...props}><path d="M4 20V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v14" /><path d="M9 20v-5h6v5" /><path d="M8 9h.01M12 9h.01M16 9h.01M8 13h.01M12 13h.01M16 13h.01" /></BaseIcon>
+);
+const BellRing = (props: IconProps) => (
+  <BaseIcon {...props}><path d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.2V11a6 6 0 1 0-12 0v3.2a2 2 0 0 1-.6 1.4L4 17h5" /><path d="M10 21a2 2 0 0 0 4 0" /><path d="M19.5 4.5a3 3 0 0 1 0 4.2" /></BaseIcon>
+);
+const Zap = (props: IconProps) => (
+  <BaseIcon {...props}><path d="M13 2 4 13h6l-1 9 9-11h-6l1-9Z" /></BaseIcon>
+);
+const Truck = (props: IconProps) => (
+  <BaseIcon {...props}><path d="M2 7h12v9H2z" /><path d="M14 10h3l4 4v2h-7z" /><circle cx="7" cy="18" r="2" /><circle cx="18" cy="18" r="2" /></BaseIcon>
+);
+const Download = (props: IconProps) => (
+  <BaseIcon {...props}><path d="M12 4v10" /><path d="m7 19 5 5 5-5" /><path d="M4 20h16" /></BaseIcon>
+);
+const RefreshCw = (props: IconProps) => (
+  <BaseIcon {...props}><path d="M20 11a8 8 0 1 0 2 5.3" /><path d="M20 4v7h-7" /></BaseIcon>
+);
+const Filter = (props: IconProps) => (
+  <BaseIcon {...props}><path d="M4 6h16" /><path d="M7 12h10" /><path d="M10 18h4" /></BaseIcon>
+);
+const Receipt = (props: IconProps) => (
+  <BaseIcon {...props}><path d="M5 3h14l2 4-2 2 2 2-2 2 2 2-2 2 2 4H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" /><path d="M8 8h8M8 12h8M8 16h5" /></BaseIcon>
+);
 import { WidgetPrefsPanel, WidgetCatalogItem } from "@/components/dashboard/widget-prefs-panel";
 import {
   DropdownMenu,
@@ -3529,7 +3630,7 @@ if (!subInfo) {
                         language === "UA"
                           ? "Потрібні ДВА ключі з Mollie Dashboard → Developers → API access tokens: 1) Live API key (live_...) — вмикає прийом платежів iDEAL, Bancontact, BLIK та ін.; 2) Advanced access token (access_...) з правом balances.read — без нього ми НЕ покажемо реальну комісію Mollie, а це важливо для точного чистого прибутку. Створюються обидва там само, кнопкою «+ Create new key» — окремого OAuth-екрану немає."
                           : language === "DE"
-                          ? "Zwei Schlüssel aus Mollie Dashboard → Developers → API access tokens nötig: 1) Live API key (live_...) — aktiviert iDEAL, Bancontact, BLIK usw.; 2) Advanced Access Token (access_...) mit balances.read — ohne ihn zeigen wir keine echten Mollie-Gebühren, wichtig für den genauen Nettogewinn. Beide werden dort per „+ Create new key" erstellt — kein separater OAuth-Bildschirm."
+                          ? 'Zwei Schlüssel aus Mollie Dashboard → Developers → API access tokens nötig: 1) Live API key (live_...) — aktiviert iDEAL, Bancontact, BLIK usw.; 2) Advanced Access Token (access_...) mit balances.read — ohne ihn zeigen wir keine echten Mollie-Gebühren, wichtig für den genauen Nettogewinn. Beide werden dort per „+ Create new key“ erstellt — kein separater OAuth-Bildschirm.'
                           : "You need TWO keys from Mollie Dashboard → Developers → API access tokens: 1) Live API key (live_...) — enables iDEAL, Bancontact, BLIK and other local methods; 2) Advanced access token (access_...) with balances.read — without it we can't show real Mollie fees, which matters for accurate net profit. Both are created there via \"+ Create new key\" — no separate OAuth screen."
                       }
                     />
