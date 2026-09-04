@@ -109,7 +109,9 @@ function alertTypeToCategory(type: string): Risk["category"] {
   if (type === "cac_spike") return "cac";
   if (type === "cogs_spike_shopify") return "margin";
   if (type === "shipping_spike_shopify") return "shipping";
+  if (type === "shipping_spike_woocommerce") return "shipping";
   if (type.startsWith("low_stock_shopify_")) return "inventory";
+  if (type.startsWith("low_stock_woocommerce_")) return "inventory";
   if (type.startsWith("ad_spend_")) return "ads";
   if (type.startsWith("sync_failure_")) return "integration";
   return "integration";
@@ -1301,7 +1303,7 @@ const [companySaved, setCompanySaved] = useState(false);
   const supabase = createClient();
   const [subInfo, setSubInfo] = useState<{ plan: string | null; access_status: string; is_blocked?: boolean } | null>(null);
   const [selectedProviders, setSelectedProviders] = useState<string[]>([]);
-  const [integrationsOrder, setIntegrationsOrder] = useState<string[]>(["shopify", "paypal", "meta_ads", "google_ads"]);
+  const [integrationsOrder, setIntegrationsOrder] = useState<string[]>(["shopify", "woocommerce", "paypal", "meta_ads", "google_ads"]);
   const [telegramConnected, setTelegramConnected] = useState(false);
   const [businessName, setBusinessName] = useState("");
   // Раніше тут був захардкожений дефолт "America/New_York" — будь-хто, хто
@@ -1718,7 +1720,7 @@ if (bizData.business) {
         const statusRes = await fetch(`/api/integrations-status?email=${encodeURIComponent(email)}`, { cache: "no-store" });
         const statusData = await statusRes.json();
         const rows: { provider: string; connected: boolean }[] = statusData.integrations || [];
-        const defaultOrder = ["shopify", "paypal", "meta_ads", "google_ads"];
+        const defaultOrder = ["shopify", "woocommerce", "paypal", "meta_ads", "google_ads"];
         const sorted = [...defaultOrder].sort((a, b) => {
           const aConnected = rows.find((r) => r.provider === a)?.connected ? 1 : 0;
           const bConnected = rows.find((r) => r.provider === b)?.connected ? 1 : 0;
@@ -3494,6 +3496,42 @@ if (!subInfo) {
                           : language === "DE"
                           ? "developer.paypal.com → Apps & Credentials → oben auf Live umschalten → Ihre App (erstellen, falls nicht vorhanden) → Client ID und Secret kopieren. Aktuell werden nur Live-Schlüssel unterstützt."
                           : "developer.paypal.com → Apps & Credentials → switch the toggle at the top to Live → your app (create one if you don't have it) → copy the Client ID and Secret. Only live keys are supported for now."
+                      }
+                    />
+                  ),
+                  woocommerce: (
+                    <IntegrationConnectCard
+                      key="woocommerce"
+                      email={profileEmail}
+                      provider="woocommerce"
+                      displayName="WooCommerce"
+                      placeholder="Consumer Secret"
+                      isExpiredTrial={isExpiredTrial}
+                      planTier={subInfo?.plan ?? null}
+                      selectedProviders={selectedProviders}
+                      onSelected={(providers) => setSelectedProviders(providers)}
+                      onLockedClick={() => router.push("/#pricing")}
+                      refreshToken={integrationRefreshToken}
+                      syncFailed={failedSyncProviders.includes("woocommerce")}
+                      showRevenueModeCheckbox={true}
+                      extraFields={[
+                        {
+                          key: "store_url",
+                          label: language === "UA" ? "Адреса магазину (yourstore.com)" : language === "DE" ? "Shop-Adresse (yourstore.com)" : "Store address (yourstore.com)",
+                          placeholder: "yourstore.com",
+                        },
+                        {
+                          key: "consumer_key",
+                          label: "Consumer Key",
+                          placeholder: "ck_...",
+                        },
+                      ]}
+                      hint={
+                        language === "UA"
+                          ? "WordPress admin → WooCommerce → Settings → Advanced → REST API → створіть ключ з правами Read — скопіюйте Consumer Key і Consumer Secret."
+                          : language === "DE"
+                          ? "WordPress-Admin → WooCommerce → Settings → Advanced → REST API → Schlüssel mit Read-Rechten erstellen — Consumer Key und Consumer Secret kopieren."
+                          : "WordPress admin → WooCommerce → Settings → Advanced → REST API → create a key with Read access — copy the Consumer Key and Consumer Secret."
                       }
                     />
                   ),

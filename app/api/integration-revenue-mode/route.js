@@ -11,11 +11,11 @@ import { requireUser, UnauthorizedError } from "@/lib/require-user";
 
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
-// Наразі актуально тільки для Shopify (єдиний провайдер, що може дублювати
-// виручку, вже пораховану Stripe). Список навмисно явний, а не "будь-який
-// provider", щоб endpoint не можна було мовчки застосувати там, де
-// revenue_mode нічого не означає.
-const SUPPORTED_PROVIDERS = ["shopify"];
+// Актуально для Shopify та WooCommerce — обидва можуть дублювати виручку,
+// вже пораховану Stripe (магазин на власному Stripe/WooCommerce Payments
+// checkout). Список навмисно явний, а не "будь-який provider", щоб endpoint
+// не можна було мовчки застосувати там, де revenue_mode нічого не означає.
+const SUPPORTED_PROVIDERS = ["shopify", "woocommerce"];
 
 export async function PATCH(req) {
   try {

@@ -98,18 +98,25 @@ export function IntegrationConnectCard({
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ФІКС: access_denied/store_not_found раніше мали текст, жорстко
+  // прив'язаний до "Shopify" — це було непомітно, поки причини з таким
+  // кодом повертав лише shopify-sync.mjs. Тепер woocommerce-sync.mjs теж
+  // повертає ці самі коди (getSyncFailureReason) для того самого generic-
+  // компонента картки — підставляємо displayName, щоб картка WooCommerce
+  // не показувала "Перевірте... Shopify" при своїй же помилці.
   const syncErrorMessage = (reason?: string) => {
     const messages = language === "UA"
       ? {
           app_not_installed: "Застосунок RIVANT не встановлено в Shopify.",
-          // ФІКС (аудит 03.09.2026): раніше цей текст був жорстко зашитий під
-          // Shopify ("Перевірте... Shopify"), хоча access_denied повертають
-          // ще й sync-stripe-core.mjs, і тепер paypal-sync.mjs — юзер Stripe/
-          // PayPal бачив би "перевірте токен Shopify", що просто неправда.
+          // ФІКС (аудит 03.09.2026): раніше access_denied/store_not_found мали
+          // текст, жорстко зашитий під Shopify ("Перевірте... Shopify"), хоча
+          // ці коди повертають ще й sync-stripe-core.mjs, paypal-sync.mjs і
+          // тепер woocommerce-sync.mjs — юзер Stripe/PayPal/WooCommerce бачив
+          // би "перевірте токен/адресу Shopify", що просто неправда.
           access_denied: `Перевірте ключі доступу ${displayName} у налаштуваннях інтеграції.`,
           missing_scope: `У застосунку ${displayName} не увімкнено потрібний доступ/дозвіл.`,
           rate_limited: `${displayName} тимчасово обмежив кількість запитів — спробуємо ще раз автоматично.`,
-          store_not_found: "Перевірте адресу магазину Shopify.",
+          store_not_found: `Перевірте адресу/домен ${displayName}.`,
           // ФІКС (аудит 30.08.2026, знахідка №1): sync-stripe-core.mjs тепер
           // призупиняє синк і пише саме цю причину для тестових (rk_test_)
           // ключів Stripe, підключених до фіксу в connect-stripe/route.js.
@@ -122,7 +129,7 @@ export function IntegrationConnectCard({
           access_denied: `Prüfen Sie die ${displayName}-Zugangsdaten in den Integrationseinstellungen.`,
           missing_scope: `Die ${displayName}-App hat nicht den nötigen Zugriff/Berechtigung aktiviert.`,
           rate_limited: `${displayName} hat Anfragen vorübergehend limitiert — wir versuchen es automatisch erneut.`,
-          store_not_found: "Prüfen Sie die Shopify-Shop-Adresse.",
+          store_not_found: `Prüfen Sie die ${displayName}-Adresse.`,
           test_key_not_synced: "Ein Stripe-Testschlüssel (rk_test_...) ist verbunden — Synchronisierung pausiert. Verbinden Sie einen Live-Schlüssel (rk_live_...).",
           connection_failed: `${displayName} konnte nicht synchronisiert werden. Prüfen Sie den Zugriff.`,
         }
@@ -131,7 +138,7 @@ export function IntegrationConnectCard({
           access_denied: `Check the ${displayName} access keys in the integration settings.`,
           missing_scope: `The ${displayName} app doesn't have the required access/scope enabled.`,
           rate_limited: `${displayName} temporarily rate-limited requests — we'll retry automatically.`,
-          store_not_found: "Check the Shopify store address.",
+          store_not_found: `Check the ${displayName} store address.`,
           test_key_not_synced: "A Stripe test key (rk_test_...) is connected — sync paused. Connect a live key (rk_live_...).",
           connection_failed: `Couldn't sync ${displayName}. Check the access.`,
         };

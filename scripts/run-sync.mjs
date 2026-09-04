@@ -1,5 +1,6 @@
 import { runSync as runStripeSync } from "./sync-stripe-core.mjs";
 import { runSync as runShopifySync } from "./shopify-sync.mjs";
+import { runSync as runWooCommerceSync } from "./woocommerce-sync.mjs";
 import { runSync as runMetaAdsSync } from "./meta-ads-sync.mjs";
 import { runSync as runGoogleAdsSync } from "./google-ads-sync.mjs";
 import { runSync as runPaypalSync } from "./paypal-sync.mjs";
@@ -8,6 +9,7 @@ import { runDailyReports } from "./daily-reports.mjs";
 const jobs = [
   { name: "stripe", run: runStripeSync },
   { name: "shopify", run: runShopifySync },
+  { name: "woocommerce", run: runWooCommerceSync },
   { name: "meta_ads", run: runMetaAdsSync },
   { name: "google_ads", run: runGoogleAdsSync },
   { name: "paypal", run: runPaypalSync },

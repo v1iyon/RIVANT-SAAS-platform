@@ -33,6 +33,7 @@ import { logError } from "../../../../lib/log-error.js";
 import { isValidSecret } from "../../../../lib/verify-secret.js";
 import { runSync as runStripeSync } from "../../../../scripts/sync-stripe-core.mjs";
 import { runSync as runShopifySync } from "../../../../scripts/shopify-sync.mjs";
+import { runSync as runWooCommerceSync } from "../../../../scripts/woocommerce-sync.mjs";
 import { runSync as runMetaAdsSync } from "../../../../scripts/meta-ads-sync.mjs";
 import { runSync as runGoogleAdsSync } from "../../../../scripts/google-ads-sync.mjs";
 import { runSync as runPaypalSync } from "../../../../scripts/paypal-sync.mjs";
@@ -58,6 +59,7 @@ const BACKFILL_SINCE_DAYS = 365;
 const SYNC_BY_PROVIDER = {
   stripe: runStripeSync,
   shopify: runShopifySync,
+  woocommerce: runWooCommerceSync,
   meta_ads: runMetaAdsSync,
   google_ads: runGoogleAdsSync,
   paypal: runPaypalSync,

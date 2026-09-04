@@ -31,16 +31,18 @@ const admin = createClient(
 // "stripe" тепер теж у списку вибору (раніше був мовчазним дефолтом поза
 // цим ендпоінтом) — саме тому, що тепер є альтернатива (Shopify), вибір
 // джерела виручки має бути явним, а не зашитим.
-const SELECTABLE_PROVIDERS = ["stripe", "shopify", "paypal", "meta_ads", "google_ads", "quickbooks", "google_analytics"];
+const SELECTABLE_PROVIDERS = ["stripe", "shopify", "woocommerce", "paypal", "meta_ads", "google_ads", "quickbooks", "google_analytics"];
 
 // Джерела виручки — без ЖОДНОГО з них продукт не працює: немає виручки —
 // немає маржі, revenue_drop, CAC, щоденних звітів (усе це рахується від
-// metrics_computed, яку заповнюють тільки stripe-sync і shopify-sync).
-// Тому будь-який НЕпорожній вибір повинен містити щонайменше одне з двох.
-// paypal доданий 03.09.2026 — lib/plan-slots.js має той самий масив
-// (єдиний "офіційний" список), цей файл історично тримає власну копію
-// замість імпорту звідти; зміна тут зроблена в парі зі зміною там.
-const REVENUE_SOURCE_PROVIDERS = ["stripe", "shopify", "paypal"];
+// metrics_computed, яку заповнюють тільки stripe-sync, shopify-sync,
+// woocommerce-sync і paypal-sync). WooCommerce додано на тих самих правах,
+// що й Shopify — це теж самостійний storefront, а не рекламний канал, тож
+// теж вважається джерелом виручки. paypal доданий 03.09.2026 — lib/plan-slots.js
+// має той самий масив (єдиний "офіційний" список), цей файл історично тримає
+// власну копію замість імпорту звідти; зміна тут зроблена в парі зі зміною там.
+// Тому будь-який НЕпорожній вибір повинен містити щонайменше одне з чотирьох.
+const REVENUE_SOURCE_PROVIDERS = ["stripe", "shopify", "woocommerce", "paypal"];
 
 // Кількість слотів інтеграцій за планом.
 const PLAN_SLOTS = {
@@ -68,7 +70,7 @@ function validateSelection(plan, providers) {
   // скинув вибір) — вимога "мінімум 1 джерело виручки" стосується тільки
   // НЕпорожнього вибору.
   if (providers.length > 0 && !providers.some((p) => REVENUE_SOURCE_PROVIDERS.includes(p))) {
-    return "Selection must include at least one revenue source (Stripe, Shopify or PayPal)";
+    return "Selection must include at least one revenue source (Stripe, Shopify, WooCommerce or PayPal)";
   }
   return null;
 }

@@ -2,6 +2,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { encrypt } from "@/lib/crypto";
 import { requireUser, UnauthorizedError } from "@/lib/require-user";
+import { normalizeStoreUrl, assertPublicHostname } from "@/lib/woocommerce-url";
 
 export const runtime = "nodejs";
 
@@ -10,7 +11,7 @@ const admin = createClient(
   process.env.SUPABASE_SERVICE_KEY
 );
 
-const SUPPORTED_PROVIDERS = ["meta_ads", "google_ads", "shopify", "quickbooks", "google_analytics", "paypal"];
+const SUPPORTED_PROVIDERS = ["meta_ads", "google_ads", "shopify", "woocommerce", "quickbooks", "google_analytics", "paypal"];
 
 // Той самий принцип, що і в app/api/connect-stripe/route.js: Scale/Trial
 // отримують усе без явного вибору слоту, решта планів (starter/growth)
@@ -51,8 +52,13 @@ function isValidShopifyDomain(raw) {
 // client_id у Shopify/Google Ads тут не секрет сам по собі, тому лишається
 // у відкритому config (щоб UI міг показати збережене значення), а не в
 // SENSITIVE_CONFIG_FIELDS нижче.
+// WooCommerce: store_url (домен клієнта, довільний) + consumer_key —
+// сам apiKey означає Consumer Secret (та сама роль, що й Client Secret у
+// Shopify). Див. lib/woocommerce-url.js — тут своя SSRF-перевірка, бо
+// домен WooCommerce не обмежений фіксованим суфіксом, як *.myshopify.com.
 const REQUIRED_CONFIG_FIELDS = {
   shopify: ["shop_domain", "client_id"],
+  woocommerce: ["store_url", "consumer_key"],
   meta_ads: ["ad_account_id"],
   google_ads: ["customer_id", "client_id", "client_secret", "developer_token"],
   paypal: ["client_id"],
@@ -91,6 +97,23 @@ export async function POST(req) {
     }
     if (provider === "shopify" && !isValidShopifyDomain(config?.shop_domain)) {
       return Response.json({ error: "invalid_shop_domain" }, { status: 400 });
+    }
+
+    // ФІКС (SSRF, той самий принцип, що і для Shopify вище, п.2 захисту —
+    // домен WooCommerce довільний, тому мало перевірити синтаксис, треба
+    // ще й резолвнути хост і відкинути приватні/reserved адреси ДО того,
+    // як ключі взагалі потраплять у БД, а не тільки при першому синку).
+    let normalizedStoreUrl = null;
+    if (provider === "woocommerce") {
+      normalizedStoreUrl = normalizeStoreUrl(config?.store_url);
+      if (!normalizedStoreUrl) {
+        return Response.json({ error: "invalid_store_url" }, { status: 400 });
+      }
+      try {
+        await assertPublicHostname(new URL(normalizedStoreUrl).hostname);
+      } catch (e) {
+        return Response.json({ error: "store_url_not_reachable" }, { status: 400 });
+      }
     }
 
     const { data: user } = await admin.from("users").select("id").eq("email", email).maybeSingle();
@@ -142,6 +165,12 @@ export async function POST(req) {
     }
 
     const cleanConfig = config && typeof config === "object" ? { ...config } : {};
+    // Зберігаємо саме нормалізовану (https://host, без шляху/трейлінг слеша)
+    // версію store_url — так sync-модуль завжди отримує однаковий формат,
+    // незалежно від того, що саме ввів клієнт (з http://, з трейлінг слешем тощо).
+    if (provider === "woocommerce" && normalizedStoreUrl) {
+      cleanConfig.store_url = normalizedStoreUrl;
+    }
     // Одноразовий бекфіл історії при (пере)підключенні — see
     // app/api/cron/backfill-historical/route.js. Прапорець просто в config
     // (jsonb, вже є в таблиці) — без міграції схеми. Крон сам скидає його
@@ -246,6 +275,7 @@ export async function DELETE(req) {
       google_ads: ["sync_failure_google_ads"],
       shopify: ["sync_failure_shopify"],
       paypal: ["sync_failure_paypal"],
+      woocommerce: ["sync_failure_woocommerce", "shipping_spike_woocommerce"],
     };
     const alertTypes = ALERT_TYPE_BY_PROVIDER[provider];
     if (alertTypes) {

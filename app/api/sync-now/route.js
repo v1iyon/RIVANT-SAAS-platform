@@ -24,7 +24,7 @@ export async function POST(req) {
     const businessId = await getPrimaryBusinessId(admin, user.id);
     if (!businessId) return Response.json({ error: "not found" }, { status: 404 });
 
-    // Без provider — синкаем все три источника для этого бизнеса, каждый
+    // Без provider — синкаем все источники для этого бизнеса, каждый
     // независимо (ошибка одного не должна блокировать другие).
     const jobs = [];
     if (!provider || provider === "stripe") {
@@ -32,6 +32,12 @@ export async function POST(req) {
     }
     if (!provider || provider === "shopify") {
       jobs.push(import("../../../scripts/shopify-sync.mjs").then((m) => m.runSync(businessId)));
+    }
+    if (!provider || provider === "woocommerce") {
+      jobs.push(import("../../../scripts/woocommerce-sync.mjs").then((m) => m.runSync(businessId)));
+    }
+    if (!provider || provider === "paypal") {
+      jobs.push(import("../../../scripts/paypal-sync.mjs").then((m) => m.runSync(businessId)));
     }
     if (!provider || provider === "meta_ads") {
       jobs.push(import("../../../scripts/meta-ads-sync.mjs").then((m) => m.runSync(businessId)));
@@ -42,7 +48,7 @@ export async function POST(req) {
 
     const results = await Promise.allSettled(jobs);
     const failures = results.filter((r) => r.status === "rejected");
-    const attemptedProviders = provider ? [provider] : ["stripe", "shopify", "meta_ads", "google_ads"];
+    const attemptedProviders = provider ? [provider] : ["stripe", "shopify", "woocommerce", "paypal", "meta_ads", "google_ads"];
     // Sync-модули не прерывают остальные интеграции при ошибке, поэтому они
     // фиксируют её в integrations.status. Считываем результат после прогона,
     // чтобы интерфейс мог показать временное сообщение именно для неудавшейся
