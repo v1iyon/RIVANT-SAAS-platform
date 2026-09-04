@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { encrypt } from "@/lib/crypto";
 import { requireUser, UnauthorizedError } from "@/lib/require-user";
 import { normalizeStoreUrl, assertPublicHostname } from "@/lib/woocommerce-url";
+import { REPLACE_TOGGLE_PROVIDERS, effectiveRevenueMode, downgradeConflictingReplaceProviders } from "@/lib/revenue-mode";
 
 export const runtime = "nodejs";
 
@@ -177,6 +178,24 @@ export async function POST(req) {
     // після того, як витягне історичні дані.
     cleanConfig.backfill_pending = true;
 
+    // ФІКС (задвоєння/тиха втрата доходу, той самий guard, що і в
+    // /api/integration-revenue-mode): revenue_mode тут ще не прийшов
+    // з чекбокса окремо — якщо showRevenueModeCheckbox не показувався
+    // (напр. перше підключення) або чекбокс не відмічений, дефолт саме
+    // "replace" (effectiveRevenueMode), не "add". Перевіряємо конфлікт
+    // ДО insert/update, а не після — щоб щойно підключений провайдер і
+    // вже наявний replace-сусід не встигли жодного разу одночасно
+    // відсинкатись у "replace"-режимі обидва.
+    let downgraded = [];
+    if (REPLACE_TOGGLE_PROVIDERS.includes(provider)) {
+      downgraded = await downgradeConflictingReplaceProviders(
+        admin,
+        business.id,
+        provider,
+        effectiveRevenueMode(cleanConfig)
+      );
+    }
+
     // Вырезаем секретные поля (client_secret, developer_token у Google Ads) из config —
     // они уйдут в зашифрованный payload вместе с apiKey, а не будут храниться в открытом
     // виде и отдаваться клиенту через /api/integrations-status.
@@ -228,7 +247,7 @@ export async function POST(req) {
       }
     }
 
-    return Response.json({ success: true });
+    return Response.json({ success: true, downgraded });
   } catch (err) {
     if (err instanceof UnauthorizedError) return Response.json({ error: "unauthorized" }, { status: 401 });
     console.error("connect-integration error:", err);

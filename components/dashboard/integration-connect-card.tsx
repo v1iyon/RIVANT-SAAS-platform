@@ -95,6 +95,22 @@ export function IntegrationConnectCard({
   const [lastSynced, setLastSynced] = useState<string | null>(null);
   const [keyPreview, setKeyPreview] = useState<string | null>(null);
   const [showLockedToast, setShowLockedToast] = useState(false);
+  // ФІКС: "replace" тепер дозволений лише в одного з Shopify/WooCommerce
+  // одночасно (див. lib/revenue-mode.js) — бекенд сам понижує конфліктуючого
+  // сусіда до "add" і повертає його provider-код у полі `downgraded`. Без
+  // цього стану користувач бачив би лише те, що ЦЯ картка тепер "replace",
+  // і не зрозумів би, чому інша картка (Shopify/WooCommerce) за хвилину до
+  // цього мовчки перемкнулась на "додавати".
+  const [downgradedNotice, setDowngradedNotice] = useState<string | null>(null);
+  const downgradedNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const OTHER_PROVIDER_LABEL: Record<string, string> = { shopify: "Shopify", woocommerce: "WooCommerce" };
+
+  const showDowngradedNotice = (downgradedProviders?: string[]) => {
+    if (!downgradedProviders?.length) return;
+    setDowngradedNotice(downgradedProviders.map((p) => OTHER_PROVIDER_LABEL[p] || p).join(", "));
+    if (downgradedNoticeTimerRef.current) clearTimeout(downgradedNoticeTimerRef.current);
+    downgradedNoticeTimerRef.current = setTimeout(() => setDowngradedNotice(null), 10_000);
+  };
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -215,6 +231,7 @@ export function IntegrationConnectCard({
     return () => {
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
       if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
+      if (downgradedNoticeTimerRef.current) clearTimeout(downgradedNoticeTimerRef.current);
     };
   }, []);
 
@@ -287,6 +304,7 @@ export function IntegrationConnectCard({
         setErrorMsg(data.error || "Connection failed");
         return;
       }
+      showDowngradedNotice(data.downgraded);
 
       // Тариф з обмеженою кількістю слотів (Starter — 1, Growth — 2) — якщо
       // ще лишався вільний слот і його ще не зайняв саме цей provider,
@@ -350,7 +368,11 @@ export function IntegrationConnectCard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, provider, revenueMode: nextMode }),
       });
-      if (res.ok) setRevenueModeAdd(nextMode === "add");
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setRevenueModeAdd(nextMode === "add");
+        showDowngradedNotice(data.downgraded);
+      }
     } catch (e) {
       console.error("Failed to update revenue_mode", e);
     } finally {
@@ -409,27 +431,47 @@ export function IntegrationConnectCard({
     syncErrorBadge: language === "UA" ? "Помилка синхронізації" : language === "DE" ? "Sync-Fehler" : "Sync error",
     syncNowBtn: language === "UA" ? "Синхронізувати зараз" : language === "DE" ? "Jetzt synchronisieren" : "Sync now",
     connecting: language === "UA" ? "Підключення..." : language === "DE" ? "Verbinde..." : "Connecting...",
+    // ФІКС (баг на скріншоті 04.09.2026): текст був захардкоджений на
+    // "Shopify" буквально, тому WooCommerce-картка показувала той самий
+    // напис зі словом "Shopify" всередині — хоча йдеться про WooCommerce.
+    // Тепер підставляємо displayName, як і в syncErrorMessage() вище.
     revenueModeAddLabel:
       language === "UA"
-        ? "Це окремий потік грошей (не через Stripe) — додавати виручку Shopify зверху, а не замінювати нею Stripe"
+        ? `Це окремий потік грошей (не через Stripe) — додавати виручку ${displayName} зверху, а не замінювати нею Stripe`
         : language === "DE"
-        ? "Das ist ein separater Zahlungsfluss (nicht über Stripe) — Shopify-Umsatz zum Stripe-Umsatz addieren statt ihn zu ersetzen"
-        : "This is a separate money flow (not via Stripe) — add Shopify revenue on top instead of replacing Stripe's",
+        ? `Das ist ein separater Zahlungsfluss (nicht über Stripe) — ${displayName}-Umsatz zum Stripe-Umsatz addieren statt ihn zu ersetzen`
+        : `This is a separate money flow (not via Stripe) — add ${displayName} revenue on top instead of replacing Stripe's`,
     revenueModeCurrentReplace:
       language === "UA"
-        ? "Дохід: Shopify замінює Stripe (той самий Checkout)"
+        ? `Дохід: ${displayName} замінює Stripe (той самий Checkout)`
         : language === "DE"
-        ? "Umsatz: Shopify ersetzt Stripe (derselbe Checkout)"
-        : "Revenue: Shopify replaces Stripe (same checkout)",
+        ? `Umsatz: ${displayName} ersetzt Stripe (derselbe Checkout)`
+        : `Revenue: ${displayName} replaces Stripe (same checkout)`,
     revenueModeCurrentAdd:
       language === "UA"
-        ? "Дохід: Shopify додається зверху Stripe (окремий потік)"
+        ? `Дохід: ${displayName} додається зверху Stripe (окремий потік)`
         : language === "DE"
-        ? "Umsatz: Shopify wird zu Stripe addiert (separater Fluss)"
-        : "Revenue: Shopify is added on top of Stripe (separate flow)",
+        ? `Umsatz: ${displayName} wird zu Stripe addiert (separater Fluss)`
+        : `Revenue: ${displayName} is added on top of Stripe (separate flow)`,
     revenueModeSwitchToAdd: language === "UA" ? "Це окремий потік — додавати" : language === "DE" ? "Separater Fluss — addieren" : "Separate flow — add instead",
     revenueModeSwitchToReplace: language === "UA" ? "Це той самий Stripe — замінювати" : language === "DE" ? "Derselbe Stripe — ersetzen" : "Same as Stripe — replace instead",
     revenueModeSaving: language === "UA" ? "Зберігаємо..." : language === "DE" ? "Speichere..." : "Saving...",
+    // Новий текст: показується, коли підключення/перемикання ЦІЄЇ картки на
+    // "replace" автоматично перевело сусідню картку (Shopify або
+    // WooCommerce) назад у "add" — див. lib/revenue-mode.js. {names}
+    // підставляється нижче через downgradedNotice.
+    downgradedNoticePrefix:
+      language === "UA"
+        ? "Ми автоматично перевели в режим «додавати»: "
+        : language === "DE"
+        ? "Automatisch auf „addieren“ umgestellt: "
+        : "Automatically switched to \"add\" mode: ",
+    downgradedNoticeSuffix:
+      language === "UA"
+        ? " — заміщувати Stripe одночасно можуть лише в одного магазину, щоб дохід не перезаписувався."
+        : language === "DE"
+        ? " — nur ein Shop kann Stripe gleichzeitig ersetzen, damit Umsatz nicht überschrieben wird."
+        : " — only one store can replace Stripe's revenue at a time, so numbers don't get overwritten.",
   };
 
   const planLabel = planTier ? planTier.charAt(0).toUpperCase() + planTier.slice(1) : "";
@@ -655,6 +697,14 @@ export function IntegrationConnectCard({
           >
             {revenueModeSaving ? texts.revenueModeSaving : revenueModeAdd ? texts.revenueModeSwitchToReplace : texts.revenueModeSwitchToAdd}
           </Button>
+        </div>
+      )}
+
+      {downgradedNotice && (
+        <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300 animate-in fade-in slide-in-from-top-1">
+          {texts.downgradedNoticePrefix}
+          <span className="font-medium">{downgradedNotice}</span>
+          {texts.downgradedNoticeSuffix}
         </div>
       )}
 

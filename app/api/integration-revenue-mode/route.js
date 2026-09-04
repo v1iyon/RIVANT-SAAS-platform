@@ -8,6 +8,7 @@
 // config без торкання api_key_encrypted/status.
 import { createClient } from "@supabase/supabase-js";
 import { requireUser, UnauthorizedError } from "@/lib/require-user";
+import { downgradeConflictingReplaceProviders } from "@/lib/revenue-mode";
 
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
@@ -51,6 +52,16 @@ export async function PATCH(req) {
       .maybeSingle();
     if (!integration) return Response.json({ error: "integration not connected" }, { status: 404 });
 
+    // ФІКС (задвоєння/тиха втрата доходу): "replace" може бути щонайбільше
+    // в одного з REPLACE_TOGGLE_PROVIDERS одночасно — інакше цей провайдер
+    // і, скажімо, вже-replace WooCommerce почнуть по черзі перезаписувати
+    // один одного в metrics_computed при кожному прогоні синку (див.
+    // lib/revenue-mode.js). Перед власне зміною режиму понижуємо будь-якого
+    // конфліктуючого сусіда до "add" — і повертаємо, кого саме понизили,
+    // щоб фронтенд explicitly пояснив користувачу, що сталось, а не тихо
+    // змінив поведінку іншої картки в фоні.
+    const downgraded = await downgradeConflictingReplaceProviders(admin, business.id, provider, revenueMode);
+
     const nextConfig = { ...(integration.config || {}), revenue_mode: revenueMode };
     const { error: updateErr } = await admin
       .from("integrations")
@@ -58,7 +69,7 @@ export async function PATCH(req) {
       .eq("id", integration.id);
     if (updateErr) return Response.json({ error: `Database error: ${updateErr.message}` }, { status: 500 });
 
-    return Response.json({ success: true, revenueMode });
+    return Response.json({ success: true, revenueMode, downgraded });
   } catch (err) {
     if (err instanceof UnauthorizedError) return Response.json({ error: "unauthorized" }, { status: 401 });
     console.error("integration-revenue-mode error:", err);
