@@ -53,6 +53,16 @@ function isValidShopifyDomain(raw) {
 // client_id у Shopify/Google Ads тут не секрет сам по собі, тому лишається
 // у відкритому config (щоб UI міг показати збережене значення), а не в
 // SENSITIVE_CONFIG_FIELDS нижче.
+// Mollie: apiKey = Live/Test API key (звичайні платежі). Для ЧЕСНИХ комісій
+// (не оцінка, а реальна сума по кожному платежу) Mollie Payments API v2 не
+// дає нічого — комісія видно лише через Balance Transactions API
+// (GET /v2/balances/primary/transactions, поле deductions на кожній
+// транзакції типу "payment"), а цей ендпоінт вимагає ОКРЕМИЙ токен —
+// Advanced access token (префікс access_, генерується в Mollie Dashboard →
+// Developers → API access tokens, той самий self-service спосіб, що й
+// звичайний API-ключ — НЕ OAuth-редирект). Тому advanced_access_token —
+// обов'язкове друге поле для Mollie (а не необов'язкове) — рахувати
+// виручку без комісій і видавати це за "реальний" P&L було б нечесно.
 // WooCommerce: store_url (домен клієнта, довільний) + consumer_key —
 // сам apiKey означає Consumer Secret (та сама роль, що й Client Secret у
 // Shopify). Див. lib/woocommerce-url.js — тут своя SSRF-перевірка, бо
@@ -63,6 +73,7 @@ const REQUIRED_CONFIG_FIELDS = {
   meta_ads: ["ad_account_id"],
   google_ads: ["customer_id", "client_id", "client_secret", "developer_token"],
   paypal: ["client_id"],
+  mollie: ["advanced_access_token"],
 };
 
 // client_secret и developer_token — секреты не хуже самого API-ключа. /api/integrations-status
@@ -70,8 +81,22 @@ const REQUIRED_CONFIG_FIELDS = {
 // поэтому эти поля нельзя класть в config как есть, только в зашифрованный payload вместе
 // с apiKey. customer_id и client_id секретами не являются (client_id по дизайну OAuth публичный,
 // customer_id — просто номер аккаунта) — их можно смело отдавать обратно в UI.
+// advanced_access_token у Mollie — токен з повним доступом до organization-level
+// даних (баланси, комісії) — секрет не гірший за сам API-ключ, тому теж сюди.
 const SENSITIVE_CONFIG_FIELDS = {
   google_ads: ["client_secret", "developer_token"],
+  mollie: ["advanced_access_token"],
+};
+
+// Ім'я поля в JSON-payload для ОСНОВНОГО apiKey, коли провайдер має доп.
+// секрети (сам apiKey тоді теж іде в JSON поруч з ними, а не окремим
+// рядком). google_ads історично зберігав це під "refresh_token" (бо це і є
+// буквально refresh token). Для mollie це звичайний API-ключ, не OAuth-
+// артефакт — називаємо чесно "api_key", щоб не плутати семантику при
+// читанні коду через півроку.
+const PRIMARY_SECRET_KEY_NAME = {
+  google_ads: "refresh_token",
+  mollie: "api_key",
 };
 
 export async function POST(req) {
@@ -96,6 +121,18 @@ export async function POST(req) {
     if (provider === "mollie" && !/^(live|test)_\w+$/.test(apiKey.trim())) {
       return Response.json(
         { error: "invalid_mollie_key", message: "Ключ Mollie має починатись з live_ або test_" },
+        { status: 400 }
+      );
+    }
+    // Advanced access token (для реальних, а не оцінних комісій через Balance
+    // Transactions API) завжди має префікс access_ — той самий формат, що й
+    // OAuth app access token, хоч тут це звичайний self-service токен.
+    if (provider === "mollie" && !/^access_\w+$/.test((config?.advanced_access_token || "").trim())) {
+      return Response.json(
+        {
+          error: "invalid_mollie_advanced_token",
+          message: "Advanced access token Mollie має починатись з access_ (Dashboard → Developers → API access tokens)",
+        },
         { status: 400 }
       );
     }
@@ -221,8 +258,9 @@ export async function POST(req) {
 
     // Для провайдеров без доп. секретов (Stripe/Shopify/Meta Ads) шифруем просто строку
     // apiKey как раньше — их sync-модули (decrypt(...)) ожидают обычную строку, не JSON.
+    const primaryKeyName = PRIMARY_SECRET_KEY_NAME[provider] || "refresh_token";
     const secretPayload = sensitiveFields.length
-      ? JSON.stringify({ refresh_token: apiKey.trim(), ...secretExtras })
+      ? JSON.stringify({ [primaryKeyName]: apiKey.trim(), ...secretExtras })
       : apiKey.trim();
     const encrypted = encrypt(secretPayload);
     const keyPreview = apiKey.trim().slice(0, 8) + "..." + apiKey.trim().slice(-4);

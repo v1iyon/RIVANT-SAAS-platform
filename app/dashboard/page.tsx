@@ -3505,7 +3505,7 @@ if (!subInfo) {
                       email={profileEmail}
                       provider="mollie"
                       displayName="Mollie"
-                      placeholder="live_..."
+                      placeholder="Live API key (live_...)"
                       isExpiredTrial={isExpiredTrial}
                       planTier={subInfo?.plan ?? null}
                       selectedProviders={selectedProviders}
@@ -3513,12 +3513,24 @@ if (!subInfo) {
                       onLockedClick={() => router.push("/#pricing")}
                       refreshToken={integrationRefreshToken}
                       syncFailed={failedSyncProviders.includes("mollie")}
+                      extraFields={[
+                        {
+                          key: "advanced_access_token",
+                          label:
+                            language === "UA"
+                              ? "Advanced access token (для точних комісій)"
+                              : language === "DE"
+                              ? "Advanced Access Token (für exakte Gebühren)"
+                              : "Advanced access token (for exact fees)",
+                          placeholder: "access_...",
+                        },
+                      ]}
                       hint={
                         language === "UA"
-                          ? "Mollie Dashboard → Developers → API keys → перемикач вгорі на Live → скопіюйте Live API key (live_...). iDEAL, Bancontact, BLIK та інші локальні методи Європи підуть у виручку тим самим ключем."
+                          ? "Потрібні ДВА ключі з Mollie Dashboard → Developers → API access tokens: 1) Live API key (live_...) — вмикає прийом платежів iDEAL, Bancontact, BLIK та ін.; 2) Advanced access token (access_...) з правом balances.read — без нього ми НЕ покажемо реальну комісію Mollie, а це важливо для точного чистого прибутку. Створюються обидва там само, кнопкою «+ Create new key» — окремого OAuth-екрану немає."
                           : language === "DE"
-                          ? "Mollie Dashboard → Developers → API keys → oben auf Live umschalten → Live API key (live_...) kopieren. iDEAL, Bancontact, BLIK und andere lokale Zahlmethoden fließen mit demselben Schlüssel in den Umsatz ein."
-                          : "Mollie Dashboard → Developers → API keys → switch the toggle at the top to Live → copy the Live API key (live_...). iDEAL, Bancontact, BLIK and other local European payment methods flow into revenue with this one key."
+                          ? "Zwei Schlüssel aus Mollie Dashboard → Developers → API access tokens nötig: 1) Live API key (live_...) — aktiviert iDEAL, Bancontact, BLIK usw.; 2) Advanced Access Token (access_...) mit balances.read — ohne ihn zeigen wir keine echten Mollie-Gebühren, wichtig für den genauen Nettogewinn. Beide werden dort per „+ Create new key" erstellt — kein separater OAuth-Bildschirm."
+                          : "You need TWO keys from Mollie Dashboard → Developers → API access tokens: 1) Live API key (live_...) — enables iDEAL, Bancontact, BLIK and other local methods; 2) Advanced access token (access_...) with balances.read — without it we can't show real Mollie fees, which matters for accurate net profit. Both are created there via \"+ Create new key\" — no separate OAuth screen."
                       }
                     />
                   ),
