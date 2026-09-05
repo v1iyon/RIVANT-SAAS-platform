@@ -2804,12 +2804,10 @@ if (!subInfo) {
        <div
   className="flex-1 p-4 lg:p-6 overflow-auto"
   onScroll={() => {
-    // Закриваємо дропдаун фільтра ризиків при скролі — так само,
-    // як і по свайпу вниз, щоб він не "висів" поверх контенту.
-    if (riskFilterOpen) setRiskFilterOpen(false);
-    if (sensitivityOpen) setSensitivityOpen(false);
-    if (digestOpen) setDigestOpen(false);
-  }}
+  if (riskFilterOpen && !showOnboarding) setRiskFilterOpen(false);   // ← стало
+  if (sensitivityOpen) setSensitivityOpen(false);
+  if (digestOpen) setDigestOpen(false);
+}}
 >
 
           {activeView === "overview" && (
