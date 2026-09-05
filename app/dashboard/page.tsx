@@ -12,6 +12,7 @@ import { commonError, translateUnknownError } from "@/lib/error-messages";
 import { useCurrency, Currency } from "@/lib/currency";
 import { getSeverityLabel, getSeverityColorClasses } from "@/lib/severity";
 import { businessDateStr, businessMonthStartStr } from "@/lib/business-date";
+import { getAllTimezones, formatTimezoneLabel, groupTimezonesByRegion, getDetectedTimezone } from "@/lib/timezones";
 import { TrialPromptModal } from "@/components/dashboard/trial-prompt-modal";
 import { OnboardingTour } from "@/components/dashboard/onboarding-tour";
 import { TeamAccessCard } from "@/components/dashboard/team-access-card";
@@ -175,73 +176,10 @@ const buildSparkline = (rows: MetricsRow[], pick: (r: MetricsRow) => number) => 
   return tail.map(pick);
 };
 
-// Полный список часовых поясов IANA — то же самое, что использует ОС.
-// Fallback на случай очень старых браузеров без поддержки Intl.supportedValuesOf.
-const FALLBACK_TIMEZONES = [
-  "UTC", "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
-  "America/Sao_Paulo", "Europe/London", "Europe/Berlin", "Europe/Kyiv", "Europe/Moscow",
-  "Africa/Cairo", "Asia/Dubai", "Asia/Kolkata", "Asia/Singapore", "Asia/Tokyo",
-  "Asia/Shanghai", "Australia/Sydney", "Pacific/Auckland",
-];
-
-function getAllTimezones(): string[] {
-  try {
-    // @ts-ignore
-    if (typeof Intl.supportedValuesOf === "function") {
-      // @ts-ignore
-      return Intl.supportedValuesOf("timeZone");
-    }
-  } catch {}
-  return FALLBACK_TIMEZONES;
-}
-
-function getTimezoneOffset(tz: string): string {
-  try {
-    const formatter = new Intl.DateTimeFormat("en-US", { timeZone: tz, timeZoneName: "shortOffset" });
-    const parts = formatter.formatToParts(new Date());
-    return parts.find((p) => p.type === "timeZoneName")?.value || "";
-  } catch {
-    return "";
-  }
-}
-
-function formatTimezoneLabel(tz: string): string {
-  const offset = getTimezoneOffset(tz);
-  const cityName = tz.split("/").pop()?.replace(/_/g, " ") || tz;
-  return offset ? `${cityName} (${offset})` : tz;
-}
-
-// Группируем по континенту (часть до первого "/" в IANA-имени),
-// чтобы <optgroup> в select показывал понятные разделы вместо
-// одного длинного списка на 400+ строк.
-function groupTimezonesByRegion(zones: string[]): Record<string, string[]> {
-  const regionNames: Record<string, string> = {
-    Africa: "Africa",
-    America: "America",
-    Antarctica: "Antarctica",
-    Asia: "Asia",
-    Atlantic: "Atlantic",
-    Australia: "Australia",
-    Europe: "Europe",
-    Indian: "Indian Ocean",
-    Pacific: "Pacific",
-    UTC: "UTC",
-  };
-  const groups: Record<string, string[]> = {};
-  for (const tz of zones) {
-    const region = tz.split("/")[0];
-    const label = regionNames[region] || "Other";
-    if (!groups[label]) groups[label] = [];
-    groups[label].push(tz);
-  }
-  // сортируем регионы в логичном порядке, остальное — по алфавиту
-  const order = ["UTC", "Europe", "Asia", "Africa", "America", "Australia", "Pacific", "Atlantic", "Indian Ocean", "Antarctica", "Other"];
-  const sorted: Record<string, string[]> = {};
-  for (const key of order) {
-    if (groups[key]) sorted[key] = groups[key].sort();
-  }
-  return sorted;
-}
+// Хелперы для тайм-зон вынесены в lib/timezones.ts (нужны и здесь, в
+// Settings, и в components/dashboard/onboarding-tour.tsx — обязательный
+// шаг тайм-зоны в онбординге, см. todo п.1) — один источник правды вместо
+// двух копий, которые могли бы разъехаться.
 
 const sidebarItems = [
   { icon: LayoutDashboard, label: "overview", view: "overview" as ViewType, translationKey: "overview" },
@@ -1726,9 +1664,18 @@ if (bizData.business) {
   if (bizData.business.timezone) {
     setTimezoneState(bizData.business.timezone);
   } else {
-    const detected = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    // Раньше здесь тайм-зона молча угадывалась и сохранялась без ведома
+    // человека (см. todo п.1) — теперь только предзаполняем стейт лучшей
+    // догадкой (getDetectedTimezone), а подтверждение/исправление и
+    // реальное сохранение происходит на обязательном шаге тайм-зоны в
+    // OnboardingTour ниже (новые пользователи) либо позже вручную в
+    // Settings (существующие пользователи, у которых onboarding уже
+    // пройден, но timezone почему-то не выставлен).
+    const detected = getDetectedTimezone();
     setTimezoneState(detected);
-    saveBusinessProfileWithTimezone(detected);
+    if (profile.onboarding_completed !== false) {
+      saveBusinessProfileWithTimezone(detected);
+    }
   }
 
   if (bizData.business.alert_sensitivity === "low" || bizData.business.alert_sensitivity === "high") {
@@ -2801,6 +2748,11 @@ if (!subInfo) {
             language={language}
             onNavigate={(view) => setActiveView(view)}
             onFinish={completeOnboarding}
+            businessName={businessName}
+            onBusinessNameChange={setBusinessName}
+            timezone={timezone}
+            onTimezoneChange={(tz) => setTimezoneState(tz)}
+            onSaveProfileStep={() => saveBusinessProfile()}
             onStepAction={(action) => {
               // Каждый шаг явно говорит, что должно быть открыто — а не
               // открыто, если пришли не из того шага, где просили.

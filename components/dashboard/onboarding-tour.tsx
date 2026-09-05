@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { X, ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
+import { getAllTimezones, formatTimezoneLabel, groupTimezonesByRegion } from "@/lib/timezones";
 
 type Language = "EN" | "UA" | "DE";
 type ViewType = "overview" | "risks" | "forecast" | "integrations" | "settings";
@@ -31,6 +32,14 @@ interface Step {
   compact?: boolean;
   title: Record<Language, string>;
   desc: Record<Language, string>;
+  /**
+   * TODO п.1 (тайм-зона в онбординге): помечает единственный шаг, который
+   * не просто рассказывает про UI, а требует явного действия — подтвердить
+   * или поправить тайм-зону бизнеса — прежде чем можно закрыть/пропустить
+   * тур. Без этого шага люди не знали, что выбор тайм-зоны вообще
+   * существует, и получали "доброе утро" не в то время.
+   */
+  requiresTimezone?: boolean;
 }
 
 const STEPS: Step[] = [
@@ -43,10 +52,11 @@ const STEPS: Step[] = [
       DE: "Willkommen bei RIVANT 👋",
     },
     desc: {
-      EN: "A quick 1-minute tour. You can skip it anytime.",
-      UA: "Швидкий тур на хвилину. Пропустити можна в будь-який момент.",
-      DE: "Eine kurze 1-minütige Tour. Sie können jederzeit überspringen.",
+      EN: "A quick 1-minute tour. First, let's make sure your times are right.",
+      UA: "Швидкий тур на хвилину. Спочатку переконаймось, що час у вас правильний.",
+      DE: "Eine kurze 1-minütige Tour. Zuerst stellen wir sicher, dass Ihre Zeitzone stimmt.",
     },
+    requiresTimezone: true,
   },
   {
     view: "overview",
@@ -375,7 +385,7 @@ const STEPS: Step[] = [
   },
 ];
 
-const UI: Record<"next" | "back" | "skip" | "finish" | "scrollForMore", Record<Language, string>> = {
+const UI: Record<"next" | "back" | "skip" | "finish" | "scrollForMore" | "confirm" | "businessName" | "businessNamePlaceholder" | "timezoneLabel", Record<Language, string>> = {
   next: { EN: "Next", UA: "Далі", DE: "Weiter" },
   back: { EN: "Back", UA: "Назад", DE: "Zurück" },
   skip: { EN: "Skip", UA: "Пропустити", DE: "Überspringen" },
@@ -385,6 +395,12 @@ const UI: Record<"next" | "back" | "skip" | "finish" | "scrollForMore", Record<L
   // decoration to a lot of people, who then never realize the rest of the
   // block is still there, one scroll away.
   scrollForMore: { EN: "Scroll for more", UA: "Прокрутіть, щоб побачити ще", DE: "Scrollen für mehr" },
+  // Timezone confirmation step (todo п.1) — replaces "Next" on step 0 only,
+  // since this step also saves data, not just advances the tour.
+  confirm: { EN: "Confirm & continue", UA: "Підтвердити й продовжити", DE: "Bestätigen & weiter" },
+  businessName: { EN: "Business name", UA: "Назва бізнесу", DE: "Firmenname" },
+  businessNamePlaceholder: { EN: "e.g. Acme Inc.", UA: "напр. Acme Inc.", DE: "z. B. Acme Inc." },
+  timezoneLabel: { EN: "Your timezone", UA: "Ваш часовий пояс", DE: "Ihre Zeitzone" },
 };
 
 interface OnboardingTourProps {
@@ -396,6 +412,19 @@ interface OnboardingTourProps {
    *  opening/closing the relevant panel/dropdown and should treat `null`
    *  as "close whatever the tour previously opened". */
   onStepAction?: (action: StepAction) => void;
+  /** Current business name / timezone, and setters — used only by the
+   *  mandatory timezone step (see `requiresTimezone` on STEPS[0]). Kept as
+   *  controlled props (not local state here) so the value survives the
+   *  tour closing early and is visible immediately in Settings too. */
+  businessName: string;
+  onBusinessNameChange: (name: string) => void;
+  timezone: string;
+  onTimezoneChange: (tz: string) => void;
+  /** Persists businessName + timezone to the backend. Called when the user
+   *  leaves the timezone step, whichever way they leave it (Confirm, Skip,
+   *  or the X) — so the value they saw on screen is always the value that
+   *  gets saved, never silently discarded. */
+  onSaveProfileStep: () => void;
 }
 
 interface Rect {
@@ -484,8 +513,29 @@ function ProgressBar({ step, total, isNarrow }: { step: number; total: number; i
   );
 }
 
-export function OnboardingTour({ language, onNavigate, onFinish, onStepAction }: OnboardingTourProps) {
+export function OnboardingTour({
+  language,
+  onNavigate,
+  onFinish,
+  onStepAction,
+  businessName,
+  onBusinessNameChange,
+  timezone,
+  onTimezoneChange,
+  onSaveProfileStep,
+}: OnboardingTourProps) {
   const [step, setStep] = useState(0);
+  // Список тайм-зон вычисляется один раз (не зависит от языка/шага) —
+  // Intl.supportedValuesOf может быть небыстрым на слабых устройствах.
+  const [groupedTimezones] = useState(() => groupTimezonesByRegion(getAllTimezones()));
+  // На шаге 0 (requiresTimezone) любой выход — Confirm, Skip или X — должен
+  // сохранить то, что реально показано на экране в этот момент. Флаг нужен,
+  // чтобы не звать сохранение на каждом шаге тура, только на этом одном.
+  const leavingTimezoneStep = STEPS[step]?.requiresTimezone;
+  const handleExit = () => {
+    if (leavingTimezoneStep) onSaveProfileStep();
+    onFinish();
+  };
   const [rect, setRect] = useState<Rect | null>(null);
   const [popoverH, setPopoverH] = useState(DEFAULT_POPOVER_H);
   const [ready, setReady] = useState(false); // avoids a flash at 0,0 / wrong size before first measure
@@ -835,7 +885,7 @@ export function OnboardingTour({ language, onNavigate, onFinish, onStepAction }:
         }}
       >
         <button
-          onClick={onFinish}
+          onClick={handleExit}
           aria-label="close"
           className={`absolute text-gray-500 hover:text-gray-300 rounded-lg hover:bg-gray-800 transition-colors ${
             isNarrow ? "top-2 right-2 p-0.5" : "top-3 right-3 p-1"
@@ -849,16 +899,64 @@ export function OnboardingTour({ language, onNavigate, onFinish, onStepAction }:
         <h3 className={`font-semibold text-white pr-6 ${isNarrow ? "text-xs mb-1" : "text-base mb-1.5"}`}>{current.title[language]}</h3>
         <p className={`text-gray-400 leading-relaxed pr-6 ${isNarrow ? "text-[11px] mb-2.5" : "text-sm mb-5"}`}>{current.desc[language]}</p>
 
+        {/* Обязательный мини-шаг профиля (todo п.1) — тайм-зона подставлена
+            лучшей догадкой (см. getDetectedTimezone в dashboard/page.tsx),
+            но человек ВИДИТ её и может поправить, прежде чем идти дальше —
+            раньше этот выбор молча сохранялся в фоне и нигде не показывался. */}
+        {current.requiresTimezone && (
+          <div className={`space-y-2.5 ${isNarrow ? "mb-2.5" : "mb-4"}`}>
+            <div>
+              <label className={`block text-gray-500 ${isNarrow ? "text-[10px] mb-1" : "text-[11px] mb-1"}`}>
+                {UI.businessName[language]}
+              </label>
+              <input
+                value={businessName}
+                onChange={(e) => onBusinessNameChange(e.target.value)}
+                placeholder={UI.businessNamePlaceholder[language]}
+                className={`w-full bg-gray-800 border border-gray-700 rounded-lg text-white placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50 ${
+                  isNarrow ? "text-xs px-2.5 py-1.5" : "text-sm px-3 py-2"
+                }`}
+              />
+            </div>
+            <div>
+              <label className={`block text-gray-500 ${isNarrow ? "text-[10px] mb-1" : "text-[11px] mb-1"}`}>
+                {UI.timezoneLabel[language]}
+              </label>
+              <select
+                value={timezone}
+                onChange={(e) => onTimezoneChange(e.target.value)}
+                className={`w-full bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 ${
+                  isNarrow ? "text-xs px-2.5 py-1.5" : "text-sm px-3 py-2"
+                }`}
+              >
+                {Object.entries(groupedTimezones).map(([region, zones]) => (
+                  <optgroup key={region} label={region}>
+                    {zones.map((tz) => (
+                      <option key={tz} value={tz}>
+                        {formatTimezoneLabel(tz)}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+
         {/* On narrow viewports the text "Skip" button used to wrap onto its
             own row whenever the label was long ("Пропустити"/"Überspringen"),
             which made the popover noticeably taller than Back/Next alone
             needed. Skip and the X button (top-right) do the same thing
-            (onFinish), so on mobile we drop the redundant text button and
+            (handleExit), so on mobile we drop the redundant text button and
             keep everything — including the X — usable, letting Back/Next
-            sit on a single compact row instead of wrapping to a second. */}
+            sit on a single compact row instead of wrapping to a second.
+            Step 0 (requiresTimezone) has no Skip at all: closing via the X
+            still saves (see handleExit), but we don't want a text button
+            that visually invites skipping the one step that exists so the
+            timezone stops being invisible. */}
         <div className="flex items-center gap-2">
-          {!isNarrow && (
-            <button onClick={onFinish} className="text-gray-500 hover:text-gray-300 transition-colors text-xs px-2 py-2">
+          {!isNarrow && !current.requiresTimezone && (
+            <button onClick={handleExit} className="text-gray-500 hover:text-gray-300 transition-colors text-xs px-2 py-2">
               {UI.skip[language]}
             </button>
           )}
@@ -876,13 +974,17 @@ export function OnboardingTour({ language, onNavigate, onFinish, onStepAction }:
               </button>
             )}
             <button
-              onClick={() => (isLast ? onFinish() : goTo(step + 1))}
+              onClick={() => {
+                if (leavingTimezoneStep) onSaveProfileStep();
+                if (isLast) onFinish();
+                else goTo(step + 1);
+              }}
               disabled={!ready}
               className={`flex items-center gap-1 text-white bg-blue-600 hover:bg-blue-700 rounded-lg font-medium transition-colors disabled:opacity-40 disabled:pointer-events-none ${
                 isNarrow ? "text-xs px-2.5 py-1.5" : "text-sm px-4 py-2"
               }`}
             >
-              {isLast ? UI.finish[language] : UI.next[language]}
+              {isLast ? UI.finish[language] : current.requiresTimezone ? UI.confirm[language] : UI.next[language]}
               {!isLast && <ChevronRight className={isNarrow ? "w-3.5 h-3.5" : "w-4 h-4"} />}
             </button>
           </div>
