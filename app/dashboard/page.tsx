@@ -4171,7 +4171,12 @@ if (!subInfo) {
 
       <nav className="fixed bottom-0 left-0 right-0 z-40 lg:hidden bg-background/95 backdrop-blur-xl border-t border-border px-2 py-2">
         <div className="flex items-center justify-around">
-          {sidebarItems.map((item) => (
+          {/* FAQ намеренно исключён из нижней навигации на мобильном — 6
+              пунктов физически не помещаются в этот ряд (сжимались до
+              нечитаемого). На мобильном раздел довідки доступен так же,
+              как на ноуте — через боковое меню (гамбургер → aside), там
+              используется полный sidebarItems, а не эта урезанная копия. */}
+          {sidebarItems.filter((item) => item.view !== "faq").map((item) => (
             <button
               key={item.label}
               onClick={() => {
