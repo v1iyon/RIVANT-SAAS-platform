@@ -44,6 +44,14 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
   // (signin або signup).
   const [showForgotHint, setShowForgotHint] = useState(false);
   const [isForgotPassword, setIsForgotPassword] = useState(false);
+  // Явна згода з Умовами використання і Політикою конфіденційності —
+  // ДВІ окремі галочки (кожна для свого документа), а не одна об'єднана.
+  // Потрібні ТІЛЬКИ для реєстрації (authMode === "signup"), не для входу.
+  // Гейтять ОБИДВІ кнопки — і Google, і email+пароль (Google теж створює
+  // акаунт через Supabase на callback, тому досить просто зробити форму
+  // email+пароль disabled, Google-кнопка лишилася б відкритою лазівкою).
+  const [agreedTerms, setAgreedTerms] = useState(false);
+  const [agreedPrivacy, setAgreedPrivacy] = useState(false);
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotLoading, setForgotLoading] = useState(false);
   const [forgotError, setForgotError] = useState("");
@@ -190,6 +198,8 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
       setShowForgotHint(false);
       setIsForgotPassword(false);
       setOtpStep(false);
+      setAgreedTerms(false);
+      setAgreedPrivacy(false);
       setIsLoginModalOpen(true);
       setIsMobileMenuOpen(false);
     };
@@ -272,6 +282,8 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
     setShowForgotHint(false);
     setIsForgotPassword(false);
     setOtpStep(false);
+    setAgreedTerms(false);
+      setAgreedPrivacy(false);
     setIsLoginModalOpen(true);
     setIsMobileMenuOpen(false);
   };
@@ -283,6 +295,8 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
   const closeLoginModal = () => {
     setIsLoginModalOpen(false);
     setOtpStep(false);
+    setAgreedTerms(false);
+      setAgreedPrivacy(false);
   };
 
   // FIX (аудит п.5): раньше кнопка "Cabinet" всегда открывала модалку логина,
@@ -391,6 +405,20 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
     setAuthLoading(true);
 
     if (authMode === "signup") {
+      // FIX (згода з умовами): кнопки нижче вже disabled, поки не стоять
+      // ОБИДВІ галочки, але це лише UI-рівень (DevTools знімає disabled) —
+      // тому повторна перевірка тут, до самого supabase.auth.signUp().
+      if (!agreedTerms || !agreedPrivacy) {
+        setAuthLoading(false);
+        setAuthError(
+          language === "UA"
+            ? "Потрібно погодитися з Умовами використання та Політикою конфіденційності."
+            : language === "DE"
+            ? "Sie müssen den Nutzungsbedingungen und der Datenschutzerklärung zustimmen."
+            : "You must agree to the Terms of Service and Privacy Policy."
+        );
+        return;
+      }
       // FIX (язык письма подтверждения): раньше язык сайта нигде не попадал
       // в сам signUp() и, соответственно, в user_metadata пользователя.
       // Он уходил только в /api/auth-sync (для записи в таблицу users), а
@@ -556,6 +584,8 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
     setIsLoginModalOpen(false);
     setLoginEmail("");
     setLoginPassword("");
+    setAgreedTerms(false);
+      setAgreedPrivacy(false);
     router.push("/dashboard");
   };
 
@@ -1065,7 +1095,7 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
 <button
   type="button"
   onClick={handleGoogleSignIn}
-  disabled={authLoading}
+  disabled={authLoading || (authMode === "signup" && !(agreedTerms && agreedPrivacy))}
   className="w-full flex items-center justify-center gap-3 py-3 mb-4 bg-white text-gray-800 rounded-lg font-medium hover:bg-gray-100 disabled:opacity-50 border border-gray-300"
 >
   <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
@@ -1076,6 +1106,30 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
   </svg>
   {language === "UA" ? "Увійти через Google" : language === "DE" ? "Mit Google anmelden" : "Continue with Google"}
 </button>
+{authMode === "signin" && (
+  <p className="text-xs text-gray-600 text-center mt-2 mb-4">
+    {language === "UA" ? (
+      <>Продовжуючи, ви погоджуєтесь з{" "}
+        <a href="/terms" target="_blank" rel="noopener noreferrer" className="hover:underline text-gray-500">Умовами використання</a>
+        {" "}та{" "}
+        <a href="/privacy" target="_blank" rel="noopener noreferrer" className="hover:underline text-gray-500">Політикою конфіденційності</a>
+      </>
+    ) : language === "DE" ? (
+      <>Mit dem Fortfahren stimmen Sie den{" "}
+        <a href="/terms" target="_blank" rel="noopener noreferrer" className="hover:underline text-gray-500">Nutzungsbedingungen</a>
+        {" "}und der{" "}
+        <a href="/privacy" target="_blank" rel="noopener noreferrer" className="hover:underline text-gray-500">Datenschutzerklärung</a>
+        {" "}zu
+      </>
+    ) : (
+      <>By continuing, you agree to the{" "}
+        <a href="/terms" target="_blank" rel="noopener noreferrer" className="hover:underline text-gray-500">Terms of Service</a>
+        {" "}and{" "}
+        <a href="/privacy" target="_blank" rel="noopener noreferrer" className="hover:underline text-gray-500">Privacy Policy</a>
+      </>
+    )}
+  </p>
+)}
 
 <div className="flex items-center gap-3 mb-4">
   <div className="flex-1 h-px bg-gray-700" />
@@ -1138,9 +1192,47 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
       )}
     </div>
   )}
+  {authMode === "signup" && (
+    <div className="space-y-2 -mt-1">
+      <label className="flex items-start gap-2 cursor-pointer select-none">
+        <input
+          type="checkbox"
+          checked={agreedTerms}
+          onChange={(e) => setAgreedTerms(e.target.checked)}
+          className="mt-0.5 w-4 h-4 shrink-0 rounded border-gray-600 bg-gray-800 text-blue-600 focus:ring-2 focus:ring-blue-600 focus:ring-offset-0 cursor-pointer"
+        />
+        <span className="text-xs text-gray-400 leading-snug">
+          {language === "UA" ? (
+            <>Я погоджуюсь з <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">Умовами використання</a></>
+          ) : language === "DE" ? (
+            <>Ich stimme den <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">Nutzungsbedingungen</a> zu</>
+          ) : (
+            <>I agree to the <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">Terms of Service</a></>
+          )}
+        </span>
+      </label>
+      <label className="flex items-start gap-2 cursor-pointer select-none">
+        <input
+          type="checkbox"
+          checked={agreedPrivacy}
+          onChange={(e) => setAgreedPrivacy(e.target.checked)}
+          className="mt-0.5 w-4 h-4 shrink-0 rounded border-gray-600 bg-gray-800 text-blue-600 focus:ring-2 focus:ring-blue-600 focus:ring-offset-0 cursor-pointer"
+        />
+        <span className="text-xs text-gray-400 leading-snug">
+          {language === "UA" ? (
+            <>Я погоджуюсь з <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">Політикою конфіденційності</a></>
+          ) : language === "DE" ? (
+            <>Ich stimme der <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">Datenschutzerklärung</a> zu</>
+          ) : (
+            <>I agree to the <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">Privacy Policy</a></>
+          )}
+        </span>
+      </label>
+    </div>
+  )}
   <button
     type="submit"
-    disabled={authLoading}
+    disabled={authLoading || (authMode === "signup" && !(agreedTerms && agreedPrivacy))}
     className="w-full py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50"
   >
     {authLoading ? "..." : authMode === "signup" ? t.signUpBtn : t.signInBtn}
@@ -1152,7 +1244,8 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
     <>
       {t.noAccountText}{" "}
       <button 
-        onClick={() => { setAuthMode("signup"); setAuthError(""); setShowForgotHint(false); }} 
+        onClick={() => { setAuthMode("signup"); setAuthError(""); setShowForgotHint(false); setAgreedTerms(false);
+      setAgreedPrivacy(false); }} 
         className="text-blue-500 hover:underline"
       >
         {t.signUpLink}
@@ -1162,7 +1255,8 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
     <>
       {t.hasAccountText}{" "}
       <button 
-        onClick={() => { setAuthMode("signin"); setAuthError(""); setShowForgotHint(false); }} 
+        onClick={() => { setAuthMode("signin"); setAuthError(""); setShowForgotHint(false); setAgreedTerms(false);
+      setAgreedPrivacy(false); }} 
         className="text-blue-500 hover:underline"
       >
         {t.signInLink}
