@@ -13,13 +13,14 @@ const content = {
     s1heading: "1. Information We Collect",
     s1: [
       "Account information: email address, name, phone number (optional).",
-      "Business data: revenue, expenses, and advertising performance metrics from third-party services you connect, including Stripe, Google Ads, Meta Ads, Shopify, and QuickBooks, or upload via CSV.",
+      "Business data: revenue, expenses, and advertising performance metrics from third-party services you connect, including Stripe, Shopify, WooCommerce, PayPal, Mollie, QuickBooks, Google Ads, and Meta Ads, or upload via CSV.",
       "Usage data: how you interact with the dashboard, for the purpose of improving the product.",
     ],
     s2heading: "2. How We Use Your Data",
     s2: "We use your data to provide the analytics, forecasts, and alerts you see in your dashboard, to process payments (via Paddle), and to communicate with you about your account.",
     s3heading: "3. Data Sharing",
-    s3a: "We do not sell your data. We share data only with service providers necessary to operate RIVANT, including Supabase (database hosting), Paddle (payment processing), and the advertising and business platforms you connect (Stripe, Google Ads, Meta Ads, Shopify, QuickBooks) for read-only data access.",
+    s3a: "We do not sell your data. We share data only with service providers necessary to operate RIVANT, including Supabase (database hosting), Paddle (payment processing), and the advertising and business platforms you connect (Stripe, Shopify, WooCommerce, PayPal, Mollie, QuickBooks, Google Ads, Meta Ads) for read-only data access.",
+    s3quickbooks: "QuickBooks is connected through Intuit's OAuth 2.0 authorization, not an API key you enter manually: you sign in and grant RIVANT read-only access to your accounting data directly on Intuit's own consent screen, and you can revoke this access at any time from your Intuit account or from RIVANT's Integrations settings.",
     s3bBefore:
       "Data obtained through the Google Ads API is used solely to display advertising spend and performance metrics on your own RIVANT dashboard. We do not share this data with any third party except the infrastructure providers listed above, necessary to store it securely, and we do not use it for advertising, profiling, or any purpose other than providing our service to you. Our use and transfer of information received from Google APIs complies with the",
     s3link: "Google API Services User Data Policy",
@@ -45,13 +46,14 @@ const content = {
     s1heading: "1. Яку інформацію ми збираємо",
     s1: [
       "Дані облікового запису: адреса електронної пошти, ім'я, номер телефону (необов'язково).",
-      "Бізнес-дані: виручка, витрати та показники ефективності реклами із сторонніх сервісів, які ви підключаєте, зокрема Stripe, Google Ads, Meta Ads, Shopify та QuickBooks, або завантажені через CSV.",
+      "Бізнес-дані: виручка, витрати та показники ефективності реклами із сторонніх сервісів, які ви підключаєте, зокрема Stripe, Shopify, WooCommerce, PayPal, Mollie, QuickBooks, Google Ads та Meta Ads, або завантажені через CSV.",
       "Дані про використання: як ви взаємодієте з дашбордом — з метою покращення продукту.",
     ],
     s2heading: "2. Як ми використовуємо ваші дані",
     s2: "Ми використовуємо ваші дані, щоб надавати аналітику, прогнози та сповіщення, які ви бачите в дашборді, обробляти платежі (через Paddle) та зв'язуватися з вами щодо вашого облікового запису.",
     s3heading: "3. Передача даних третім особам",
-    s3a: "Ми не продаємо ваші дані. Ми передаємо дані лише постачальникам послуг, необхідним для роботи RIVANT, зокрема Supabase (хостинг бази даних), Paddle (обробка платежів), а також рекламним і бізнес-платформам, які ви підключаєте (Stripe, Google Ads, Meta Ads, Shopify, QuickBooks), для доступу до даних лише для читання.",
+    s3a: "Ми не продаємо ваші дані. Ми передаємо дані лише постачальникам послуг, необхідним для роботи RIVANT, зокрема Supabase (хостинг бази даних), Paddle (обробка платежів), а також рекламним і бізнес-платформам, які ви підключаєте (Stripe, Shopify, WooCommerce, PayPal, Mollie, QuickBooks, Google Ads, Meta Ads), для доступу до даних лише для читання.",
+    s3quickbooks: "QuickBooks підключається через авторизацію OAuth 2.0 від Intuit, а не через API-ключ, який ви вводите вручну: ви входите у свій обліковий запис Intuit і надаєте RIVANT доступ лише для читання бухгалтерських даних безпосередньо на екрані згоди Intuit, і можете відкликати цей доступ у будь-який момент — зі свого облікового запису Intuit або з розділу «Інтеграції» в RIVANT.",
     s3bBefore:
       "Дані, отримані через Google Ads API, використовуються виключно для відображення рекламних витрат і показників ефективності у вашому власному дашборді RIVANT. Ми не передаємо ці дані жодній третій стороні, окрім перелічених вище інфраструктурних постачальників, необхідних для їх безпечного зберігання, і не використовуємо їх для реклами, профілювання чи будь-якої іншої мети, окрім надання вам нашого сервісу. Наше використання й передача інформації, отриманої через API Google, відповідає",
     s3link: "Політиці використання даних користувачів API-сервісів Google",
@@ -77,13 +79,14 @@ const content = {
     s1heading: "1. Welche Informationen wir erheben",
     s1: [
       "Kontoinformationen: E-Mail-Adresse, Name, Telefonnummer (optional).",
-      "Geschäftsdaten: Umsatz, Ausgaben und Werbeleistungskennzahlen aus Drittanbieterdiensten, die Sie verbinden, darunter Stripe, Google Ads, Meta Ads, Shopify und QuickBooks, oder per CSV hochgeladen.",
+      "Geschäftsdaten: Umsatz, Ausgaben und Werbeleistungskennzahlen aus Drittanbieterdiensten, die Sie verbinden, darunter Stripe, Shopify, WooCommerce, PayPal, Mollie, QuickBooks, Google Ads und Meta Ads, oder per CSV hochgeladen.",
       "Nutzungsdaten: wie Sie mit dem Dashboard interagieren, um das Produkt zu verbessern.",
     ],
     s2heading: "2. Wie wir Ihre Daten verwenden",
     s2: "Wir verwenden Ihre Daten, um die Analysen, Prognosen und Benachrichtigungen bereitzustellen, die Sie in Ihrem Dashboard sehen, um Zahlungen zu verarbeiten (über Paddle) und um mit Ihnen bezüglich Ihres Kontos zu kommunizieren.",
     s3heading: "3. Weitergabe von Daten",
-    s3a: "Wir verkaufen Ihre Daten nicht. Wir geben Daten nur an Dienstleister weiter, die für den Betrieb von RIVANT erforderlich sind, darunter Supabase (Datenbank-Hosting), Paddle (Zahlungsabwicklung) sowie die von Ihnen verbundenen Werbe- und Geschäftsplattformen (Stripe, Google Ads, Meta Ads, Shopify, QuickBooks) für einen reinen Lesezugriff auf die Daten.",
+    s3a: "Wir verkaufen Ihre Daten nicht. Wir geben Daten nur an Dienstleister weiter, die für den Betrieb von RIVANT erforderlich sind, darunter Supabase (Datenbank-Hosting), Paddle (Zahlungsabwicklung) sowie die von Ihnen verbundenen Werbe- und Geschäftsplattformen (Stripe, Shopify, WooCommerce, PayPal, Mollie, QuickBooks, Google Ads, Meta Ads) für einen reinen Lesezugriff auf die Daten.",
+    s3quickbooks: "QuickBooks wird über die OAuth-2.0-Autorisierung von Intuit verbunden, nicht über einen manuell eingegebenen API-Schlüssel: Sie melden sich bei Intuit an und gewähren RIVANT direkt auf dem Zustimmungsbildschirm von Intuit einen reinen Lesezugriff auf Ihre Buchhaltungsdaten. Sie können diesen Zugriff jederzeit über Ihr Intuit-Konto oder über die Integrationseinstellungen von RIVANT widerrufen.",
     s3bBefore:
       "Über die Google-Ads-API erhaltene Daten werden ausschließlich verwendet, um Werbeausgaben und Leistungskennzahlen in Ihrem eigenen RIVANT-Dashboard anzuzeigen. Wir geben diese Daten an keine Dritten weiter, außer an die oben genannten Infrastrukturanbieter, die für eine sichere Speicherung erforderlich sind, und wir verwenden sie nicht für Werbung, Profiling oder andere Zwecke als die Bereitstellung unseres Dienstes für Sie. Unsere Nutzung und Weitergabe von Informationen aus Google-APIs entspricht der",
     s3link: "Google API Services User Data Policy",
@@ -127,6 +130,7 @@ export default function PrivacyPolicyPage() {
 
         <h2 className="text-lg font-semibold text-white">{c.s3heading}</h2>
         <p>{c.s3a}</p>
+        <p>{c.s3quickbooks}</p>
         <p>
           {c.s3bBefore}{" "}
           <a
