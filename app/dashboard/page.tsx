@@ -16,6 +16,7 @@ import { getAllTimezones, formatTimezoneLabel, groupTimezonesByRegion, getDetect
 import { TrialPromptModal } from "@/components/dashboard/trial-prompt-modal";
 import { OnboardingTour } from "@/components/dashboard/onboarding-tour";
 import { TeamAccessCard } from "@/components/dashboard/team-access-card";
+import { FaqPanel } from "@/components/dashboard/faq-panel";
 import {
   LayoutDashboard,
   AlertTriangle,
@@ -55,6 +56,7 @@ import {
   RefreshCw,
   Filter,
   Receipt,
+  HelpCircle,
 } from "lucide-react";
 import { WidgetPrefsPanel, WidgetCatalogItem } from "@/components/dashboard/widget-prefs-panel";
 import {
@@ -67,7 +69,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { createClient } from "@/lib/supabase-browser";
 
-type ViewType = "overview" | "risks" | "forecast" | "integrations" | "settings";
+type ViewType = "overview" | "risks" | "forecast" | "integrations" | "settings" | "faq";
 
 // Реальні назви місяців, що йдуть від поточної дати (не хардкод) — використовується
 // у вкладці "Прогноз" для тарифу Scale/Trial (90 днів = 3 місяці наперед). Якщо зараз
@@ -187,6 +189,7 @@ const sidebarItems = [
   { icon: TrendingUp, label: "forecast", view: "forecast" as ViewType, translationKey: "forecast" },
   { icon: Link2, label: "integrations", view: "integrations" as ViewType, translationKey: "integrations" },
   { icon: Settings, label: "settings", view: "settings" as ViewType, translationKey: "settings" },
+  { icon: HelpCircle, label: "faq", view: "faq" as ViewType, translationKey: "faq" },
 ];
 
 // ========== КОМПОНЕНТ АНИМИРОВАННОГО ЧИСЛА ==========
@@ -1189,6 +1192,15 @@ const digestRef = useRef<HTMLDivElement | null>(null);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [show2FAModal, setShow2FAModal] = useState(false);
   const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
+  // Слаг статьи FAQ, которую нужно открыть сразу при переходе на вкладку
+  // "faq" — используется ссылками "Как это исправить?" (карточка риска) и
+  // "Подробнее" (Danger Zone / Export в Settings), а не только обычным
+  // кликом по вкладке в навигации (там остаётся null — открывается список).
+  const [faqInitialSlug, setFaqInitialSlug] = useState<string | null>(null);
+  const openFaqArticle = (slug: string) => {
+    setFaqInitialSlug(slug);
+    setActiveView("faq");
+  };
 const [deleteConfirmText, setDeleteConfirmText] = useState("");
 const [deleting, setDeleting] = useState(false);
 const [deleteError, setDeleteError] = useState("");
@@ -2538,6 +2550,10 @@ if (!subInfo) {
                 onClick={() => {
                   setActiveView(item.view);
                   setIsMobileSidebarOpen(false);
+                  // Обычный клик по вкладке в навигации — всегда полный список
+                  // статей, а не та, что была открыта прошлой ссылкой
+                  // "Как это исправить?" (см. openFaqArticle).
+                  if (item.view === "faq") setFaqInitialSlug(null);
                 }}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${
                   activeView === item.view
@@ -2629,6 +2645,8 @@ if (!subInfo) {
                   {activeView === "forecast" && getTranslation("aiPredictions", "AI-powered predictions")}
                   {activeView === "integrations" && getTranslation("dataSources", "Connected data sources")}
                   {activeView === "settings" && getTranslation("manageAccount", "Manage your account")}
+                  {activeView === "faq" &&
+                    (language === "UA" ? "Відповіді на часті запитання" : language === "DE" ? "Antworten auf häufige Fragen" : "Answers to common questions")}
                 </p>
               </div>
             </div>
@@ -3058,14 +3076,26 @@ if (!subInfo) {
                             </div>
                             <h4 className="font-semibold text-white text-base">{risk.title}</h4>
                             <p className="text-sm text-gray-400 mt-0.5">{risk.description}</p>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="mt-3 h-8 text-sm border-gray-700 text-gray-400 hover:bg-gray-800"
-                              onClick={() => setActiveView("overview")}
-                            >
-                              {language === "UA" ? "Переглянути огляд" : language === "DE" ? "Übersicht ansehen" : "View overview"}
-                            </Button>
+                            <div className="flex items-center gap-2 mt-3 flex-wrap">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-8 text-sm border-gray-700 text-gray-400 hover:bg-gray-800"
+                                onClick={() => setActiveView("overview")}
+                              >
+                                {language === "UA" ? "Переглянути огляд" : language === "DE" ? "Übersicht ansehen" : "View overview"}
+                              </Button>
+                              {risk.category === "integration" && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-8 text-sm border-gray-700 text-gray-400 hover:bg-gray-800"
+                                  onClick={() => openFaqArticle("sync-errors")}
+                                >
+                                  {language === "UA" ? "Як це виправити?" : language === "DE" ? "Wie behebe ich das?" : "How do I fix this?"}
+                                </Button>
+                              )}
+                            </div>
                           </div>
                           <button
                             onClick={async () => {
@@ -4060,14 +4090,27 @@ if (!subInfo) {
     <p className="font-medium text-foreground">
       {language === "UA" ? "Видалити акаунт" : language === "DE" ? "Konto löschen" : "Delete account"}
     </p>
-    <p className="text-xs text-muted-foreground">{T.settingsDeleteAccountDesc || "Permanently delete your account and all data"}</p>
+    <p className="text-xs text-muted-foreground">
+      {T.settingsDeleteAccountDesc || "Permanently delete your account and all data"}{" "}
+      <button onClick={() => openFaqArticle("delete-account")} className="underline hover:text-foreground">
+        {language === "UA" ? "Детальніше" : language === "DE" ? "Mehr erfahren" : "Learn more"}
+      </button>
+    </p>
   </div>
   <Button variant="destructive" size="sm" className="shrink-0" onClick={() => setShowDeleteAccountModal(true)}>
     {language === "UA" ? "Видалити" : language === "DE" ? "Löschen" : "Delete"}
   </Button>
 </div>
                   <div ref={exportMenuRef} className="flex items-center justify-between pt-2 border-t border-border relative">
-                    <div><p className="font-medium text-foreground">{T.settingsExportData || "Export All Data"}</p><p className="text-xs text-muted-foreground">{T.settingsExportDataDesc || "Download all your business data"}</p></div>
+                    <div>
+                      <p className="font-medium text-foreground">{T.settingsExportData || "Export All Data"}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {T.settingsExportDataDesc || "Download all your business data"}{" "}
+                        <button onClick={() => openFaqArticle("export-data")} className="underline hover:text-foreground">
+                          {language === "UA" ? "Детальніше" : language === "DE" ? "Mehr erfahren" : "Learn more"}
+                        </button>
+                      </p>
+                    </div>
                     <Button
                       variant="outline"
                       size="sm"
@@ -4117,13 +4160,26 @@ if (!subInfo) {
               </div>
             </div>
           )}
+
+          {activeView === "faq" && (
+            <div className="max-w-2xl">
+              <FaqPanel language={language} initialSlug={faqInitialSlug} />
+            </div>
+          )}
         </div>
       </main>
 
       <nav className="fixed bottom-0 left-0 right-0 z-40 lg:hidden bg-background/95 backdrop-blur-xl border-t border-border px-2 py-2">
         <div className="flex items-center justify-around">
           {sidebarItems.map((item) => (
-            <button key={item.label} onClick={() => setActiveView(item.view)} className={`flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-colors min-w-[64px] ${activeView === item.view ? "bg-primary/10 text-primary" : "text-muted-foreground"}`}>
+            <button
+              key={item.label}
+              onClick={() => {
+                setActiveView(item.view);
+                if (item.view === "faq") setFaqInitialSlug(null);
+              }}
+              className={`flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-colors min-w-[64px] ${activeView === item.view ? "bg-primary/10 text-primary" : "text-muted-foreground"}`}
+            >
               <item.icon className="w-5 h-5" />
               <span className="text-[10px] font-medium">{getTranslation(item.translationKey, item.label)}</span>
             </button>
