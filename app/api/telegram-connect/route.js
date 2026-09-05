@@ -42,7 +42,7 @@ export async function POST(req) {
     // subscription-status/route.js — раніше тут була окрема копія цієї
     // логіки (і, на відміну від subscription-status, помилка insert
     // взагалі не перевірялась).
-    const { error: trialErr } = await ensureTrial(appUser.id);
+    const { error: trialErr } = await ensureTrial(appUser.id, email);
     if (trialErr) {
       console.error("telegram-connect: failed to create trial subscription:", trialErr);
     }

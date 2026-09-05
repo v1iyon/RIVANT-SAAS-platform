@@ -12,6 +12,7 @@ interface Subscription {
 interface Integration {
   provider: string;
   status: string;
+  last_synced_at: string | null;
 }
 
 interface Business {
@@ -52,24 +53,53 @@ function getSubscription(u: User): Subscription | null {
   return u.subscriptions?.[0] ?? null;
 }
 
+// FIX (05.09.2026, п.7 из тудушки): раньше здесь был устаревший список из
+// 6 провайдеров (с забытым Plaid, которого в продукте вообще нет) — не
+// хватало WooCommerce/PayPal/Mollie, добавленных позже. Единый список из
+// 8 интеграций — тот же, что в privacy/page.tsx и lib/plan-slots.js.
 const INTEGRATION_LABELS: Record<string, string> = {
   stripe: "Stripe",
   shopify: "Shopify",
+  woocommerce: "WooCommerce",
+  paypal: "PayPal",
+  mollie: "Mollie",
+  quickbooks: "QuickBooks",
   meta_ads: "Meta Ads",
   google_ads: "Google Ads",
-  quickbooks: "QuickBooks",
-  plaid: "Plaid",
 };
-const INTEGRATION_ORDER = ["stripe", "shopify", "meta_ads", "google_ads", "quickbooks", "plaid"];
+const INTEGRATION_ORDER = ["stripe", "shopify", "woocommerce", "paypal", "mollie", "quickbooks", "meta_ads", "google_ads"];
 
-function getConnectedProviders(u: User): Set<string> {
-  const connected = new Set<string>();
+interface ProviderInfo {
+  status: string;
+  last_synced_at: string | null;
+}
+
+// Раньше возвращался просто Set подключённых провайдеров — статус ошибки
+// от отсутствия интеграции было не отличить, и last_synced_at нигде не
+// прокидывался. Теперь возвращаем полную инфу по каждому провайдеру,
+// которая реально есть в БД (SELECT business_id, provider, status,
+// last_synced_at FROM integrations — то, о чём и была просьба).
+// У пользователя может быть больше одного business с одинаковым
+// провайдером (например, после смены компании) — берём "самый живой"
+// статус: connected важнее error, error важнее остального, и среди
+// одинаковых статусов — с более свежим last_synced_at.
+function getIntegrationInfo(u: User): Map<string, ProviderInfo> {
+  const rank: Record<string, number> = { connected: 2, error: 1 };
+  const info = new Map<string, ProviderInfo>();
   u.businesses?.forEach((b) =>
     b.integrations?.forEach((i) => {
-      if (i.status === "connected") connected.add(i.provider);
+      const existing = info.get(i.provider);
+      const existingRank = existing ? rank[existing.status] ?? 0 : -1;
+      const currentRank = rank[i.status] ?? 0;
+      const isFresher =
+        existing?.status === i.status &&
+        (i.last_synced_at ?? "") > (existing.last_synced_at ?? "");
+      if (!existing || currentRank > existingRank || isFresher) {
+        info.set(i.provider, { status: i.status, last_synced_at: i.last_synced_at });
+      }
     })
   );
-  return connected;
+  return info;
 }
 
 function planBadgeClass(plan: string) {
@@ -161,7 +191,7 @@ export default function AdminUsersPage() {
         {filtered.length === 0 && <p className="text-sm text-gray-500">Ничего не найдено.</p>}
         {filtered.map((u) => {
           const sub = getSubscription(u);
-          const connected = getConnectedProviders(u);
+          const integrationInfo = getIntegrationInfo(u);
           const telegramOk = Boolean(u.telegram_id);
           const isSaving = savingId === u.id;
 
@@ -196,10 +226,30 @@ export default function AdminUsersPage() {
 
               <div className="mb-3 flex flex-wrap gap-3 text-xs text-gray-400">
                 {INTEGRATION_ORDER.map((key) => {
-                  const ok = connected.has(key);
+                  const provider = integrationInfo.get(key);
+                  const status = provider?.status;
+                  const icon = status === "connected" ? "✓" : status === "error" ? "⚠" : "—";
+                  const colorClass =
+                    status === "connected"
+                      ? "text-green-400"
+                      : status === "error"
+                      ? "text-red-400"
+                      : "text-gray-600";
+                  const syncedLabel = provider?.last_synced_at
+                    ? `, синк: ${new Date(provider.last_synced_at).toLocaleString("ru-RU")}`
+                    : "";
+                  const title = status
+                    ? `${INTEGRATION_LABELS[key]} — ${status}${syncedLabel}`
+                    : `${INTEGRATION_LABELS[key]} — не подключено`;
                   return (
-                    <span key={key} className={ok ? "text-green-400" : "text-gray-600"}>
-                      {ok ? "✓" : "—"} {INTEGRATION_LABELS[key]}
+                    <span key={key} className={colorClass} title={title}>
+                      {icon} {INTEGRATION_LABELS[key]}
+                      {status === "connected" && provider?.last_synced_at && (
+                        <span className="text-gray-500">
+                          {" "}
+                          ({new Date(provider.last_synced_at).toLocaleDateString("ru-RU")})
+                        </span>
+                      )}
                     </span>
                   );
                 })}

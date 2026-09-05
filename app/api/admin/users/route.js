@@ -25,7 +25,7 @@ export async function GET(req) {
       is_blocked,
       created_at,
       subscriptions ( plan, access_status, current_period_end ),
-      businesses ( id, name, integrations ( provider, status ) )
+      businesses ( id, name, integrations ( provider, status, last_synced_at ) )
     `
     )
     .order("created_at", { ascending: false });

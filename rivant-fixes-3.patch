@@ -1,0 +1,308 @@
+diff --git a/app/admin/users/page.tsx b/app/admin/users/page.tsx
+index 9c98eaf..8c7b219 100644
+--- a/app/admin/users/page.tsx
++++ b/app/admin/users/page.tsx
+@@ -12,6 +12,7 @@ interface Subscription {
+ interface Integration {
+   provider: string;
+   status: string;
++  last_synced_at: string | null;
+ }
+ 
+ interface Business {
+@@ -52,24 +53,53 @@ function getSubscription(u: User): Subscription | null {
+   return u.subscriptions?.[0] ?? null;
+ }
+ 
++// FIX (05.09.2026, п.7 из тудушки): раньше здесь был устаревший список из
++// 6 провайдеров (с забытым Plaid, которого в продукте вообще нет) — не
++// хватало WooCommerce/PayPal/Mollie, добавленных позже. Единый список из
++// 8 интеграций — тот же, что в privacy/page.tsx и lib/plan-slots.js.
+ const INTEGRATION_LABELS: Record<string, string> = {
+   stripe: "Stripe",
+   shopify: "Shopify",
++  woocommerce: "WooCommerce",
++  paypal: "PayPal",
++  mollie: "Mollie",
++  quickbooks: "QuickBooks",
+   meta_ads: "Meta Ads",
+   google_ads: "Google Ads",
+-  quickbooks: "QuickBooks",
+-  plaid: "Plaid",
+ };
+-const INTEGRATION_ORDER = ["stripe", "shopify", "meta_ads", "google_ads", "quickbooks", "plaid"];
++const INTEGRATION_ORDER = ["stripe", "shopify", "woocommerce", "paypal", "mollie", "quickbooks", "meta_ads", "google_ads"];
++
++interface ProviderInfo {
++  status: string;
++  last_synced_at: string | null;
++}
+ 
+-function getConnectedProviders(u: User): Set<string> {
+-  const connected = new Set<string>();
++// Раньше возвращался просто Set подключённых провайдеров — статус ошибки
++// от отсутствия интеграции было не отличить, и last_synced_at нигде не
++// прокидывался. Теперь возвращаем полную инфу по каждому провайдеру,
++// которая реально есть в БД (SELECT business_id, provider, status,
++// last_synced_at FROM integrations — то, о чём и была просьба).
++// У пользователя может быть больше одного business с одинаковым
++// провайдером (например, после смены компании) — берём "самый живой"
++// статус: connected важнее error, error важнее остального, и среди
++// одинаковых статусов — с более свежим last_synced_at.
++function getIntegrationInfo(u: User): Map<string, ProviderInfo> {
++  const rank: Record<string, number> = { connected: 2, error: 1 };
++  const info = new Map<string, ProviderInfo>();
+   u.businesses?.forEach((b) =>
+     b.integrations?.forEach((i) => {
+-      if (i.status === "connected") connected.add(i.provider);
++      const existing = info.get(i.provider);
++      const existingRank = existing ? rank[existing.status] ?? 0 : -1;
++      const currentRank = rank[i.status] ?? 0;
++      const isFresher =
++        existing?.status === i.status &&
++        (i.last_synced_at ?? "") > (existing.last_synced_at ?? "");
++      if (!existing || currentRank > existingRank || isFresher) {
++        info.set(i.provider, { status: i.status, last_synced_at: i.last_synced_at });
++      }
+     })
+   );
+-  return connected;
++  return info;
+ }
+ 
+ function planBadgeClass(plan: string) {
+@@ -161,7 +191,7 @@ export default function AdminUsersPage() {
+         {filtered.length === 0 && <p className="text-sm text-gray-500">Ничего не найдено.</p>}
+         {filtered.map((u) => {
+           const sub = getSubscription(u);
+-          const connected = getConnectedProviders(u);
++          const integrationInfo = getIntegrationInfo(u);
+           const telegramOk = Boolean(u.telegram_id);
+           const isSaving = savingId === u.id;
+ 
+@@ -196,10 +226,30 @@ export default function AdminUsersPage() {
+ 
+               <div className="mb-3 flex flex-wrap gap-3 text-xs text-gray-400">
+                 {INTEGRATION_ORDER.map((key) => {
+-                  const ok = connected.has(key);
++                  const provider = integrationInfo.get(key);
++                  const status = provider?.status;
++                  const icon = status === "connected" ? "✓" : status === "error" ? "⚠" : "—";
++                  const colorClass =
++                    status === "connected"
++                      ? "text-green-400"
++                      : status === "error"
++                      ? "text-red-400"
++                      : "text-gray-600";
++                  const syncedLabel = provider?.last_synced_at
++                    ? `, синк: ${new Date(provider.last_synced_at).toLocaleString("ru-RU")}`
++                    : "";
++                  const title = status
++                    ? `${INTEGRATION_LABELS[key]} — ${status}${syncedLabel}`
++                    : `${INTEGRATION_LABELS[key]} — не подключено`;
+                   return (
+-                    <span key={key} className={ok ? "text-green-400" : "text-gray-600"}>
+-                      {ok ? "✓" : "—"} {INTEGRATION_LABELS[key]}
++                    <span key={key} className={colorClass} title={title}>
++                      {icon} {INTEGRATION_LABELS[key]}
++                      {status === "connected" && provider?.last_synced_at && (
++                        <span className="text-gray-500">
++                          {" "}
++                          ({new Date(provider.last_synced_at).toLocaleDateString("ru-RU")})
++                        </span>
++                      )}
+                     </span>
+                   );
+                 })}
+diff --git a/app/api/admin/users/route.js b/app/api/admin/users/route.js
+index 05466be..f61c056 100644
+--- a/app/api/admin/users/route.js
++++ b/app/api/admin/users/route.js
+@@ -25,7 +25,7 @@ export async function GET(req) {
+       is_blocked,
+       created_at,
+       subscriptions ( plan, access_status, current_period_end ),
+-      businesses ( id, name, integrations ( provider, status ) )
++      businesses ( id, name, integrations ( provider, status, last_synced_at ) )
+     `
+     )
+     .order("created_at", { ascending: false });
+diff --git a/app/api/delete-account/route.js b/app/api/delete-account/route.js
+index 8d43299..e563510 100644
+--- a/app/api/delete-account/route.js
++++ b/app/api/delete-account/route.js
+@@ -32,6 +32,13 @@ export async function POST(req) {
+   // requireUser() (auth.getUser().id), а не з таблиці users.
+   const userId = user.id;
+ 
++  // ВАЖНО: НЕ удаляем и не трогаем здесь public.used_trial_emails.
++  // Эта таблица создана НАРОЧНО, чтобы пережить удаление аккаунта — это
++  // единственная защита от бесконечного триала через "удалить аккаунт ->
++  // зарегистрироваться заново" (см. lib/ensure-trial.js). Она не хранит
++  // ничего, кроме sha256-хеша email, так что удалять её тут не требуется
++  // и с точки зрения права на удаление персональных данных (GDPR) —
++  // хеш сам по себе не идентифицирует человека без исходного email.
+   try {
+     // Бизнесы пользователя — интеграции/метрики/алерты чистим явно,
+     // на случай если в базе не настроен cascade delete для этих связей.
+diff --git a/app/api/subscription-status/route.js b/app/api/subscription-status/route.js
+index c32a5ab..04b697c 100644
+--- a/app/api/subscription-status/route.js
++++ b/app/api/subscription-status/route.js
+@@ -48,7 +48,7 @@ export async function GET(req) {
+     // ФІКС (аудит #2, знахідка №14): раніше створення trial-підписки було
+     // продубльоване тут окремим блоком — тепер спільна lib/ensure-trial.js,
+     // та сама, що й у telegram-connect/route.js.
+-    const { sub: created, error } = await ensureTrial(appUser.id);
++    const { sub: created, error } = await ensureTrial(appUser.id, email);
+ 
+     if (error) {
+       return Response.json(
+diff --git a/app/api/telegram-connect/route.js b/app/api/telegram-connect/route.js
+index 14fbf3f..d3f25b6 100644
+--- a/app/api/telegram-connect/route.js
++++ b/app/api/telegram-connect/route.js
+@@ -42,7 +42,7 @@ export async function POST(req) {
+     // subscription-status/route.js — раніше тут була окрема копія цієї
+     // логіки (і, на відміну від subscription-status, помилка insert
+     // взагалі не перевірялась).
+-    const { error: trialErr } = await ensureTrial(appUser.id);
++    const { error: trialErr } = await ensureTrial(appUser.id, email);
+     if (trialErr) {
+       console.error("telegram-connect: failed to create trial subscription:", trialErr);
+     }
+diff --git a/lib/ensure-trial.js b/lib/ensure-trial.js
+index 648ab60..b259f51 100644
+--- a/lib/ensure-trial.js
++++ b/lib/ensure-trial.js
+@@ -14,8 +14,30 @@
+ // різна: subscription-status ніколи не створює users, а telegram-connect
+ // створює). ensureTrial() відповідає ЛИШЕ за "чи є в цього user_id
+ // підписка, і якщо нема — створити trial".
++//
++// ФІКС (05.09.2026, безлімітний триал через видалення акаунта): раніше
++// перевірка "чи вже був триал" трималась ВИКЛЮЧНО на user_id — а саме
++// user_id (разом з усією таблицею subscriptions) повністю стирається в
++// app/api/delete-account/route.js. Людина видаляла акаунт одразу після
++// закінчення 14 днів, реєструвалась на той самий email заново — отримувала
++// новий user_id, у якого "ще жодної підписки немає", і чесно новий
++// 14-денний триал. Так до нескінченності.
++//
++// Тепер факт "цей email вже отримував триал" живе окремо, у таблиці
++// used_trial_emails (миграция 20260905000000_trial_abuse_prevention.sql),
++// яку delete-account НІКОЛИ не чіпає — саме тому, що її і заводили для
++// того, щоб пережити видалення акаунта. Зберігаємо не сам email, а його
++// sha256-хеш — досить, щоб впізнати повторну спробу, але з самого запису
++// неможливо відновити адресу.
++//
++// Обмеження (свідомо не вирішуємо тут): це не захищає від
++// name+tag@gmail.com / name.with.dots@gmail.com — тег і крапки в Gmail
++// ігноруються поштовим сервером, але для нас це різні email-рядки, а отже
++// різні хеші. Якщо зловживання цим стане реальною проблемою — знадобиться
++// окрема нормалізація адрес перед хешуванням, тут її поки немає.
+ 
+ const { createClient } = require("@supabase/supabase-js");
++const crypto = require("crypto");
+ 
+ const admin = createClient(
+   process.env.NEXT_PUBLIC_SUPABASE_URL,
+@@ -24,15 +46,23 @@ const admin = createClient(
+ 
+ const TRIAL_DURATION_MS = 14 * 24 * 60 * 60 * 1000;
+ 
++function hashEmail(email) {
++  return crypto.createHash("sha256").update(email.trim().toLowerCase()).digest("hex");
++}
++
+ /**
+- * Створює trial-підписку для user_id, якщо в нього ще жодної немає.
++ * Створює trial-підписку для user_id, якщо в нього ще жодної немає —
++ * АЛЕ тільки якщо цей email ще жодного разу не отримував триал раніше
++ * (перевірка по used_trial_emails, яка переживає видалення акаунта).
+  * Якщо підписка вже є — повертає її як є, нічого не змінюючи (не скидає
+  * плановий/платний статус назад до trial).
+  *
+  * @param {string} userId - public.users.id
++ * @param {string} email - email користувача (потрібен для антифрод-перевірки,
++ *   не зберігається в жодному вигляді, окрім sha256-хешу)
+  * @returns {Promise<{ sub: { plan: string, access_status: string, current_period_end: string } | null, error: string | null }>}
+  */
+-async function ensureTrial(userId) {
++async function ensureTrial(userId, email) {
+   const { data: existing, error: fetchErr } = await admin
+     .from("subscriptions")
+     .select("plan, access_status, current_period_end")
+@@ -48,6 +78,51 @@ async function ensureTrial(userId) {
+     return { sub: existing, error: null };
+   }
+ 
++  const emailHash = email ? hashEmail(email) : null;
++  let alreadyUsedTrial = false;
++
++  if (emailHash) {
++    const { data: usedRow, error: usedFetchErr } = await admin
++      .from("used_trial_emails")
++      .select("id")
++      .eq("email_hash", emailHash)
++      .maybeSingle();
++
++    if (usedFetchErr) {
++      // Не блокируем создание подписки из-за сбоя антифрод-проверки —
++      // безопаснее временно дать честный триал, чем сломать онбординг
++      // всем новым пользователям при временной проблеме с БД.
++      console.error("ensureTrial: failed to check used_trial_emails:", usedFetchErr.message);
++    } else if (usedRow) {
++      alreadyUsedTrial = true;
++    }
++  }
++
++  if (alreadyUsedTrial) {
++    // Точно та сама "форма" стану, що й у /api/subscription-status для
++    // ЕСТЕСТВЕННО закінченого триала (plan: null, access_status: "expired",
++    // current_period_end: null) — завдяки цьому весь наявний UI/гейтинг
++    // ("триал закінчився, оберіть план", 0 слотів інтеграцій і т.д.) працює
++    // без жодних змін, нову підписку просто одразу створюємо в цьому стані.
++    const { data: created, error: insertErr } = await admin
++      .from("subscriptions")
++      .insert({
++        user_id: userId,
++        plan: null,
++        access_status: "expired",
++        current_period_end: null,
++      })
++      .select("plan, access_status, current_period_end")
++      .maybeSingle();
++
++    if (insertErr) {
++      console.error("ensureTrial: failed to create post-trial subscription:", insertErr.message);
++      return { sub: null, error: insertErr.message };
++    }
++
++    return { sub: created, error: null };
++  }
++
+   const periodEnd = new Date(Date.now() + TRIAL_DURATION_MS).toISOString();
+   const { data: created, error: insertErr } = await admin
+     .from("subscriptions")
+@@ -65,6 +140,21 @@ async function ensureTrial(userId) {
+     return { sub: null, error: insertErr.message };
+   }
+ 
++  if (emailHash) {
++    // Пишемо ПІСЛЯ успішного створення триала, а не до — якщо insert вище
++    // впав з помилкою, людина не отримала триал взагалі, і не варто
++    // "спалювати" її email на майбутнє за спробу, яка не вдалась.
++    const { error: markUsedErr } = await admin
++      .from("used_trial_emails")
++      .insert({ email_hash: emailHash, first_trial_started_at: new Date().toISOString() });
++    // Гонка (два паралельних запити одночасно) чи вже існуючий рядок —
++    // не критично, ігноруємо: unique-constraint на email_hash не дасть
++    // задублювати, а сам факт "триал видано" вже зафіксовано в subscriptions.
++    if (markUsedErr && markUsedErr.code !== "23505") {
++      console.error("ensureTrial: failed to record used_trial_emails:", markUsedErr.message);
++    }
++  }
++
+   return { sub: created, error: null };
+ }
+ 
