@@ -16,7 +16,7 @@ interface Props {
   hint: string;
   isExpiredTrial?: boolean;
   // Кількість слотів залежить від тарифу (див. lib/plan-slots.js):
-  // "starter" — 1 слот, "growth" — 2, "scale"/"trial" — без обмежень,
+  // "starter" — 2 слоти, "growth" — 4, "scale"/"trial" — без обмежень,
   // null/невідомий тариф — 0 (немає активної підписки).
   planTier?: string | null;
   // Поточний зафіксований вибір на billing-період (з subscriptions.integrations_selected).
@@ -243,7 +243,7 @@ export function IntegrationConnectCard({
   // на Growth", а якщо синк ламався — юзер не міг сам ввести нові дані
   // (кнопка "Підключити"/"Оновити підключення" перехоплювалась як locked
   // ще ДО запиту на бекенд). Тепер логіка слотів одна на весь фронтенд і
-  // бекенд (lib/plan-slots.js) — Starter дає 1 слот, Growth 2, Scale/Trial
+  // бекенд (lib/plan-slots.js) — Starter дає 2 слоти, Growth 4, Scale/Trial
   // безліміт, і карта блокується лише тоді, коли вільних слотів реально
   // немає (selectedProviders.length >= maxSlots) і зайнятий слот — не цей
   // provider.

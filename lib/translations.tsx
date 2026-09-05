@@ -119,15 +119,16 @@ export const translations = {
     settingsLive: "Live",
     orderService: "Order Service",
     starterFeatures: [
-    "1 integration of your choice (Stripe or Shopify)",
+    "2 integrations of your choice (1 must be a payment/revenue source)",
     "Hourly data sync",
     "COGS tracking & margin analytics",
     "Weekly email digest",
     "30-day data history"
   ],
+    starterLockNote: "Your chosen integrations are locked in for the current billing period. Switch anytime by upgrading.",
     growthLockNote: "Your chosen integrations are locked in for the current billing period. Switch anytime by upgrading to Scale.",
     growthFeatures: [
-    "2 integrations of your choice (must include Stripe or Shopify)",
+    "4 integrations of your choice (1 must be a payment/revenue source)",
     "Hourly data sync",
     "COGS tracking & margin analytics",
     "Instant Telegram alerts",
@@ -136,7 +137,7 @@ export const translations = {
     "90-day data history"
   ],
    scaleFeatures: [
-    "All integrations included (Stripe, Shopify, Meta Ads, Google Ads)",
+    "All 8 integrations included (Stripe, Shopify, WooCommerce, PayPal, Mollie, QuickBooks, Meta Ads, Google Ads)",
     "Hourly data sync",
     "COGS tracking & margin analytics",
     "Instant Telegram alerts",
@@ -431,15 +432,16 @@ otpResendSuccess: "New code sent."
     settingsLive: "Наживо",
     orderService: "Замовити послугу",
    starterFeatures: [
-    "1 інтеграція на вибір (Stripe або Shopify)",
+    "2 інтеграції на вибір (1 з них — платіжне/облікове джерело)",
     "Щогодинна синхронізація даних",
     "Облік витрат і розрахунок маржинальності",
     "Щотижневі email-звіти",
     "Зберігання історії за 30 днів"
   ],
+    starterLockNote: "Обрані інтеграції фіксуються до кінця поточного billing-періоду. Змінити можна в будь-який момент, перейшовши на вищий тариф.",
     growthLockNote: "Обрані інтеграції фіксуються до кінця поточного billing-періоду. Змінити можна в будь-який момент, перейшовши на Scale.",
     growthFeatures: [
-    "2 інтеграції на вибір (обов'язково Stripe або Shopify)",
+    "4 інтеграції на вибір (1 з них — платіжне/облікове джерело)",
     "Щогодинна синхронізація даних",
     "Облік витрат і розрахунок маржинальності",
     "Миттєві сповіщення в Telegram",
@@ -448,7 +450,7 @@ otpResendSuccess: "New code sent."
     "Зберігання історії за 90 днів"
   ],
    scaleFeatures: [
-    "Усі інтеграції (Stripe, Shopify, Meta Ads, Google Ads)",
+    "Усі 8 інтеграцій (Stripe, Shopify, WooCommerce, PayPal, Mollie, QuickBooks, Meta Ads, Google Ads)",
     "Щогодинна синхронізація даних",
     "Облік витрат і розрахунок маржинальності",
     "Миттєві сповіщення в Telegram",
@@ -746,15 +748,16 @@ minutes: "Minuten",
     settingsLive: "Live",
     orderService: "Service bestellen",
    starterFeatures: [
-    "1 Integration nach Wahl (Stripe oder Shopify)",
+    "2 Integrationen nach Wahl (1 davon Zahlungs-/Umsatzquelle)",
     "Stündliche Datensynchronisation",
     "Selbstkosten- und Margenanalyse",
     "Wöchentlicher E-Mail-Bericht",
     "30 Tage Datenhistorie"
   ],
+    starterLockNote: "Die gewählten Integrationen sind für den aktuellen Abrechnungszeitraum fixiert. Ein Wechsel ist jederzeit durch ein Upgrade möglich.",
     growthLockNote: "Die gewählten Integrationen sind für den aktuellen Abrechnungszeitraum fixiert. Ein Wechsel ist jederzeit durch ein Upgrade auf Scale möglich.",
    growthFeatures: [
-    "2 Integrationen nach Wahl (Stripe oder Shopify inklusive)",
+    "4 Integrationen nach Wahl (1 davon Zahlungs-/Umsatzquelle)",
     "Stündliche Datensynchronisation",
     "Selbstkosten- und Margenanalyse",
     "Echtzeit-Telegram-Benachrichtigungen",
@@ -763,7 +766,7 @@ minutes: "Minuten",
     "90 Tage Datenhistorie"
   ],
     scaleFeatures: [
-    "Alle Integrationen (Stripe, Shopify, Meta Ads, Google Ads)",
+    "Alle 8 Integrationen (Stripe, Shopify, WooCommerce, PayPal, Mollie, QuickBooks, Meta Ads, Google Ads)",
     "Stündliche Datensynchronisation",
     "Selbstkosten- und Margenanalyse",
     "Echtzeit-Telegram-Benachrichtigungen",

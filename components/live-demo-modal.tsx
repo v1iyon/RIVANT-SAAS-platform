@@ -1097,6 +1097,30 @@ const [googleAdsConnected, setGoogleAdsConnected] = useState(false);
 const [googleAdsKeyPreview, setGoogleAdsKeyPreview] = useState("");
 const [googleAdsExtraValues, setGoogleAdsExtraValues] = useState<Record<string, string>>({});
 
+// FIX (todo п.6, live demo): раньше демо показывало только Stripe/Shopify/
+// Meta Ads/Google Ads, хотя в продакшене уже 8 интеграций — WooCommerce,
+// PayPal, Mollie и QuickBooks даже не упоминались (QuickBooks значился
+// "Скоро", хотя реально уже подключается). Ниже — тот же паттерн
+// DemoIntegrationCard, что и для Shopify/Meta Ads.
+const [woocommerceKeyInput, setWoocommerceKeyInput] = useState("");
+const [woocommerceConnected, setWoocommerceConnected] = useState(false);
+const [woocommerceKeyPreview, setWoocommerceKeyPreview] = useState("");
+const [woocommerceExtraValues, setWoocommerceExtraValues] = useState<Record<string, string>>({});
+
+const [paypalKeyInput, setPaypalKeyInput] = useState("");
+const [paypalConnected, setPaypalConnected] = useState(false);
+const [paypalKeyPreview, setPaypalKeyPreview] = useState("");
+const [paypalExtraValues, setPaypalExtraValues] = useState<Record<string, string>>({});
+
+const [mollieKeyInput, setMollieKeyInput] = useState("");
+const [mollieConnected, setMollieConnected] = useState(false);
+const [mollieKeyPreview, setMollieKeyPreview] = useState("");
+const [mollieExtraValues, setMollieExtraValues] = useState<Record<string, string>>({});
+
+// QuickBooks — OAuth-стиль карточки (як Google Ads), без ручного вводу
+// ключів, бо в проді це теж Intuit OAuth, а не API-ключ.
+const [quickbooksConnected, setQuickbooksConnected] = useState(false);
+
   const handleConnectStripe = () => {
     if (!stripeKeyInput.trim()) return;
     const key = stripeKeyInput.trim();
@@ -2047,6 +2071,107 @@ const [googleAdsExtraValues, setGoogleAdsExtraValues] = useState<Record<string, 
       </div>
     ),
   },
+  {
+    key: "woocommerce" as const,
+    connected: woocommerceConnected,
+    node: (
+      <DemoIntegrationCard
+        name="WooCommerce"
+        placeholder="Consumer Secret"
+        extraFields={[
+          { key: "store_url", label: language === "UA" ? "Адреса магазину (yourstore.com)" : language === "DE" ? "Shop-Adresse (yourstore.com)" : "Store address (yourstore.com)", placeholder: "yourstore.com" },
+          { key: "consumer_key", label: "Consumer Key", placeholder: "ck_..." },
+        ]}
+        extraValues={woocommerceExtraValues} setExtraValues={setWoocommerceExtraValues}
+        hint={language === "UA" ? "WordPress admin → WooCommerce → Settings → Advanced → REST API → створіть ключ з правами Read." : language === "DE" ? "WordPress-Admin → WooCommerce → Settings → Advanced → REST API → Schlüssel mit Read-Rechten erstellen." : "WordPress admin → WooCommerce → Settings → Advanced → REST API → create a key with Read access."}
+        keyInput={woocommerceKeyInput} setKeyInput={setWoocommerceKeyInput}
+        connected={woocommerceConnected} setConnected={setWoocommerceConnected}
+        keyPreview={woocommerceKeyPreview} setKeyPreview={setWoocommerceKeyPreview}
+        language={language}
+      />
+    ),
+  },
+  {
+    key: "paypal" as const,
+    connected: paypalConnected,
+    node: (
+      <DemoIntegrationCard
+        name="PayPal"
+        placeholder="Client Secret"
+        extraFields={[{ key: "client_id", label: "Client ID", placeholder: "Client ID" }]}
+        extraValues={paypalExtraValues} setExtraValues={setPaypalExtraValues}
+        hint={language === "UA" ? "developer.paypal.com → Apps & Credentials → перемикач вгорі на Live → скопіюйте Client ID і Secret." : language === "DE" ? "developer.paypal.com → Apps & Credentials → oben auf Live umschalten → Client ID und Secret kopieren." : "developer.paypal.com → Apps & Credentials → switch the toggle to Live → copy the Client ID and Secret."}
+        keyInput={paypalKeyInput} setKeyInput={setPaypalKeyInput}
+        connected={paypalConnected} setConnected={setPaypalConnected}
+        keyPreview={paypalKeyPreview} setKeyPreview={setPaypalKeyPreview}
+        language={language}
+      />
+    ),
+  },
+  {
+    key: "mollie" as const,
+    connected: mollieConnected,
+    node: (
+      <DemoIntegrationCard
+        name="Mollie"
+        placeholder="Live API key (live_...)"
+        extraFields={[{ key: "advanced_access_token", label: language === "UA" ? "Advanced access token (для точних комісій)" : language === "DE" ? "Advanced Access Token (für exakte Gebühren)" : "Advanced access token (for exact fees)", placeholder: "access_..." }]}
+        extraValues={mollieExtraValues} setExtraValues={setMollieExtraValues}
+        hint={language === "UA" ? "Mollie Dashboard → Developers → API access tokens: Live API key + Advanced access token з правом balances.read." : language === "DE" ? "Mollie Dashboard → Developers → API access tokens: Live API Key + Advanced Access Token mit balances.read." : "Mollie Dashboard → Developers → API access tokens: Live API key + Advanced access token with balances.read."}
+        keyInput={mollieKeyInput} setKeyInput={setMollieKeyInput}
+        connected={mollieConnected} setConnected={setMollieConnected}
+        keyPreview={mollieKeyPreview} setKeyPreview={setMollieKeyPreview}
+        language={language}
+      />
+    ),
+  },
+  {
+    key: "quickbooks" as const,
+    connected: quickbooksConnected,
+    // QuickBooks в реальному кабінеті — Intuit OAuth (жодного ручного
+    // ключа), тому демо-картка повторює вигляд Google Ads-картки вище, а
+    // не DemoIntegrationCard з текстовим полем.
+    node: (
+      <div className="bg-gray-900/40 rounded-xl p-5 border border-gray-800">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="min-w-0">
+            <h4 className="font-semibold text-white text-base">QuickBooks</h4>
+            <p className="text-sm text-gray-500 mt-1">
+              {quickbooksConnected
+                ? (language === "UA" ? "Підключено, очікуємо першу синхронізацію" : language === "DE" ? "Verbunden, wartet auf erste Synchronisierung" : "Connected, waiting for first sync")
+                : (language === "UA" ? "Підключіть QuickBooks, щоб отримувати реальні дані" : language === "DE" ? "Verbinden Sie QuickBooks, um echte Daten abzurufen" : "Connect QuickBooks to pull real data")}
+            </p>
+          </div>
+          {quickbooksConnected && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs px-2 py-1 rounded-full font-semibold bg-green-500/20 text-green-400 flex items-center gap-1 font-mono whitespace-nowrap">
+                <Wifi className="w-3 h-3 shrink-0" />
+                {language === "UA" ? "Підключено" : language === "DE" ? "Verbunden" : "Connected"}
+              </span>
+              <Button size="sm" variant="outline" className="text-red-400 border-red-400/30 hover:bg-red-500/10 shrink-0" onClick={() => setQuickbooksConnected(false)}>
+                {language === "UA" ? "Відключити" : language === "DE" ? "Trennen" : "Disconnect"}
+              </Button>
+            </div>
+          )}
+        </div>
+
+        {!quickbooksConnected && (
+          <>
+            <p className="text-xs text-gray-500 mt-4">
+              {language === "UA"
+                ? "Ви перейдете на сторінку Intuit, оберете компанію QuickBooks і підтвердите доступ — без ручного вводу токенів."
+                : language === "DE"
+                ? "Sie werden zu Intuit weitergeleitet, wählen Ihre QuickBooks-Firma aus und bestätigen den Zugriff — ganz ohne manuelle Token-Eingabe."
+                : "You'll be redirected to Intuit, pick your QuickBooks company, and approve access — no manual token entry."}
+            </p>
+            <Button onClick={() => setQuickbooksConnected(true)} className="mt-4 font-semibold px-5 bg-blue-500 hover:bg-blue-600 text-white">
+              {language === "UA" ? "Підключити через Intuit" : language === "DE" ? "Über Intuit verbinden" : "Connect with Intuit"}
+            </Button>
+          </>
+        )}
+      </div>
+    ),
+  },
 ]
   // Підключені інтеграції спливають наверх списку — той самий принцип, що
   // й integrationsOrder у app/dashboard/page.tsx, тільки рахується на
@@ -2060,7 +2185,7 @@ const [googleAdsExtraValues, setGoogleAdsExtraValues] = useState<Record<string, 
                       <Link className="w-5 h-5 text-gray-500" />
                     </div>
                     <div>
-                      <h4 className="font-semibold text-gray-400 text-sm">Google Analytics, QuickBooks</h4>
+                      <h4 className="font-semibold text-gray-400 text-sm">Google Analytics</h4>
                       <p className="text-xs text-gray-600">
                         {language === "UA" ? "Скоро" : language === "DE" ? "Demnächst" : "Coming soon"}
                       </p>

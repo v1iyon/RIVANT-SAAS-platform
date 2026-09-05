@@ -143,7 +143,7 @@ export function StripeConnectCard({
       // якщо на цьому тарифі ще лишався вільний слот, одразу зберігаємо
       // "stripe" в integrations_selected, мерджачи з уже обраним (а не
       // перезаписуючи його), щоб не загубити паралельно обраний Shopify/
-      // Meta Ads/Google Ads на Growth (2 слоти).
+      // Meta Ads/Google Ads на Growth (4 слоти).
       if (
         maxSlots !== undefined &&
         maxSlots !== null &&

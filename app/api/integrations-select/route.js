@@ -13,13 +13,20 @@
 // Тепер Stripe і Shopify — РІВНОПРАВНІ ДЖЕРЕЛА ВИРУЧКИ. Клієнт сам обирає,
 // яке з них (або обидва) використовувати, і це витрачає такий самий слот
 // інтеграції, як Meta Ads чи Google Ads:
-//   - Starter (1 слот)  — Stripe АБО Shopify. Без додаткових інтеграцій.
-//   - Growth (2 слоти)  — будь-яка комбінація з чотирьох (Stripe, Shopify,
-//                          Meta Ads, Google Ads), мінімум 1 слот — джерело
-//                          виручки (інакше рахувати нема з чим: CAC,
-//                          revenue_drop, щоденні звіти — усе рахується від
-//                          виручки, яку пише тільки stripe-sync/shopify-sync).
+//   - Starter (2 слоти) — будь-яка комбінація, мінімум 1 слот — джерело
+//                          виручки/обліку (Stripe/Shopify/WooCommerce/
+//                          PayPal/Mollie/QuickBooks), інакше рахувати
+//                          нема з чим: CAC, revenue_drop, щоденні звіти —
+//                          усе рахується від виручки.
+//   - Growth (4 слоти)  — та сама вимога "мінімум 1 джерело виручки",
+//                          просто ширший вибір з усіх 8 провайдерів.
 //   - Scale/Trial       — без обмеження кількості слотів.
+//
+// FIX (тарифи 2026-09-05): розширення сітки під усі 8 інтеграцій —
+// Starter 1→2, Growth 2→4. Вимога "мінімум 1 платіжний/обліковий
+// провайдер" не змінювалась, просто тепер явно сформульована як
+// "платіжна система, неважливо яка" замість конкретно "Stripe або
+// Shopify" — REVENUE_SOURCE_PROVIDERS нижче й раніше містив усі 6.
 import { createClient } from "@supabase/supabase-js";
 import { requireUser, UnauthorizedError } from "@/lib/require-user";
 
@@ -41,13 +48,13 @@ const SELECTABLE_PROVIDERS = ["stripe", "shopify", "woocommerce", "paypal", "mol
 // теж вважається джерелом виручки. paypal доданий 03.09.2026 — lib/plan-slots.js
 // має той самий масив (єдиний "офіційний" список), цей файл історично тримає
 // власну копію замість імпорту звідти; зміна тут зроблена в парі зі зміною там.
-// Тому будь-який НЕпорожній вибір повинен містити щонайменше одне з чотирьох.
+// Тому будь-який НЕпорожній вибір повинен містити щонайменше одне з шести.
 const REVENUE_SOURCE_PROVIDERS = ["stripe", "shopify", "woocommerce", "paypal", "mollie", "quickbooks"];
 
 // Кількість слотів інтеграцій за планом.
 const PLAN_SLOTS = {
-  starter: 1,
-  growth: 2,
+  starter: 2,
+  growth: 4,
   scale: Infinity,
   trial: Infinity, // трiал має реально дати спробувати все — інакше плашка
   // "усі інтеграції безкоштовно" на лендингу була б неправдою.
@@ -70,7 +77,7 @@ function validateSelection(plan, providers) {
   // скинув вибір) — вимога "мінімум 1 джерело виручки" стосується тільки
   // НЕпорожнього вибору.
   if (providers.length > 0 && !providers.some((p) => REVENUE_SOURCE_PROVIDERS.includes(p))) {
-    return "Selection must include at least one revenue source (Stripe, Shopify, WooCommerce, PayPal or Mollie)";
+    return "Selection must include at least one payment/revenue source (Stripe, Shopify, WooCommerce, PayPal, Mollie or QuickBooks)";
   }
   return null;
 }

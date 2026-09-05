@@ -230,6 +230,9 @@ export function PricingSection() {
                 </ul>
               </div>
               <div className="flex-1 flex items-center">
+                {plan.name === (T.starter ?? "Starter") && T.starterLockNote && (
+                  <p className="text-[11px] text-slate-500 leading-snug mb-3">{T.starterLockNote}</p>
+                )}
                 {plan.name === (T.growth ?? "Growth") && T.growthLockNote && (
                   <p className="text-[11px] text-slate-500 leading-snug mb-3">{T.growthLockNote}</p>
                 )}
