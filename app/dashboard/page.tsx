@@ -1281,6 +1281,11 @@ const [gadsPickerCustomers, setGadsPickerCustomers] = useState<GadsAccount[] | n
   const [gadsPickerLoading, setGadsPickerLoading] = useState(false);
   const [gadsPickerError, setGadsPickerError] = useState("");
   const [gadsToast, setGadsToast] = useState<{ kind: "success" | "error"; text: string } | null>(null);
+  // QuickBooks OAuth: після редіректу з /api/auth/quickbooks/callback
+  // (?quickbooks=connected|error) — див. useEffect нижче. На відміну від
+  // Google Ads тут немає "pick"-кроку (Intuit сам віддає рівно один
+  // realmId), тому потрібен лише простий toast, без модалки вибору акаунта.
+  const [qbToast, setQbToast] = useState<{ kind: "success" | "error"; text: string } | null>(null);
   const [profileName, setProfileName] = useState("");
   const [profileEmail, setProfileEmail] = useState("");
   const [syncingAllIntegrations, setSyncingAllIntegrations] = useState(false);
@@ -1303,7 +1308,7 @@ const [companySaved, setCompanySaved] = useState(false);
   const supabase = createClient();
   const [subInfo, setSubInfo] = useState<{ plan: string | null; access_status: string; is_blocked?: boolean } | null>(null);
   const [selectedProviders, setSelectedProviders] = useState<string[]>([]);
-  const [integrationsOrder, setIntegrationsOrder] = useState<string[]>(["shopify", "woocommerce", "paypal", "mollie", "meta_ads", "google_ads"]);
+  const [integrationsOrder, setIntegrationsOrder] = useState<string[]>(["shopify", "woocommerce", "paypal", "mollie", "quickbooks", "meta_ads", "google_ads"]);
   const [telegramConnected, setTelegramConnected] = useState(false);
   const [businessName, setBusinessName] = useState("");
   // Раніше тут був захардкожений дефолт "America/New_York" — будь-хто, хто
@@ -1448,6 +1453,50 @@ const [companySaved, setCompanySaved] = useState(false);
       });
       cleanUrl();
       setTimeout(() => setGadsToast(null), 6000);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profileEmail]);
+
+  // Обробка редіректу з /api/auth/quickbooks/callback: ?quickbooks=connected —
+  // одразу запускаємо синк і показуємо тост; ?quickbooks=error — показуємо
+  // помилку. Простіше за google_ads-версію вище: немає "pick" гілки, бо
+  // Intuit сам повертає рівно одну компанію (realmId), без вибору на нашій
+  // стороні.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const qb = params.get("quickbooks");
+    if (!qb) return;
+
+    const cleanUrl = () => {
+      params.delete("quickbooks");
+      params.delete("quickbooks_error");
+      const rest = params.toString();
+      window.history.replaceState({}, "", rest ? `${window.location.pathname}?${rest}` : window.location.pathname);
+    };
+
+    if (qb === "connected") {
+      setQbToast({
+        kind: "success",
+        text: language === "UA" ? "QuickBooks підключено! Синхронізуємо дані..." : language === "DE" ? "QuickBooks verbunden! Daten werden synchronisiert..." : "QuickBooks connected! Syncing data...",
+      });
+      if (profileEmail) {
+        fetch("/api/sync-now", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: profileEmail, provider: "quickbooks" }),
+        })
+          .catch((e) => console.error("sync-now after quickbooks oauth failed", e))
+          .finally(() => setIntegrationRefreshToken((token) => token + 1));
+      }
+      cleanUrl();
+      setTimeout(() => setQbToast(null), 6000);
+    } else if (qb === "error") {
+      setQbToast({
+        kind: "error",
+        text: language === "UA" ? "Не вдалося підключити QuickBooks. Спробуйте ще раз." : language === "DE" ? "QuickBooks konnte nicht verbunden werden. Bitte erneut versuchen." : "Couldn't connect QuickBooks. Please try again.",
+      });
+      cleanUrl();
+      setTimeout(() => setQbToast(null), 6000);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profileEmail]);
@@ -1720,7 +1769,7 @@ if (bizData.business) {
         const statusRes = await fetch(`/api/integrations-status?email=${encodeURIComponent(email)}`, { cache: "no-store" });
         const statusData = await statusRes.json();
         const rows: { provider: string; connected: boolean }[] = statusData.integrations || [];
-        const defaultOrder = ["shopify", "woocommerce", "paypal", "mollie", "meta_ads", "google_ads"];
+        const defaultOrder = ["shopify", "woocommerce", "paypal", "mollie", "quickbooks", "meta_ads", "google_ads"];
         const sorted = [...defaultOrder].sort((a, b) => {
           const aConnected = rows.find((r) => r.provider === a)?.connected ? 1 : 0;
           const bConnected = rows.find((r) => r.provider === b)?.connected ? 1 : 0;
@@ -3534,6 +3583,34 @@ if (!subInfo) {
                       }
                     />
                   ),
+                  quickbooks: (
+                    <IntegrationConnectCard
+                      key="quickbooks"
+                      email={profileEmail}
+                      provider="quickbooks"
+                      displayName="QuickBooks"
+                      placeholder=""
+                      isExpiredTrial={isExpiredTrial}
+                      planTier={subInfo?.plan ?? null}
+                      selectedProviders={selectedProviders}
+                      onSelected={(providers) => setSelectedProviders(providers)}
+                      onLockedClick={() => router.push("/#pricing")}
+                      refreshToken={integrationRefreshToken}
+                      syncFailed={failedSyncProviders.includes("quickbooks")}
+                      showRevenueModeCheckbox={true}
+                      oauthStartHref="/api/auth/quickbooks/start"
+                      oauthButtonLabel={
+                        language === "UA" ? "Підключити через Intuit" : language === "DE" ? "Über Intuit verbinden" : "Connect with Intuit"
+                      }
+                      hint={
+                        language === "UA"
+                          ? "Ви перейдете на сторінку Intuit, оберете компанію QuickBooks і підтвердите доступ — без ручного вводу токенів."
+                          : language === "DE"
+                          ? "Sie werden zu Intuit weitergeleitet, wählen Ihre QuickBooks-Firma aus und bestätigen den Zugriff — ganz ohne manuelle Token-Eingabe."
+                          : "You'll be redirected to Intuit, pick your QuickBooks company, and approve access — no manual token entry."
+                      }
+                    />
+                  ),
                   woocommerce: (
                     <IntegrationConnectCard
                       key="woocommerce"
@@ -3636,7 +3713,7 @@ if (!subInfo) {
                       <Link2 className="w-5 h-5 text-gray-400" />
                     </div>
                     <div>
-                      <h4 className="font-semibold text-white">Google Analytics, QuickBooks</h4>
+                      <h4 className="font-semibold text-white">Google Analytics</h4>
                       <p className="text-xs text-gray-500">Coming soon</p>
                     </div>
                   </div>
@@ -4114,6 +4191,18 @@ if (!subInfo) {
             }`}
           >
             {gadsToast.text}
+          </div>
+        </div>
+      )}
+
+      {qbToast && (
+        <div className="fixed top-4 right-4 z-[110] max-w-[320px]">
+          <div
+            className={`rounded-xl p-4 border shadow-2xl text-sm ${
+              qbToast.kind === "success" ? "bg-green-950/90 border-green-500/30 text-green-300" : "bg-red-950/90 border-red-500/30 text-red-300"
+            }`}
+          >
+            {qbToast.text}
           </div>
         </div>
       )}

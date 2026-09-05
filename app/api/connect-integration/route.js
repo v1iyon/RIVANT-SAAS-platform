@@ -344,6 +344,7 @@ export async function DELETE(req) {
       shopify: ["sync_failure_shopify"],
       paypal: ["sync_failure_paypal"],
       mollie: ["sync_failure_mollie"],
+      quickbooks: ["sync_failure_quickbooks"],
       woocommerce: ["sync_failure_woocommerce", "shipping_spike_woocommerce"],
     };
     const alertTypes = ALERT_TYPE_BY_PROVIDER[provider];
