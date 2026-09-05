@@ -1081,12 +1081,19 @@ export function LiveDemoModal({ isOpen, onClose }: LiveDemoModalProps) {
   useEffect(() => { integrationsRef.current = integrations; }, [integrations]);
 
   // Состояние карточки подключения Stripe на вкладке "Інтеграції"
+  // Stripe и Shopify стартуют уже "подключёнными" (connected=true,
+  // с правдоподобным замаскированным ключом) — по просьбе: демо должно
+  // сразу выглядеть как рабочий кабинет с реальными данными, а не с
+  // пустой вкладкой интеграций, которую ещё нужно самому заполнить.
+  // Остальные 6 (WooCommerce/PayPal/Mollie/QuickBooks/Meta/Google Ads)
+  // осознанно остаются не подключены — их можно "подключить" вручную,
+  // чтобы показать сам флоу коннекта.
   const [stripeKeyInput, setStripeKeyInput] = useState("");
-  const [stripeConnected, setStripeConnected] = useState(false);
-  const [stripeKeyPreview, setStripeKeyPreview] = useState("");
+  const [stripeConnected, setStripeConnected] = useState(true);
+  const [stripeKeyPreview, setStripeKeyPreview] = useState("rk_live_...4f2a");
   const [shopifyKeyInput, setShopifyKeyInput] = useState("");
-const [shopifyConnected, setShopifyConnected] = useState(false);
-const [shopifyKeyPreview, setShopifyKeyPreview] = useState("");
+const [shopifyConnected, setShopifyConnected] = useState(true);
+const [shopifyKeyPreview, setShopifyKeyPreview] = useState("shpss_a1...9e3c");
 
 const [metaKeyInput, setMetaKeyInput] = useState("");
 const [metaConnected, setMetaConnected] = useState(false);
