@@ -38,6 +38,7 @@ import { runSync as runMetaAdsSync } from "../../../../scripts/meta-ads-sync.mjs
 import { runSync as runGoogleAdsSync } from "../../../../scripts/google-ads-sync.mjs";
 import { runSync as runPaypalSync } from "../../../../scripts/paypal-sync.mjs";
 import { runSync as runMollieSync } from "../../../../scripts/mollie-sync.mjs";
+import { runSync as runQuickbooksSync } from "../../../../scripts/quickbooks-sync.mjs";
 
 // Тот же пробел, что и в process-service-orders: maxDuration не был
 // объявлен, а один прогон может тянуть до 365 дней истории из внешнего
@@ -65,6 +66,7 @@ const SYNC_BY_PROVIDER = {
   google_ads: runGoogleAdsSync,
   paypal: runPaypalSync,
   mollie: runMollieSync,
+  quickbooks: runQuickbooksSync,
 };
 
 async function clearBackfillFlag(integration) {
@@ -107,9 +109,9 @@ export async function GET(req) {
   const integ = integrations[0];
   const runSync = SYNC_BY_PROVIDER[integ.provider];
   if (!runSync) {
-    // Провайдер без бекфілу (наприклад quickbooks/google_analytics, для
-    // яких sync-модуля ще нема) — просто знімаємо прапорець, щоб не
-    // залипати на ньому щоразу.
+    // Провайдер без бекфілу (наприклад google_analytics, для якого
+    // sync-модуля ще нема) — просто знімаємо прапорець, щоб не залипати
+    // на ньому щоразу.
     await clearBackfillFlag(integ);
     return Response.json({ processed: 0, skipped: integ.provider });
   }

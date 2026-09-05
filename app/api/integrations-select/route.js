@@ -42,7 +42,7 @@ const SELECTABLE_PROVIDERS = ["stripe", "shopify", "woocommerce", "paypal", "mol
 // має той самий масив (єдиний "офіційний" список), цей файл історично тримає
 // власну копію замість імпорту звідти; зміна тут зроблена в парі зі зміною там.
 // Тому будь-який НЕпорожній вибір повинен містити щонайменше одне з чотирьох.
-const REVENUE_SOURCE_PROVIDERS = ["stripe", "shopify", "woocommerce", "paypal", "mollie"];
+const REVENUE_SOURCE_PROVIDERS = ["stripe", "shopify", "woocommerce", "paypal", "mollie", "quickbooks"];
 
 // Кількість слотів інтеграцій за планом.
 const PLAN_SLOTS = {
