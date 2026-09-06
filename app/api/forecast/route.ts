@@ -9,6 +9,7 @@
 // - Результат кэшируется в forecast_cache на 6 часов, чтобы не дёргать
 //   Anthropic API при каждом открытии дашборда (синк всё равно раз в час).
 import { createClient } from "@supabase/supabase-js";
+import { REVENUE_SOURCE_PROVIDERS } from "@/lib/plan-slots";
 import {
   requireActiveSubscription,
   UnauthorizedError,
@@ -87,6 +88,42 @@ async function getSubscriptionPlan(email: string): Promise<string | null> {
 
 function hasForecastAccess(plan: string | null): boolean {
   return ["trial", "growth", "scale"].includes(plan || "");
+}
+
+// ФІКС (звіт власника, 06.09.2026): прогноз рахувався по ВСІЙ історії
+// metrics_computed незалежно від того, чи лишилось хоч одне джерело доходу
+// підключеним ЗАРАЗ. disconnect (app/api/connect-integration/route.js
+// DELETE, app/api/stripe-disconnect/route.js) лише позначає рядок в
+// integrations як "disconnected" — жодна з цих ручок ніколи не чіпає вже
+// накопичені metrics_computed. Тому власник, який підключив Stripe/Shopify/
+// QuickBooks і т.д., щось назбирав, а потім відключив усе (наприклад, на
+// час паузи в бізнесі), в кабінеті бачив $0 у поточних метриках — але
+// "Forecast" продовжував малювати ненульову проекцію на основі СТАРОГО
+// тренду, ніби дані й далі надходять. Це вводить в оману: цифра виглядає
+// як прогноз "живого" бізнесу, хоча насправді джерела вже немає.
+// Рішення (а не просто "занулити" — старі дані самі по собі не брехня,
+// брехнею є показ їх як АКТУАЛЬНОГО прогнозу): якщо серед провайдерів, що
+// взагалі пишуть у metrics_computed (дохід), немає жодного зі
+// status="connected", прогноз не рахуємо і не кешуємо — повертаємо окремий
+// прапорець noActiveIntegrations, з {days, tier: null} для того, щоб
+// фронт міг показати ЧЕСНЕ повідомлення ("підключіть джерело доходу"), а
+// не "недостатньо даних" (що для когось із роками історії звучить абсурдно)
+// і не мовчки показаний застарілий прогноз.
+async function hasActiveRevenueIntegration(businessId: string): Promise<boolean> {
+  const { data, error } = await admin
+    .from("integrations")
+    .select("id")
+    .eq("business_id", businessId)
+    .eq("status", "connected")
+    .in("provider", REVENUE_SOURCE_PROVIDERS)
+    .limit(1);
+  if (error) {
+    console.error("hasActiveRevenueIntegration error:", error);
+    // Немає чіткого сигналу — краще показати наявний прогноз (стара
+    // поведінка), ніж помилково сховати його через збій самого запиту.
+    return true;
+  }
+  return Boolean(data?.length);
 }
 
 function getForecastHorizonDays(plan: string | null): number {
@@ -290,6 +327,10 @@ export async function GET(req: Request) {
   // доступа нет вовсе независимо от объёма данных).
   if (!hasForecastAccess(plan)) {
     return Response.json({ sufficient: false, planLocked: true, requiredPlan: "growth", days: 0 });
+  }
+
+  if (!(await hasActiveRevenueIntegration(businessId))) {
+    return Response.json({ sufficient: false, noActiveIntegrations: true, days: 0 });
   }
 
   const { data: rows, error } = await admin

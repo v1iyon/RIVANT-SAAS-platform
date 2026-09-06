@@ -40,6 +40,22 @@ jobs:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # ФІКС (аудит 06.09.2026): без цих п'яти секретів
+          # lib/quickbooks-oauth.js і lib/google-ads-oauth.js падали на
+          # getClientCredentials() з "... is not set on the server" ще ДО
+          # будь-якого запиту до Intuit/Google — тобто щогодинний синк
+          # QuickBooks і Google Ads не міг пройти далі рефрешу токена
+          # жодного разу, скільки б секретів не було заведено в самому
+          # репозиторії: GitHub Actions не підхоплює їх у process.env сам,
+          # їх обов'язково треба перелічити тут явно.
+          QUICKBOOKS_ENVIRONMENT: ${{ secrets.QUICKBOOKS_ENVIRONMENT }}
+          QUICKBOOKS_CLIENT_ID: ${{ secrets.QUICKBOOKS_CLIENT_ID }}
+          QUICKBOOKS_CLIENT_SECRET: ${{ secrets.QUICKBOOKS_CLIENT_SECRET }}
+          QUICKBOOKS_SANDBOX_CLIENT_ID: ${{ secrets.QUICKBOOKS_SANDBOX_CLIENT_ID }}
+          QUICKBOOKS_SANDBOX_CLIENT_SECRET: ${{ secrets.QUICKBOOKS_SANDBOX_CLIENT_SECRET }}
+          GOOGLE_ADS_CLIENT_ID: ${{ secrets.GOOGLE_ADS_CLIENT_ID }}
+          GOOGLE_ADS_CLIENT_SECRET: ${{ secrets.GOOGLE_ADS_CLIENT_SECRET }}
+          GOOGLE_ADS_DEVELOPER_TOKEN: ${{ secrets.GOOGLE_ADS_DEVELOPER_TOKEN }}
         run: node scripts/run-sync.mjs
 
       # п.9 аудита: раньше доставка допуслуг (What-If отчёт, дайджест) и

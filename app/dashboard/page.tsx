@@ -15,6 +15,7 @@ import { businessDateStr, businessMonthStartStr } from "@/lib/business-date";
 import { getAllTimezones, formatTimezoneLabel, groupTimezonesByRegion, getDetectedTimezone } from "@/lib/timezones";
 import { TrialPromptModal } from "@/components/dashboard/trial-prompt-modal";
 import { OnboardingTour } from "@/components/dashboard/onboarding-tour";
+import { OnboardingChecklist } from "@/components/dashboard/onboarding-checklist";
 import { TeamAccessCard } from "@/components/dashboard/team-access-card";
 import { FaqPanel } from "@/components/dashboard/faq-panel";
 import {
@@ -2830,6 +2831,13 @@ if (!subInfo) {
 
           {activeView === "overview" && (
             <div className="space-y-5">
+                  {!showOnboarding && (
+                    <OnboardingChecklist
+                      language={language}
+                      businessId={businessId}
+                      onNavigate={(view) => setActiveView(view)}
+                    />
+                  )}
                   <div data-tour="metrics-overview" className="relative">
                     <button
                       data-tour="metrics-gear"
@@ -3239,6 +3247,23 @@ if (!subInfo) {
                   </div>
                   <div className="bg-gray-900/30 rounded-xl p-3 sm:p-5 border border-gray-800 h-64" />
                   <div className="bg-gray-900/30 rounded-xl p-3 sm:p-5 border border-gray-800 h-24" />
+                </div>
+              ) : forecastData?.noActiveIntegrations ? (
+                <div className="text-center py-16 bg-gray-900/30 rounded-xl border border-gray-800">
+                  <TrendingUp className="w-10 h-10 mx-auto mb-3 text-gray-600" />
+                  <h3 className="text-white font-semibold mb-1">
+                    {language === "UA" ? "Немає підключеного джерела доходу" : language === "DE" ? "Keine verbundene Umsatzquelle" : "No connected revenue source"}
+                  </h3>
+                  <p className="text-gray-500 text-sm max-w-md mx-auto mb-4">
+                    {language === "UA"
+                      ? "Усі джерела доходу відключено, тому прогноз наразі не рахується — щоб не показувати проекцію за старим трендом, ніби дані й далі надходять. Підключіть Stripe, Shopify чи іншу інтеграцію, щоб прогноз з'явився знову."
+                      : language === "DE"
+                      ? "Alle Umsatzquellen sind getrennt, daher wird derzeit keine Prognose berechnet — um keine Projektion auf Basis des alten Trends zu zeigen, als ob weiter Daten eingehen. Verbinden Sie Stripe, Shopify oder eine andere Integration, damit die Prognose wieder erscheint."
+                      : "All revenue sources are disconnected, so no forecast is being calculated right now — to avoid projecting the old trend as if data were still coming in. Connect Stripe, Shopify, or another integration to see the forecast again."}
+                  </p>
+                  <Button className="bg-blue-600 hover:bg-blue-700" onClick={() => setActiveView("integrations")}>
+                    {language === "UA" ? "Перейти до інтеграцій" : language === "DE" ? "Zu Integrationen" : "Go to integrations"}
+                  </Button>
                 </div>
               ) : !forecastData?.sufficient ? (
                 <div className="text-center py-16 bg-gray-900/30 rounded-xl border border-gray-800">

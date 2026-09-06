@@ -1,6 +1,7 @@
 // app/api/metrics/route.ts
 import { createClient } from "@supabase/supabase-js";
 import { getPrimaryBusinessId } from "@/lib/get-primary-business";
+import { REVENUE_SOURCE_PROVIDERS } from "@/lib/plan-slots";
 import {
   requireActiveSubscription,
   UnauthorizedError,
@@ -15,7 +16,16 @@ const admin = createClient(
   process.env.SUPABASE_SERVICE_KEY!
 );
 
-const REVENUE_SOURCE_PROVIDERS = ["stripe", "shopify"];
+// ФІКС (аудит 06.09.2026): цей список вирішує, чи взагалі показувати
+// дашборд ("hasData") — раніше тут локально був захардкоджений застарілий
+// масив лише з "stripe" і "shopify". Бізнес, підключений ЛИШЕ через
+// WooCommerce, PayPal, Mollie чи QuickBooks (усі вони так само пишуть у
+// metrics_computed — див. scripts/woocommerce-sync.mjs, paypal-sync.mjs,
+// mollie-sync.mjs, quickbooks-sync.mjs), отримував hasData:false і
+// порожній Overview, навіть коли синк реально відпрацював і рядки в
+// metrics_computed вже є. Тепер імпортується з lib/plan-slots.js — того
+// самого "офіційного" списку, яким уже користується
+// app/api/integrations-select/route.js — щоб ця розбіжність не повторилась.
 
 const HISTORY_DAYS_BY_PLAN: Record<string, number> = {
   trial: 90,
