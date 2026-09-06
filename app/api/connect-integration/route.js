@@ -12,7 +12,24 @@ const admin = createClient(
   process.env.SUPABASE_SERVICE_KEY
 );
 
+// Повний список провайдерів, якими керує цей роут — включно з quickbooks,
+// бо DELETE (відключення) тут спільний для ВСІХ провайдерів: generic-кнопка
+// "Відключити" в IntegrationConnectCard б'є саме сюди незалежно від того,
+// підключався провайдер ключем чи через OAuth (ALERT_TYPE_BY_PROVIDER
+// нижче теж явно очікує quickbooks у DELETE-гілці).
 const SUPPORTED_PROVIDERS = ["meta_ads", "google_ads", "shopify", "woocommerce", "quickbooks", "google_analytics", "paypal", "mollie"];
+
+// ФІКС: а от підключення ключем (POST) — це вужчий список, БЕЗ quickbooks.
+// QuickBooks підключається ВИКЛЮЧНО через OAuth (app/api/auth/quickbooks/
+// start → callback → lib/quickbooks-connect.js), у нього немає запису в
+// REQUIRED_CONFIG_FIELDS і формат секрета інший (JSON {refresh_token}, а не
+// сирий apiKey). Раніше quickbooks був у тому самому списку, що й POST
+// перевіряв, — прямий запит на цю ручку з provider: "quickbooks" проходив
+// би без жодної валідації полів і записував integrations-рядок з "ключем",
+// який scripts/quickbooks-sync.mjs не може розпарсити (чекає JSON) — синк
+// падав би з помилкою, і власнику йшло б сплутане "не вдалося підключити
+// QuickBooks", хоча він так його ніколи й не підключав.
+const KEY_CONNECTABLE_PROVIDERS = SUPPORTED_PROVIDERS.filter((p) => p !== "quickbooks");
 
 // Той самий принцип, що і в app/api/connect-stripe/route.js: Scale/Trial
 // отримують усе без явного вибору слоту, решта планів (starter/growth)
@@ -107,7 +124,7 @@ export async function POST(req) {
     if (!provider || !apiKey) {
       return Response.json({ error: "provider and apiKey are required" }, { status: 400 });
     }
-    if (!SUPPORTED_PROVIDERS.includes(provider)) {
+    if (!KEY_CONNECTABLE_PROVIDERS.includes(provider)) {
       return Response.json({ error: "Unsupported provider" }, { status: 400 });
     }
     if (!looksLikeAKey(apiKey)) {
