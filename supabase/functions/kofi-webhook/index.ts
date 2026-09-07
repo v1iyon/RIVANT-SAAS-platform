@@ -250,13 +250,36 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: "Internal error" }, 500);
   }
 
-  async function logError(message: string, details: Record<string, unknown>) {
+  // Клієнт вже заплатив (вебхук прийшов від Ko-fi) — якщо активація підписки
+  // впаде тут, це найдорожча за наслідками помилка в усьому продукті:
+  // гроші отримані, доступу немає, а власник міг би дізнатись про це лише
+  // зайшовши в /admin. Тому саме тут (і в polygon-webhook) шлемо Telegram-
+  // алерт одразу, а не чекаємо, поки хтось відкриє адмінку.
+  async function notifyOwnerTelegram(text: string) {
+    const token = Deno.env.get("BOT_TOKEN");
+    const chatId = Deno.env.get("ADMIN_TELEGRAM_CHAT_ID");
+    if (!token || !chatId) return;
+    try {
+      await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: chatId, text, parse_mode: "HTML" }),
+      });
+    } catch (e) {
+      console.error("Failed to send owner Telegram alert:", e instanceof Error ? e.message : e);
+    }
+  }
+
+  async function logError(message: string, details: Record<string, unknown>, critical = false) {
     await supabase.from("error_logs").insert({
       source: "kofi-webhook",
       message,
       details: JSON.stringify(details),
       resolved: false,
     });
+    if (critical) {
+      await notifyOwnerTelegram(`🔴 <b>Ko-fi payment received but activation failed</b>\n${message}\n\n${JSON.stringify(details).slice(0, 500)}`);
+    }
   }
 
   // ---------------------------------------------------------------
@@ -400,7 +423,7 @@ Deno.serve(async (req: Request) => {
         user_id: userId,
         plan_id: resolvedPlan.plan_id,
         error: subError.message,
-      });
+      }, true);
       results.push({ type: "plan", plan_id: resolvedPlan.plan_id, status: "error" });
     } else {
       console.log(`Subscription activated: user=${userId}, plan=${resolvedPlan.plan_id}, until=${periodEnd}`);
