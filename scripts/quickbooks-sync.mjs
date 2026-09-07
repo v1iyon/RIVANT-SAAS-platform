@@ -194,7 +194,7 @@ async function upsertQuickbooksRevenue({ integrationId, integrationConfig, busin
 // втім, конкретно цей приклад все одно неоднозначний за задумом клієнта,
 // тому очікувано, що частина нетипових назв рахунків піде в 'other'
 // (див. коментар на початку файлу).
-function categorizeQuickbooksAccount(accountName) {
+export function categorizeQuickbooksAccount(accountName) {
   const name = String(accountName || "").toLowerCase();
   if (/cost of goods|\bcogs\b|inventory|merchandise|raw material/.test(name)) return "cost_of_goods";
   if (/shipping|postage|freight|courier|delivery/.test(name)) return "shipping";
