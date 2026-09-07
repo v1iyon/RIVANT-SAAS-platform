@@ -1209,6 +1209,25 @@ const [deleteError, setDeleteError] = useState("");
   const [mfaQrCode, setMfaQrCode] = useState("");
   const [mfaCode, setMfaCode] = useState("");
   const [mfaMsg, setMfaMsg] = useState("");
+  // ФІКС: раніше verified TOTP-фактор ніяк не перевірявся при вході —
+  // getAuthenticatorAssuranceLevel() ніде не викликався, тож 2FA лише
+  // вмикалась у Settings, але жодного разу не питалась при повторному
+  // вході. mfaAal2Required блокує рендер дашборду (див. ранній return
+  // нижче, поруч з !isAuthenticated/!subInfo), поки сесія не підніметься
+  // до aal2 — або звичайним TOTP-кодом, або backup-кодом (який натомість
+  // видаляє фактор і завершує всі сесії — див. app/api/mfa/verify-backup-code).
+  const [mfaAal2Required, setMfaAal2Required] = useState(false);
+  const [mfaChallengeCode, setMfaChallengeCode] = useState("");
+  const [mfaChallengeLoading, setMfaChallengeLoading] = useState(false);
+  const [mfaChallengeMsg, setMfaChallengeMsg] = useState("");
+  const [mfaChallengeUseBackupCode, setMfaChallengeUseBackupCode] = useState(false);
+  const [backupCodeInput, setBackupCodeInput] = useState("");
+  // Коди показуються РІВНО ОДИН РАЗ одразу після enroll — ніде більше не
+  // зберігаються на фронті (сервер теж повертає plaintext лише в POST
+  // відповіді, у БД лежать тільки хеші, див. lib/mfa-backup-codes.js).
+  const [backupCodes, setBackupCodes] = useState<string[] | null>(null);
+  const [backupCodesLoading, setBackupCodesLoading] = useState(false);
+  const [showBackupCodesStep, setShowBackupCodesStep] = useState(false);
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState("");
   const [feedbackType, setFeedbackType] = useState<"bug" | "feature">("bug");
@@ -1810,6 +1829,18 @@ if (bizData.business) {
       const verifiedFactor = factorsData?.totp?.find((f: any) => f.status === "verified");
       setTwoFactorEnabled(!!verifiedFactor);
       if (verifiedFactor) setMfaFactorId(verifiedFactor.id);
+
+      // ФІКС: без цієї перевірки verified TOTP-фактор існував лише як
+      // прапорець у Settings і ніколи не блокував вхід — currentLevel тут
+      // завжди "aal1" одразу після звичайного логіну, а nextLevel стає
+      // "aal2" ЛИШЕ якщо є хоча б один verified-фактор. Розбіжність між
+      // ними — і є сигнал "цій сесії потрібен ще один крок 2FA".
+      if (verifiedFactor) {
+        const { data: aalData } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+        if (aalData && aalData.currentLevel !== aalData.nextLevel) {
+          setMfaAal2Required(true);
+        }
+      }
     }
 
     return () => {
@@ -2350,14 +2381,108 @@ const startEnroll2FA = async () => {
       challengeId: challenge.id,
       code: mfaCode,
     });
-    setMfaLoading(false);
     if (verErr) {
+      setMfaLoading(false);
       setMfaMsg(verErr.message);
       return;
     }
     setTwoFactorEnabled(true);
     setMfaMsg("2FA enabled!");
-    setTimeout(() => { setShow2FAModal(false); setMfaCode(""); setMfaMsg(""); }, 1200);
+    setMfaCode("");
+
+    // Одразу після enroll генеруємо backup-коди — це та сама сесія, що
+    // щойно підтвердила aal2, тож requireUser() на бекенді пройде. Якщо
+    // генерація впаде — 2FA все одно увімкнено, просто без backup-кодів
+    // (користувач зможе згенерувати їх пізніше в Settings), тому помилку
+    // тут лише логуємо, а не блокуємо enroll.
+    setBackupCodesLoading(true);
+    try {
+      const res = await fetch("/api/mfa/backup-codes", { method: "POST" });
+      const data = await res.json();
+      if (res.ok && data.codes) {
+        setBackupCodes(data.codes);
+        setShowBackupCodesStep(true);
+      }
+    } catch (e) {
+      console.error("Failed to generate backup codes after 2FA enroll", e);
+    } finally {
+      setBackupCodesLoading(false);
+      setMfaLoading(false);
+    }
+  };
+
+  const closeBackupCodesStep = () => {
+    setShowBackupCodesStep(false);
+    setShow2FAModal(false);
+    setBackupCodes(null);
+    setMfaMsg("");
+  };
+
+  // TOTP-шлях основного aal2-челленджа при вході (окремий від enroll вище
+  // — тут mfaFactorId вже відомий з listFactors() на завантаженні сесії).
+  const submitMfaChallenge = async () => {
+    setMfaChallengeLoading(true);
+    setMfaChallengeMsg("");
+    const { data: challenge, error: chErr } = await supabase.auth.mfa.challenge({ factorId: mfaFactorId });
+    if (chErr) {
+      setMfaChallengeLoading(false);
+      setMfaChallengeMsg(chErr.message);
+      return;
+    }
+    const { error: verErr } = await supabase.auth.mfa.verify({
+      factorId: mfaFactorId,
+      challengeId: challenge.id,
+      code: mfaChallengeCode,
+    });
+    setMfaChallengeLoading(false);
+    if (verErr) {
+      setMfaChallengeMsg(verErr.message);
+      return;
+    }
+    setMfaAal2Required(false);
+    setMfaChallengeCode("");
+  };
+
+  // Backup-код: сервер сам звіряє хеш, позначає код used_at і видаляє
+  // verified-фактор(и) через admin API — а це, за поведінкою Supabase,
+  // одразу розлогинює ВСІ сесії користувача, включно з поточною. Тому тут
+  // немає сенсу знімати mfaAal2Required — просто виводимо повідомлення і
+  // ведемо на головну, звідки треба увійти заново (вже без 2FA-запиту,
+  // фактора більше немає).
+  const submitBackupCode = async () => {
+    setMfaChallengeLoading(true);
+    setMfaChallengeMsg("");
+    try {
+      const res = await fetch("/api/mfa/verify-backup-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: backupCodeInput }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setMfaChallengeLoading(false);
+        setMfaChallengeMsg(
+          data.error === "invalid_or_used_code"
+            ? (language === "UA" ? "Невірний або вже використаний код" : language === "DE" ? "Ungültiger oder bereits verwendeter Code" : "Invalid or already-used code")
+            : (language === "UA" ? "Не вдалося перевірити код" : language === "DE" ? "Code konnte nicht überprüft werden" : "Failed to verify code")
+        );
+        return;
+      }
+      setMfaChallengeMsg(
+        language === "UA"
+          ? "Код прийнято. Ваш попередній 2FA-пристрій скинуто — увійдіть ще раз і одразу налаштуйте новий у Settings."
+          : language === "DE"
+          ? "Code akzeptiert. Ihr bisheriges 2FA-Gerät wurde zurückgesetzt — melden Sie sich erneut an und richten Sie in den Einstellungen ein neues ein."
+          : "Code accepted. Your previous 2FA device has been reset — please sign in again and set up a new one in Settings."
+      );
+      setTimeout(async () => {
+        await supabase.auth.signOut();
+        router.push("/");
+      }, 2500);
+    } catch (e) {
+      setMfaChallengeLoading(false);
+      setMfaChallengeMsg(language === "UA" ? "Помилка мережі" : language === "DE" ? "Netzwerkfehler" : "Network error");
+    }
   };
 
   const disable2FA = async () => {
@@ -2452,6 +2577,81 @@ const getPlanLabel = (plan: string | null | undefined): string => {
         <div className="text-center">
           <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
           <p className="text-muted-foreground">{getTranslation("loading", "Loading...")}</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ФІКС: раніше цієї перевірки не існувало — verified TOTP-фактор ніяк не
+  // блокував доступ до дашборду, 2FA була декоративною. mfaAal2Required
+  // виставляється вище, одразу після listFactors() при завантаженні сесії.
+  if (mfaAal2Required) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-[380px] shadow-2xl">
+          <h2 className="text-lg font-semibold text-white mb-3">
+            {language === "UA" ? "Двофакторна автентифікація" : language === "DE" ? "Zwei-Faktor-Authentifizierung" : "Two-factor authentication"}
+          </h2>
+          {!mfaChallengeUseBackupCode ? (
+            <>
+              <p className="text-sm text-gray-400 mb-3">
+                {language === "UA"
+                  ? "Введіть 6-значний код з вашого застосунку-автентифікатора:"
+                  : language === "DE"
+                  ? "Geben Sie den 6-stelligen Code aus Ihrer Authenticator-App ein:"
+                  : "Enter the 6-digit code from your authenticator app:"}
+              </p>
+              <input
+                value={mfaChallengeCode}
+                onChange={(e) => setMfaChallengeCode(e.target.value)}
+                maxLength={6}
+                autoFocus
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 tracking-widest text-center"
+                placeholder="000000"
+              />
+              {mfaChallengeMsg && <p className="text-sm mt-2 text-red-400">{mfaChallengeMsg}</p>}
+              <Button className="w-full mt-4 bg-blue-600 hover:bg-blue-700" disabled={mfaChallengeLoading} onClick={submitMfaChallenge}>
+                {mfaChallengeLoading ? "..." : language === "UA" ? "Підтвердити" : language === "DE" ? "Bestätigen" : "Confirm"}
+              </Button>
+              <button
+                className="w-full text-center text-xs text-gray-500 hover:text-gray-300 mt-4"
+                onClick={() => { setMfaChallengeUseBackupCode(true); setMfaChallengeMsg(""); }}
+              >
+                {language === "UA" ? "Немає доступу до застосунку? Використати backup-код" : language === "DE" ? "Kein Zugriff auf die App? Backup-Code verwenden" : "Lost access to your app? Use a backup code"}
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-gray-400 mb-3">
+                {language === "UA"
+                  ? "Введіть один із backup-кодів, які ви зберегли при увімкненні 2FA:"
+                  : language === "DE"
+                  ? "Geben Sie einen der Backup-Codes ein, die Sie beim Aktivieren der 2FA gespeichert haben:"
+                  : "Enter one of the backup codes you saved when you enabled 2FA:"}
+              </p>
+              <input
+                value={backupCodeInput}
+                onChange={(e) => setBackupCodeInput(e.target.value)}
+                autoFocus
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 tracking-widest text-center"
+                placeholder="XXXXX-XXXXX"
+              />
+              {mfaChallengeMsg && (
+                <p className={`text-sm mt-2 ${mfaChallengeMsg.toLowerCase().includes("accept") || mfaChallengeMsg.includes("прийнято") || mfaChallengeMsg.includes("akzeptiert") ? "text-green-400" : "text-red-400"}`}>
+                  {mfaChallengeMsg}
+                </p>
+              )}
+              <Button className="w-full mt-4 bg-blue-600 hover:bg-blue-700" disabled={mfaChallengeLoading} onClick={submitBackupCode}>
+                {mfaChallengeLoading ? "..." : language === "UA" ? "Підтвердити" : language === "DE" ? "Bestätigen" : "Confirm"}
+              </Button>
+              <button
+                className="w-full text-center text-xs text-gray-500 hover:text-gray-300 mt-4"
+                onClick={() => { setMfaChallengeUseBackupCode(false); setMfaChallengeMsg(""); }}
+              >
+                {language === "UA" ? "Назад до коду з застосунку" : language === "DE" ? "Zurück zum App-Code" : "Back to authenticator code"}
+              </button>
+            </>
+          )}
         </div>
       </div>
     );
@@ -3965,6 +4165,38 @@ if (!subInfo) {
                       />
                     </div>
                   </div>
+                  {twoFactorEnabled && (
+                    <div className="flex items-center justify-between gap-3 py-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-foreground">{language === "UA" ? "Backup-коди" : language === "DE" ? "Backup-Codes" : "Backup codes"}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {language === "UA" ? "Перегенерувати, якщо загубили попередній набір" : language === "DE" ? "Neu generieren, wenn der bisherige Satz verloren ging" : "Regenerate if you've lost your previous set"}
+                        </p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="shrink-0"
+                        disabled={backupCodesLoading}
+                        onClick={async () => {
+                          setBackupCodesLoading(true);
+                          try {
+                            const res = await fetch("/api/mfa/backup-codes", { method: "POST" });
+                            const data = await res.json();
+                            if (res.ok && data.codes) {
+                              setBackupCodes(data.codes);
+                              setShowBackupCodesStep(true);
+                              setShow2FAModal(true);
+                            }
+                          } finally {
+                            setBackupCodesLoading(false);
+                          }
+                        }}
+                      >
+                        {backupCodesLoading ? "..." : language === "UA" ? "Перегенерувати" : language === "DE" ? "Neu generieren" : "Regenerate"}
+                      </Button>
+                    </div>
+                  )}
                 <div className="flex items-center justify-between gap-3 py-2">
                     <div className="flex-1 min-w-0"><p className="font-medium text-foreground">{T.settingsChangePassword || "Change Password"}</p><p className="text-xs text-muted-foreground">{T.settingsChangePasswordDesc || "Update your password"}</p></div>
                     <Button variant="outline" size="sm" className="shrink-0" onClick={() => setShowPasswordModal(true)}>{T.settingsUpdate || "Update"}</Button>
@@ -4394,42 +4626,95 @@ if (!subInfo) {
       {show2FAModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-[380px] shadow-2xl">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-white">
-                {language === "UA" ? "Увімкнути двофакторну автентифікацію" : language === "DE" ? "Zwei-Faktor-Authentifizierung aktivieren" : "Enable Two-Factor Auth"}
-              </h2>
-              <button onClick={() => { setShow2FAModal(false); setMfaCode(""); setMfaMsg(""); }} className="text-gray-500 hover:text-gray-300 p-2 -m-2">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <p className="text-sm text-gray-400 mb-3">
-              {language === "UA"
-                ? "Відскануйте цей QR-код у Google Authenticator або Authy:"
-                : language === "DE"
-                ? "Scannen Sie diesen QR-Code mit Google Authenticator oder Authy:"
-                : "Scan this QR code with Google Authenticator or Authy:"}
-            </p>
-          {mfaQrCode && (
-              <div className="bg-white rounded-lg p-3 mb-4 mx-auto w-[220px] h-[220px] flex items-center justify-center">
-                <img src={mfaQrCode} alt="2FA QR code" className="w-full h-full" />
-              </div>
+            {showBackupCodesStep ? (
+              <>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold text-white">
+                    {language === "UA" ? "Збережіть backup-коди" : language === "DE" ? "Backup-Codes speichern" : "Save your backup codes"}
+                  </h2>
+                </div>
+                <p className="text-sm text-gray-400 mb-3">
+                  {language === "UA"
+                    ? "Кожен код можна використати ОДИН РАЗ, якщо ви втратите доступ до застосунку-автентифікатора. Ми покажемо їх лише зараз — збережіть у надійному місці."
+                    : language === "DE"
+                    ? "Jeder Code kann EINMAL verwendet werden, falls Sie den Zugriff auf Ihre Authenticator-App verlieren. Wir zeigen sie nur jetzt an — bewahren Sie sie sicher auf."
+                    : "Each code works ONCE, if you ever lose access to your authenticator app. We only show these now — save them somewhere safe."}
+                </p>
+                <div className="bg-gray-950 border border-gray-700 rounded-lg p-3 mb-4 grid grid-cols-2 gap-2 font-mono text-sm text-white">
+                  {(backupCodes || []).map((code) => (
+                    <div key={code}>{code}</div>
+                  ))}
+                </div>
+                <div className="flex gap-2 mb-2">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => {
+                      navigator.clipboard?.writeText((backupCodes || []).join("\n"));
+                    }}
+                  >
+                    {language === "UA" ? "Копіювати" : language === "DE" ? "Kopieren" : "Copy"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => {
+                      const blob = new Blob([(backupCodes || []).join("\n")], { type: "text/plain" });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download = "rivant-backup-codes.txt";
+                      a.click();
+                      URL.revokeObjectURL(url);
+                    }}
+                  >
+                    {language === "UA" ? "Завантажити" : language === "DE" ? "Herunterladen" : "Download"}
+                  </Button>
+                </div>
+                <Button className="w-full bg-blue-600 hover:bg-blue-700" onClick={closeBackupCodesStep}>
+                  {language === "UA" ? "Я зберіг(-ла) коди" : language === "DE" ? "Ich habe die Codes gespeichert" : "I've saved my codes"}
+                </Button>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold text-white">
+                    {language === "UA" ? "Увімкнути двофакторну автентифікацію" : language === "DE" ? "Zwei-Faktor-Authentifizierung aktivieren" : "Enable Two-Factor Auth"}
+                  </h2>
+                  <button onClick={() => { setShow2FAModal(false); setMfaCode(""); setMfaMsg(""); }} className="text-gray-500 hover:text-gray-300 p-2 -m-2">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <p className="text-sm text-gray-400 mb-3">
+                  {language === "UA"
+                    ? "Відскануйте цей QR-код у Google Authenticator або Authy:"
+                    : language === "DE"
+                    ? "Scannen Sie diesen QR-Code mit Google Authenticator oder Authy:"
+                    : "Scan this QR code with Google Authenticator or Authy:"}
+                </p>
+              {mfaQrCode && (
+                  <div className="bg-white rounded-lg p-3 mb-4 mx-auto w-[220px] h-[220px] flex items-center justify-center">
+                    <img src={mfaQrCode} alt="2FA QR code" className="w-full h-full" />
+                  </div>
+                )}
+                <label className="text-xs text-gray-500 uppercase tracking-wider block mb-1">
+                  {language === "UA" ? "Введіть 6-значний код" : language === "DE" ? "6-stelligen Code eingeben" : "Enter 6-digit code"}
+                </label>
+                <input
+                  value={mfaCode}
+                  onChange={(e) => setMfaCode(e.target.value)}
+                  maxLength={6}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 tracking-widest text-center"
+                  placeholder="000000"
+                />
+                {mfaMsg && (
+                  <p className={`text-sm mt-2 ${mfaMsg.includes("enabled") ? "text-green-400" : "text-red-400"}`}>{mfaMsg}</p>
+                )}
+                <Button className="w-full mt-4 bg-blue-600 hover:bg-blue-700" disabled={mfaLoading || backupCodesLoading} onClick={confirmEnroll2FA}>
+                  {mfaLoading || backupCodesLoading ? "..." : language === "UA" ? "Підтвердити" : language === "DE" ? "Bestätigen" : "Confirm"}
+                </Button>
+              </>
             )}
-            <label className="text-xs text-gray-500 uppercase tracking-wider block mb-1">
-              {language === "UA" ? "Введіть 6-значний код" : language === "DE" ? "6-stelligen Code eingeben" : "Enter 6-digit code"}
-            </label>
-            <input
-              value={mfaCode}
-              onChange={(e) => setMfaCode(e.target.value)}
-              maxLength={6}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 tracking-widest text-center"
-              placeholder="000000"
-            />
-            {mfaMsg && (
-              <p className={`text-sm mt-2 ${mfaMsg.includes("enabled") ? "text-green-400" : "text-red-400"}`}>{mfaMsg}</p>
-            )}
-            <Button className="w-full mt-4 bg-blue-600 hover:bg-blue-700" disabled={mfaLoading} onClick={confirmEnroll2FA}>
-              {mfaLoading ? "..." : language === "UA" ? "Підтвердити" : language === "DE" ? "Bestätigen" : "Confirm"}
-            </Button>
           </div>
         </div>
       )}

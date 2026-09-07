@@ -7,6 +7,7 @@ import { runSync as runPaypalSync } from "./paypal-sync.mjs";
 import { runSync as runMollieSync } from "./mollie-sync.mjs";
 import { runSync as runQuickbooksSync } from "./quickbooks-sync.mjs";
 import { runDailyReports } from "./daily-reports.mjs";
+import { runOnboardingReminder } from "./onboarding-reminder.mjs";
 
 const jobs = [
   { name: "stripe", run: runStripeSync },
@@ -20,6 +21,10 @@ const jobs = [
   // Гоняется щогодини разом з рештою — сам вирішує всередині, чи зараз 08:00
   // або 20:00 за Києвом, і чи вже не слав сьогодні (див. daily-reports.mjs).
   { name: "daily_reports", run: runDailyReports },
+  // Как и daily_reports — крутится ежечасно, сам решает через
+  // hasRecentAlert()-кулдаун внутри, кому реально пора напомнить, а не
+  // как часто гонять сам крон.
+  { name: "onboarding_reminder", run: runOnboardingReminder },
 ];
 
 let hadFailure = false;

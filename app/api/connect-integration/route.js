@@ -329,7 +329,7 @@ export async function DELETE(req) {
     if (!provider) {
       return Response.json({ error: "provider is required" }, { status: 400 });
     }
-    if (!SUPPORTED_PROVIDERS.includes(provider)) {
+        if (!KEY_CONNECTABLE_PROVIDERS.includes(provider)) {
       return Response.json({ error: "Unsupported provider" }, { status: 400 });
     }
 

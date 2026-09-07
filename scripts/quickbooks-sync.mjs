@@ -22,14 +22,16 @@
 //    Тому revenue_mode ("replace"/"add") тут підтримується так само, як і
 //    для Shopify/WooCommerce — див. lib/revenue-mode.js.
 //
-// СВІДОМО НЕ РОБИМО В ЦІЙ ВЕРСІЇ: синк витрат (Purchase/Bill) у expenses.
-// public.expenses.category має жорсткий CHECK-констрейнт лише на
-// 'advertising' | 'shipping' | 'cost_of_goods' | 'other' (див. фікс від
-// 03.09.2026 у shopify-sync.mjs), а категорії рахунків у QuickBooks
-// довільні для кожної компанії (Chart of Accounts) — коректний мапінг
-// вимагає окремого UI, де клієнт сам зіставляє свої категорії з цими
-// чотирма, а не еврестичного вгадування тут. Дохід синкається вже зараз;
-// витрати — окрема майбутня задача.
+// ВИТРАТИ (Purchase/Bill) — синкаються теж, category визначається
+// ЕВРИСТИКОЮ за назвою рахунку (Line[].AccountRef.name), а НЕ ручним
+// мапінгом клієнта. public.expenses.category має жорсткий CHECK-констрейнт
+// лише на 'advertising' | 'shipping' | 'cost_of_goods' | 'other', а
+// Chart of Accounts у QuickBooks довільний для кожної компанії — тому
+// рахунок з нетиповою назвою (не за ключовими словами нижче,
+// categorizeQuickbooksAccount) мовчки піде в 'other'. Це свідомий
+// компроміс на MVP: реальні цифри витрат клієнт бачить одразу, без
+// окремого екрану "зіставте свої рахунки з цими чотирма категоріями" —
+// якщо хтось поскаржиться на неправильну категорію, тоді і будувати той UI.
 //
 // Джерела доходу: Payment (оплата інвойса) + SalesReceipt (продаж без
 // інвойсу, типовий POS/одноразовий кейс) — разом покривають обидва
@@ -185,6 +187,46 @@ async function upsertQuickbooksRevenue({ integrationId, integrationConfig, busin
   }
 }
 
+// Еврестика для Line[].AccountRef.name -> одна з 4 категорій
+// public.expenses.category. Порядок перевірок важливий: 'cost_of_goods'
+// перевіряється РАНІШЕ за загальні слова, щоб, наприклад, "Shipping
+// Materials" не впало у 'shipping' замість 'cost_of_goods' помилково —
+// втім, конкретно цей приклад все одно неоднозначний за задумом клієнта,
+// тому очікувано, що частина нетипових назв рахунків піде в 'other'
+// (див. коментар на початку файлу).
+function categorizeQuickbooksAccount(accountName) {
+  const name = String(accountName || "").toLowerCase();
+  if (/cost of goods|\bcogs\b|inventory|merchandise|raw material/.test(name)) return "cost_of_goods";
+  if (/shipping|postage|freight|courier|delivery/.test(name)) return "shipping";
+  if (/advertis|marketing|\bads\b|facebook ads|google ads|meta ads|promotion/.test(name)) return "advertising";
+  return "other";
+}
+
+// Той самий ідемпотентний патерн, що і upsertExpense у
+// meta-ads-sync.mjs/google-ads-sync.mjs: видаляємо стару строку за цим
+// business+date+source+category і вставляємо свіжу — без дублів при
+// повторному прогоні того самого вікна дат.
+async function upsertQuickbooksExpense({ businessId, date, amount, category }) {
+  await admin
+    .from("expenses")
+    .delete()
+    .eq("business_id", businessId)
+    .eq("date", date)
+    .eq("source", "quickbooks")
+    .eq("category", category);
+
+  if (amount > 0) {
+    await admin.from("expenses").insert({
+      business_id: businessId,
+      amount: Number(amount.toFixed(2)),
+      category,
+      description: "QuickBooks",
+      date,
+      source: "quickbooks",
+    });
+  }
+}
+
 async function main(businessId, options = {}) {
   const sinceDaysOverride = options.sinceDays || null;
 
@@ -232,9 +274,11 @@ async function main(businessId, options = {}) {
         await logError({ source: "quickbooks", message: "Failed to persist refreshed token", details: tokenSaveErr.message, businessId: integ.business_id });
       }
 
-      const [payments, salesReceipts] = await Promise.all([
+      const [payments, salesReceipts, purchases, bills] = await Promise.all([
         queryEntities(accessToken, realmId, "Payment", sinceDateStr),
         queryEntities(accessToken, realmId, "SalesReceipt", sinceDateStr),
+        queryEntities(accessToken, realmId, "Purchase", sinceDateStr),
+        queryEntities(accessToken, realmId, "Bill", sinceDateStr),
       ]);
 
       const byDate = {};
@@ -245,6 +289,27 @@ async function main(businessId, options = {}) {
         if (!byDate[date]) byDate[date] = { revenue: 0, orders: 0 };
         byDate[date].revenue += amount;
         byDate[date].orders += 1;
+      }
+
+      // Витрати рахуються по РЯДКАХ (Line[]), а не по TotalAmt всієї
+      // транзакції — одна Purchase/Bill може містити рядки з РІЗНИХ
+      // рахунків (наприклад, і "Advertising", і "Office Supplies" в одному
+      // чеку), і зводити все до однієї категорії за назвою транзакції було
+      // б неточно.
+      const expensesByDateCategory = {};
+      for (const entity of [...purchases, ...bills]) {
+        const date = entity.TxnDate;
+        if (!date) continue;
+        for (const line of entity.Line || []) {
+          const amount = Number(line.Amount);
+          const accountName =
+            line.AccountBasedExpenseLineDetail?.AccountRef?.name ||
+            line.ItemBasedExpenseLineDetail?.AccountRef?.name;
+          if (!Number.isFinite(amount) || amount <= 0 || !accountName) continue; // без AccountRef рядок — це, як правило, ItemBasedExpenseLineDetail без окремого рахунку витрат чи службовий SubTotal-рядок, пропускаємо
+          const category = categorizeQuickbooksAccount(accountName);
+          const key = `${date}::${category}`;
+          expensesByDateCategory[key] = (expensesByDateCategory[key] || 0) + amount;
+        }
       }
 
       const revenueMode = integ.config?.revenue_mode === "add" ? "add" : "replace";
@@ -260,13 +325,20 @@ async function main(businessId, options = {}) {
         });
       }
 
+      for (const [key, amount] of Object.entries(expensesByDateCategory)) {
+        const [date, category] = key.split("::");
+        await upsertQuickbooksExpense({ businessId: integ.business_id, date, amount, category });
+      }
+
       const { sync_error_reason: _prevError, ...cleanConfig } = integ.config || {};
       await admin
         .from("integrations")
         .update({ last_synced_at: new Date().toISOString(), status: "connected", config: cleanConfig })
         .eq("id", integ.id);
 
-      console.log(`QuickBooks synced business ${integ.business_id}: ${Object.keys(byDate).length} day(s)`);
+      console.log(
+        `QuickBooks synced business ${integ.business_id}: ${Object.keys(byDate).length} revenue day(s), ${Object.keys(expensesByDateCategory).length} expense day/category row(s)`
+      );
     } catch (err) {
       console.error(`Failed to sync QuickBooks integration ${integ.id}:`, err.message);
       await logError({
