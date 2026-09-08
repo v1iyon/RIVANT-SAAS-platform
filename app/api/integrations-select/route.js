@@ -29,6 +29,7 @@
 // Shopify" — REVENUE_SOURCE_PROVIDERS нижче й раніше містив усі 6.
 import { createClient } from "@supabase/supabase-js";
 import { requireUser, UnauthorizedError } from "@/lib/require-user";
+import { REVENUE_SOURCE_PROVIDERS, getMaxSlots } from "@/lib/plan-slots";
 
 const admin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -45,33 +46,25 @@ const SELECTABLE_PROVIDERS = ["stripe", "shopify", "woocommerce", "paypal", "mol
 // metrics_computed, яку заповнюють тільки stripe-sync, shopify-sync,
 // woocommerce-sync і paypal-sync). WooCommerce додано на тих самих правах,
 // що й Shopify — це теж самостійний storefront, а не рекламний канал, тож
-// теж вважається джерелом виручки. paypal доданий 03.09.2026 — lib/plan-slots.js
-// має той самий масив (єдиний "офіційний" список), цей файл історично тримає
-// власну копію замість імпорту звідти; зміна тут зроблена в парі зі зміною там.
-// Тому будь-який НЕпорожній вибір повинен містити щонайменше одне з шести.
-const REVENUE_SOURCE_PROVIDERS = ["stripe", "shopify", "woocommerce", "paypal", "mollie", "quickbooks"];
-
-// Кількість слотів інтеграцій за планом.
-const PLAN_SLOTS = {
-  starter: 2,
-  growth: 4,
-  scale: Infinity,
-  trial: Infinity, // трiал має реально дати спробувати все — інакше плашка
-  // "усі інтеграції безкоштовно" на лендингу була б неправдою.
-};
+// теж вважається джерелом виручки. paypal доданий 03.09.2026.
+//
+// FIX (2026-09-08): раніше цей масив і PLAN_SLOTS дублювались тут окремою
+// локальною копією замість імпорту з lib/plan-slots.js — двом місцям, які
+// мають лишатись синхронними вручну, рано чи пізно було судилось розійтись
+// (так уже сталось з тарифами один раз, див. історію бага в plan-slots.js).
+// Тепер REVENUE_SOURCE_PROVIDERS і getMaxSlots() — єдине джерело правди,
+// імпортоване вище з lib/plan-slots.js.
 
 // Спільна валідація для POST — винесена окремо, щоб її можна було
 // одноразово покрити тестами і не дублювати логіку "скільки слотів і чи є
 // серед них джерело виручки" у двох місцях.
 function validateSelection(plan, providers) {
-  const maxSlots = PLAN_SLOTS[plan];
+  const maxSlots = getMaxSlots(plan); // undefined = план невідомий, null = безліміт (Scale/Trial)
   if (maxSlots === undefined) {
     return "Additional integrations require an active plan";
   }
-  if (providers.length > maxSlots) {
-    return maxSlots === Infinity
-      ? "Invalid selection"
-      : `The ${plan} plan allows up to ${maxSlots} integration(s)`;
+  if (maxSlots !== null && providers.length > maxSlots) {
+    return `The ${plan} plan allows up to ${maxSlots} integration(s)`;
   }
   // Порожній вибір дозволений (клієнт ще нічого не підключив або свідомо
   // скинув вибір) — вимога "мінімум 1 джерело виручки" стосується тільки
@@ -173,4 +166,3 @@ export async function POST(req) {
   }
 }
 
-export { SELECTABLE_PROVIDERS, REVENUE_SOURCE_PROVIDERS, PLAN_SLOTS };

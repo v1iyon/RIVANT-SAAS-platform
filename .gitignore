@@ -19,3 +19,6 @@ node_modules
 # Repo hygiene (fix: audit FINAL A9 / B7 -- previous tmp/ line was UTF-16 encoded with null bytes, git could not parse it, so tmp/pdfs/*.pdf ended up committed despite this entry existing)
 tmp/
 supabase/.temp/
+
+# TS incremental build cache — regenerated locally/in CI, shouldn't be tracked
+*.tsbuildinfo

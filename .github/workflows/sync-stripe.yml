@@ -68,6 +68,12 @@ jobs:
           GOOGLE_ADS_CLIENT_ID: ${{ secrets.GOOGLE_ADS_CLIENT_ID }}
           GOOGLE_ADS_CLIENT_SECRET: ${{ secrets.GOOGLE_ADS_CLIENT_SECRET }}
           GOOGLE_ADS_DEVELOPER_TOKEN: ${{ secrets.GOOGLE_ADS_DEVELOPER_TOKEN }}
+          # Cron health (см. lib/cron-heartbeat.mjs): если основной 15-хвилинний
+          # cron-job.org замовкне і синк піде тільки раз на годину через
+          # нативний fallback нижче, власник отримає алерт у Telegram сюди.
+          # Якщо секрет не заведений — перевірка не падає, просто пише в
+          # error_logs замість Telegram (див. cron-heartbeat.mjs).
+          OWNER_TELEGRAM_CHAT_ID: ${{ secrets.OWNER_TELEGRAM_CHAT_ID }}
         run: node scripts/run-sync.mjs
 
       # п.9 аудита: раньше доставка допуслуг (What-If отчёт, дайджест) и

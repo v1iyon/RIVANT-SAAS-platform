@@ -8,6 +8,13 @@ import { runSync as runMollieSync } from "./mollie-sync.mjs";
 import { runSync as runQuickbooksSync } from "./quickbooks-sync.mjs";
 import { runDailyReports } from "./daily-reports.mjs";
 import { runOnboardingReminder } from "./onboarding-reminder.mjs";
+import { checkAndAlertIfLate, recordHeartbeat } from "../lib/cron-heartbeat.mjs";
+
+// Cron health-видимость (см. lib/cron-heartbeat.mjs): сверяем время
+// предыдущего прогона ДО того, как он будет перезаписан ниже — если разрыв
+// большой, это значит, что основной 15-минутный cron-job.org молчал и
+// сработал только часовой GitHub-fallback.
+await checkAndAlertIfLate("sync");
 
 const jobs = [
   { name: "stripe", run: runStripeSync },
@@ -40,5 +47,7 @@ for (const job of jobs) {
     // блокировать данные для другого (см. ЕТАП 3, п.3 плана).
   }
 }
+
+await recordHeartbeat("sync", hadFailure ? "partial_failure" : "ok");
 
 process.exitCode = hadFailure ? 1 : 0;
