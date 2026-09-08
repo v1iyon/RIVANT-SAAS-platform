@@ -26,7 +26,16 @@ const content = {
     s3link: "Google API Services User Data Policy",
     s3bAfter: ", including the Limited Use requirements.",
     s4heading: "4. Data Storage & Security",
-    s4: "Your data is stored securely using Supabase infrastructure. We take reasonable technical measures to protect your information from unauthorized access.",
+    s4: "Your data is stored using Supabase (PostgreSQL) infrastructure with encryption at rest, and all traffic between your browser and our servers is encrypted in transit via HTTPS/TLS. We apply the following technical safeguards:",
+    s4list: [
+      "Row Level Security (RLS) policies enforced at the database level, so each account can only ever query its own data — not just at the application layer.",
+      "Server-side session verification on every API request; no endpoint trusts a client-supplied user ID or email.",
+      "Cryptographic signature verification (HMAC-SHA256) on incoming payment webhooks, so payment and subscription status cannot be forged.",
+      "Rate limiting and bot-protection on public-facing forms (contact, feedback, reviews) to prevent abuse.",
+      "Third-party accounts (e.g. Google, QuickBooks) are connected via OAuth 2.0, so RIVANT never sees or stores your password for those services; where a provider requires an API key instead, it is stored encrypted and is never exposed to the browser.",
+      "Access to production infrastructure and databases is restricted to the development team.",
+    ],
+    s4note: "No method of transmission or storage is 100% secure, but we continuously review and improve these measures as the product evolves.",
     s5heading: "5. Data Retention",
     s5: "We retain your data for as long as your account is active. You can request deletion of your account and all associated data at any time from Settings → Danger Zone, or by contacting us.",
     s6heading: "6. Your Rights",
@@ -59,7 +68,16 @@ const content = {
     s3link: "Політиці використання даних користувачів API-сервісів Google",
     s3bAfter: ", включно з вимогами Limited Use.",
     s4heading: "4. Зберігання та захист даних",
-    s4: "Ваші дані надійно зберігаються на інфраструктурі Supabase. Ми вживаємо розумних технічних заходів для захисту вашої інформації від несанкціонованого доступу.",
+    s4: "Ваші дані зберігаються на інфраструктурі Supabase (PostgreSQL) із шифруванням у стані спокою, а весь трафік між вашим браузером і нашими серверами шифрується під час передачі через HTTPS/TLS. Ми застосовуємо такі технічні заходи захисту:",
+    s4list: [
+      "Політики Row Level Security (RLS) на рівні бази даних — кожен обліковий запис може отримати доступ лише до власних даних, і це гарантується не лише на рівні застосунку.",
+      "Перевірка сесії на сервері для кожного API-запиту; жоден ендпоінт не довіряє ID користувача чи email, надісланим клієнтом.",
+      "Криптографічна перевірка підпису (HMAC-SHA256) вхідних платіжних webhook-ів, щоб статус оплати та підписки не можна було підробити.",
+      "Обмеження частоти запитів (rate limiting) та захист від ботів на публічних формах (контакти, відгуки, фідбек).",
+      "Сторонні акаунти (наприклад, Google, QuickBooks) підключаються через OAuth 2.0, тому RIVANT ніколи не бачить і не зберігає ваш пароль від цих сервісів; якщо сервіс вимагає API-ключ — він зберігається в зашифрованому вигляді і ніколи не передається у браузер.",
+      "Доступ до продакшн-інфраструктури та баз даних обмежений командою розробки.",
+    ],
+    s4note: "Жоден спосіб передачі чи зберігання даних не є стовідсотково безпечним, але ми постійно переглядаємо та вдосконалюємо ці заходи в міру розвитку продукту.",
     s5heading: "5. Термін зберігання даних",
     s5: "Ми зберігаємо ваші дані, доки ваш обліковий запис активний. Ви можете в будь-який момент запросити видалення облікового запису та всіх пов'язаних даних у розділі Settings → Danger Zone або звернувшись до нас.",
     s6heading: "6. Ваші права",
@@ -92,7 +110,16 @@ const content = {
     s3link: "Google API Services User Data Policy",
     s3bAfter: ", einschließlich der Limited-Use-Anforderungen.",
     s4heading: "4. Datenspeicherung und Sicherheit",
-    s4: "Ihre Daten werden sicher über die Supabase-Infrastruktur gespeichert. Wir treffen angemessene technische Maßnahmen, um Ihre Informationen vor unbefugtem Zugriff zu schützen.",
+    s4: "Ihre Daten werden über die Supabase-Infrastruktur (PostgreSQL) mit Verschlüsselung im Ruhezustand gespeichert, und der gesamte Datenverkehr zwischen Ihrem Browser und unseren Servern wird bei der Übertragung über HTTPS/TLS verschlüsselt. Wir setzen folgende technische Schutzmaßnahmen ein:",
+    s4list: [
+      "Row-Level-Security-(RLS)-Richtlinien auf Datenbankebene, sodass jedes Konto ausschließlich auf seine eigenen Daten zugreifen kann — nicht nur auf Anwendungsebene.",
+      "Serverseitige Sitzungsüberprüfung bei jeder API-Anfrage; kein Endpunkt vertraut einer vom Client übermittelten Benutzer-ID oder E-Mail-Adresse.",
+      "Kryptografische Signaturprüfung (HMAC-SHA256) eingehender Zahlungs-Webhooks, damit der Zahlungs- und Abonnementstatus nicht gefälscht werden kann.",
+      "Ratenbegrenzung und Bot-Schutz für öffentliche Formulare (Kontakt, Feedback, Bewertungen).",
+      "Drittanbieterkonten (z. B. Google, QuickBooks) werden über OAuth 2.0 verbunden, sodass RIVANT Ihr Passwort für diese Dienste niemals sieht oder speichert; sofern ein Anbieter stattdessen einen API-Schlüssel erfordert, wird dieser verschlüsselt gespeichert und niemals an den Browser übermittelt.",
+      "Der Zugriff auf die Produktionsinfrastruktur und Datenbanken ist auf das Entwicklungsteam beschränkt.",
+    ],
+    s4note: "Keine Übertragungs- oder Speichermethode ist zu 100 % sicher, doch wir überprüfen und verbessern diese Maßnahmen kontinuierlich im Zuge der Weiterentwicklung des Produkts.",
     s5heading: "5. Datenspeicherdauer",
     s5: "Wir bewahren Ihre Daten so lange auf, wie Ihr Konto aktiv ist. Sie können jederzeit die Löschung Ihres Kontos und aller zugehörigen Daten über Settings → Danger Zone beantragen oder sich an uns wenden.",
     s6heading: "6. Ihre Rechte",
@@ -146,6 +173,12 @@ export default function PrivacyPolicyPage() {
 
         <h2 className="text-lg font-semibold text-white">{c.s4heading}</h2>
         <p>{c.s4}</p>
+        <ul className="list-disc pl-5 space-y-1">
+          {c.s4list.map((item, i) => (
+            <li key={i}>{item}</li>
+          ))}
+        </ul>
+        <p>{c.s4note}</p>
 
         <h2 className="text-lg font-semibold text-white">{c.s5heading}</h2>
         <p>{c.s5}</p>
