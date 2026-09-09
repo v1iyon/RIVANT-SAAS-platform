@@ -1058,6 +1058,30 @@ export default function DashboardClient() {
   const metricsRows = showOnboarding ? DEMO_METRICS_ROWS : metricsRowsReal;
   const metricsLoaded = showOnboarding ? true : metricsLoadedReal;
 
+  // Перемикач періоду для верхніх карток метрик (Дохід/Витрати/Чек/CAC/усі
+  // інші з каталогу WIDGET_CATALOG_IDS): "month" — за поточний календарний
+  // місяць (дефолт), "all" — за весь доступний період історії (в межах
+  // ліміту тарифного плану, див. HISTORY_DAYS_BY_PLAN на бекенді). НЕ
+  // впливає на графік "Дохід проти витрат" нижче — у нього свій окремий
+  // перемикач і свій дефолт (місяць), який ми навмисно не займаємо.
+  // Зберігається в localStorage, щоб вибір лишався і після перезавантаження
+  // сторінки, поки користувач сам не перемкне назад.
+  const METRICS_PERIOD_STORAGE_KEY = "rivant_metrics_period";
+  const [metricsPeriod, setMetricsPeriod] = useState<"month" | "all">("month");
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(METRICS_PERIOD_STORAGE_KEY);
+      if (saved === "all" || saved === "month") setMetricsPeriod(saved);
+    } catch {}
+  }, []);
+  const setMetricsPeriodPersisted = (value: "month" | "all") => {
+    setMetricsPeriod(value);
+    try {
+      window.localStorage.setItem(METRICS_PERIOD_STORAGE_KEY, value);
+    } catch {}
+  };
+  const isAllTimeMetrics = metricsPeriod === "all";
+
   const [widgetIds, setWidgetIds] = useState<WidgetId[]>(DEFAULT_WIDGET_IDS);
   // Поки не отримали відповідь /api/widget-prefs, ми не знаємо — юзер нічого не
   // міняв (тоді DEFAULT_WIDGET_IDS дійсно вірний) чи міняв (тоді дефолт — це
@@ -1106,25 +1130,49 @@ const forecastLoaded = showOnboarding ? true : forecastLoadedReal;
   // а не "часть месяца vs целый месяц".
   const prevMonthRows = prevMonthRowsFull.slice(0, currentMonthRows.length);
 
+  // Перемикач "місяць/весь час" (metricsPeriod) підмінює лише БАЗУ підсумку
+  // для верхніх карток — periodRows замінює currentMonthRows, коли обрано
+  // "весь час". Порівняння з попереднім періодом для "весь час" сенсу не
+  // має (немає чесного "попереднього всього часу"), тому periodCompareRows
+  // тут порожній, а change нижче явно занулюється через isAllTimeMetrics.
+  const periodRows = isAllTimeMetrics ? metricsRows : currentMonthRows;
+  const periodCompareRows = isAllTimeMetrics ? [] : prevMonthRows;
+
   const sumBy = (rows: MetricsRow[], f: (r: MetricsRow) => number) => rows.reduce((s, r) => s + f(r), 0);
   const marginFrom = (rows: MetricsRow[]) => {
     const rev = sumBy(rows, (r) => r.revenue);
     const prof = sumBy(rows, (r) => r.profit);
     return rev > 0 ? Number(((prof / rev) * 100).toFixed(1)) : 0;
   };
+  // Зважений CAC за довільний набір днів: сумуємо витрату на рекламу
+  // (cac_день * orders_день, тобто відновлюємо суму витрат із вже
+  // порахованого по днях cac) і ділимо на сумарну кількість замовлень —
+  // так агрегат лишається коректним середнім, а не середнім від середніх.
+  const aggregateCac = (rows: MetricsRow[], field: "cac" | "cacMeta" | "cacGoogle") => {
+    let spend = 0;
+    let orders = 0;
+    for (const r of rows) {
+      const c = r[field];
+      if (c != null && r.orders > 0) {
+        spend += c * r.orders;
+        orders += r.orders;
+      }
+    }
+    return orders > 0 ? Number((spend / orders).toFixed(2)) : null;
+  };
 
-  const currentRevenue = sumBy(currentMonthRows, (r) => r.revenue);
-  const currentProfit = sumBy(currentMonthRows, (r) => r.profit);
-  const currentMargin = marginFrom(currentMonthRows);
-  const currentCac = lastRow?.cac ?? null;
-  const currentCacMeta = lastRow?.cacMeta ?? null;
-  const currentCacGoogle = lastRow?.cacGoogle ?? null;
-  const prevRevenue = prevMonthRows.length ? sumBy(prevMonthRows, (r) => r.revenue) : currentRevenue;
-  const prevProfit = prevMonthRows.length ? sumBy(prevMonthRows, (r) => r.profit) : currentProfit;
-  const prevMargin = prevMonthRows.length ? marginFrom(prevMonthRows) : currentMargin;
-  const prevCac = prevRow?.cac ?? currentCac;
-  const prevCacMeta = prevRow?.cacMeta ?? currentCacMeta;
-  const prevCacGoogle = prevRow?.cacGoogle ?? currentCacGoogle;
+  const currentRevenue = sumBy(periodRows, (r) => r.revenue);
+  const currentProfit = sumBy(periodRows, (r) => r.profit);
+  const currentMargin = marginFrom(periodRows);
+  const currentCac = isAllTimeMetrics ? aggregateCac(metricsRows, "cac") : lastRow?.cac ?? null;
+  const currentCacMeta = isAllTimeMetrics ? aggregateCac(metricsRows, "cacMeta") : lastRow?.cacMeta ?? null;
+  const currentCacGoogle = isAllTimeMetrics ? aggregateCac(metricsRows, "cacGoogle") : lastRow?.cacGoogle ?? null;
+  const prevRevenue = isAllTimeMetrics ? currentRevenue : periodCompareRows.length ? sumBy(periodCompareRows, (r) => r.revenue) : currentRevenue;
+  const prevProfit = isAllTimeMetrics ? currentProfit : periodCompareRows.length ? sumBy(periodCompareRows, (r) => r.profit) : currentProfit;
+  const prevMargin = isAllTimeMetrics ? currentMargin : periodCompareRows.length ? marginFrom(periodCompareRows) : currentMargin;
+  const prevCac = isAllTimeMetrics ? null : prevRow?.cac ?? currentCac;
+  const prevCacMeta = isAllTimeMetrics ? null : prevRow?.cacMeta ?? currentCacMeta;
+  const prevCacGoogle = isAllTimeMetrics ? null : prevRow?.cacGoogle ?? currentCacGoogle;
 
   const revenueQueue = buildSparkline(metricsRows, (r) => r.revenue);
   const profitQueue = buildSparkline(metricsRows, (r) => r.profit);
@@ -1951,14 +1999,18 @@ useEffect(() => {
   // (например бизнес только что подключил Stripe, первый час без синка) —
   // используем старое сравнение по дням как временный фолбэк, чтобы карточка
   // не показывала "0.0%" вникуда.
-  const revenueChange = rollingMetrics
+  // У режимі "весь час" немає чесного "попереднього всього часу", тому
+  // % change для всіх карток явно null (включно з rolling_metrics-фолбеком,
+  // який завжди про "останні 24г" і був би оманливим поруч з тоталом за
+  // весь період).
+  const revenueChange = isAllTimeMetrics ? null : rollingMetrics
     ? pctChange(rollingMetrics.revenue_last24h, rollingMetrics.revenue_prev24h)
     : pctChange(currentRevenue, prevRevenue);
-  const profitChange = rollingMetrics
+  const profitChange = isAllTimeMetrics ? null : rollingMetrics
     ? pctChange(rollingMetrics.profit_last24h, rollingMetrics.profit_prev24h)
     : pctChange(currentProfit, prevProfit);
    const marginBaseRevenue = rollingMetrics ? rollingMetrics.revenue_prev24h : prevRevenue;
-  const marginChange = (marginBaseRevenue === null || marginBaseRevenue === undefined || Math.abs(marginBaseRevenue) < MEANINGFUL_BASE)
+  const marginChange = isAllTimeMetrics ? null : (marginBaseRevenue === null || marginBaseRevenue === undefined || Math.abs(marginBaseRevenue) < MEANINGFUL_BASE)
     ? null
     : Number((rollingMetrics
         ? (rollingMetrics.margin_last24h - rollingMetrics.margin_prev24h)
@@ -1967,19 +2019,19 @@ useEffect(() => {
   const cacMetaChange = currentCacMeta != null && prevCacMeta ? pctChange(currentCacMeta, prevCacMeta) : null;
   const cacGoogleChange = currentCacGoogle != null && prevCacGoogle ? pctChange(currentCacGoogle, prevCacGoogle) : null;
 
-  const currentOrders = sumBy(currentMonthRows, (r) => r.orders);
-  const prevOrders = prevMonthRows.length ? sumBy(prevMonthRows, (r) => r.orders) : currentOrders;
-  const ordersChange = pctChange(currentOrders, prevOrders);
+  const currentOrders = sumBy(periodRows, (r) => r.orders);
+  const prevOrders = isAllTimeMetrics ? currentOrders : periodCompareRows.length ? sumBy(periodCompareRows, (r) => r.orders) : currentOrders;
+  const ordersChange = isAllTimeMetrics ? null : pctChange(currentOrders, prevOrders);
   const ordersQueue = buildSparkline(metricsRows, (r) => r.orders);
 
   const currentAov = currentOrders > 0 ? currentRevenue / currentOrders : 0;
   const prevAov = prevOrders > 0 ? prevRevenue / prevOrders : currentAov;
-  const aovChange = pctChange(currentAov, prevAov);
+  const aovChange = isAllTimeMetrics ? null : pctChange(currentAov, prevAov);
   const aovQueue = buildSparkline(metricsRows, (r) => (r.orders > 0 ? r.revenue / r.orders : 0));
 
-  const currentExpenses = sumBy(currentMonthRows, (r) => r.expenses);
-  const prevExpenses = prevMonthRows.length ? sumBy(prevMonthRows, (r) => r.expenses) : currentExpenses;
-  const expensesChange = pctChange(currentExpenses, prevExpenses);
+  const currentExpenses = sumBy(periodRows, (r) => r.expenses);
+  const prevExpenses = isAllTimeMetrics ? currentExpenses : periodCompareRows.length ? sumBy(periodCompareRows, (r) => r.expenses) : currentExpenses;
+  const expensesChange = isAllTimeMetrics ? null : pctChange(currentExpenses, prevExpenses);
   const expensesQueue = buildSparkline(metricsRows, (r) => r.expenses);
 
   const widgetLabel = (id: WidgetId): string => {
@@ -2002,22 +2054,28 @@ useEffect(() => {
     dotClass: WIDGET_DOT_CLASS[id],
   }));
 
+  // Підпис під заголовком картки: "цього місяця" або "за весь час" залежно
+  // від metricsPeriod — той самий перемикач, що й для сум вище.
+  const periodSubtitle = isAllTimeMetrics
+    ? (language === "UA" ? "за весь час" : language === "DE" ? "gesamt" : "all time")
+    : (t as any).thisMonth;
+
   const renderOverviewWidget = (id: WidgetId) => {
     switch (id) {
       case "revenue":
         return (
           <MetricCard key={id} title={(t as any).revenue || "Revenue"} value={convert(currentRevenue)} change={revenueChange}
-            color="bg-blue-500" prefix={symbol} subtitle={(t as any).thisMonth} sparklineData={revenueQueue} prevValue={prevRevenue} />
+            color="bg-blue-500" prefix={symbol} subtitle={periodSubtitle} sparklineData={revenueQueue} prevValue={prevRevenue} />
         );
       case "profit":
         return (
           <MetricCard key={id} title={(t as any).profit || "Profit"} value={convert(currentProfit)} change={profitChange}
-            color="bg-green-500" prefix={symbol} subtitle={(t as any).thisMonth} sparklineData={profitQueue} prevValue={prevProfit} />
+            color="bg-green-500" prefix={symbol} subtitle={periodSubtitle} sparklineData={profitQueue} prevValue={prevProfit} />
         );
       case "margin":
         return (
           <MetricCard key={id} title={(t as any).margin || "Margin"} value={currentMargin} change={marginChange}
-            color="bg-purple-500" prefix="" suffix="%" subtitle={(t as any).thisMonth} sparklineData={marginQueue} prevValue={prevMargin} />
+            color="bg-purple-500" prefix="" suffix="%" subtitle={periodSubtitle} sparklineData={marginQueue} prevValue={prevMargin} />
         );
       case "cac":
         // CAC (вартість залучення клієнта) — це витрата: якщо вона росте,
@@ -2043,12 +2101,12 @@ useEffect(() => {
       case "orders":
         return (
           <MetricCard key={id} title={widgetLabel("orders")} value={currentOrders} change={ordersChange}
-            color="bg-cyan-500" prefix="" subtitle={(t as any).thisMonth} sparklineData={ordersQueue} prevValue={prevOrders} />
+            color="bg-cyan-500" prefix="" subtitle={periodSubtitle} sparklineData={ordersQueue} prevValue={prevOrders} />
         );
       case "aov":
         return (
           <MetricCard key={id} title={widgetLabel("aov")} value={convert(currentAov)} change={aovChange}
-            color="bg-pink-500" prefix={symbol} subtitle={(t as any).thisMonth} sparklineData={aovQueue} prevValue={prevAov} />
+            color="bg-pink-500" prefix={symbol} subtitle={periodSubtitle} sparklineData={aovQueue} prevValue={prevAov} />
         );
       case "expenses":
         // Витрати — це метрика, де ЗРОСТАННЯ = погано, тож invert=true:
@@ -2056,7 +2114,7 @@ useEffect(() => {
         // передавався, і зростання витрат помилково фарбувалось у зелений).
         return (
           <MetricCard key={id} title={widgetLabel("expenses")} value={convert(currentExpenses)} change={expensesChange}
-            color="bg-red-500" prefix={symbol} subtitle={(t as any).thisMonth} sparklineData={expensesQueue} prevValue={prevExpenses} invert />
+            color="bg-red-500" prefix={symbol} subtitle={periodSubtitle} sparklineData={expensesQueue} prevValue={prevExpenses} invert />
         );
       default:
         return null;
@@ -3085,6 +3143,30 @@ if (!subInfo) {
                     >
                       <Settings className="w-3.5 h-3.5" />
                     </button>
+                    {/* Перемикач періоду для верхніх карток метрик: "Місяць" /
+                        "Весь час". Не рухаємо графік нижче — у нього свій
+                        контрол. Розташований зліва зверху, дзеркально до
+                        шестерні справа, щоб не заважати карткам. */}
+                    <div className="flex items-center gap-1.5 mb-2.5 -mt-1">
+                      <div className="inline-flex items-center bg-gray-800/70 border border-gray-700 rounded-full p-0.5 text-[11px] font-medium">
+                        <button
+                          onClick={() => setMetricsPeriodPersisted("month")}
+                          className={`px-2.5 py-1 rounded-full transition-colors ${
+                            !isAllTimeMetrics ? "bg-blue-600 text-white" : "text-gray-400 hover:text-gray-200"
+                          }`}
+                        >
+                          {language === "UA" ? "Місяць" : language === "DE" ? "Monat" : "Month"}
+                        </button>
+                        <button
+                          onClick={() => setMetricsPeriodPersisted("all")}
+                          className={`px-2.5 py-1 rounded-full transition-colors ${
+                            isAllTimeMetrics ? "bg-blue-600 text-white" : "text-gray-400 hover:text-gray-200"
+                          }`}
+                        >
+                          {language === "UA" ? "Весь час" : language === "DE" ? "Gesamt" : "All time"}
+                        </button>
+                      </div>
+                    </div>
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 items-start">
                       {widgetPrefsLoaded
                         ? widgetIds.map((id) => renderOverviewWidget(id))

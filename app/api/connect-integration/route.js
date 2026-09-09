@@ -329,7 +329,17 @@ export async function DELETE(req) {
     if (!provider) {
       return Response.json({ error: "provider is required" }, { status: 400 });
     }
-        if (!KEY_CONNECTABLE_PROVIDERS.includes(provider)) {
+    // ФІКС (09.09.2026): тут раніше помилково стояв KEY_CONNECTABLE_PROVIDERS
+    // (список БЕЗ quickbooks, призначений лише для POST — валідація ручного
+    // вводу ключа). DELETE має відключати ВСІХ провайдерів з SUPPORTED_PROVIDERS
+    // (quickbooks підключається через OAuth, але відключати його треба тим
+    // самим генериком, що й решту — див. коментар біля SUPPORTED_PROVIDERS
+    // вище і ALERT_TYPE_BY_PROVIDER нижче, який explicitly очікує quickbooks
+    // саме в DELETE-гілці). Через цю помилку кнопка "Відключити" для
+    // QuickBooks мовчки падала з 400 Unsupported provider, а фронтенд
+    // (integration-connect-card.tsx) не перевіряв response.ok і все одно
+    // малював "відключено" локально — інтеграція лишалась connected у БД.
+    if (!SUPPORTED_PROVIDERS.includes(provider)) {
       return Response.json({ error: "Unsupported provider" }, { status: 400 });
     }
 

@@ -394,11 +394,29 @@ export function IntegrationConnectCard({
       triggerLockedToast();
       return;
     }
-    await fetch("/api/connect-integration", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, provider }),
-    });
+    try {
+      const res = await fetch("/api/connect-integration", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, provider }),
+      });
+      // ФІКС (09.09.2026): раніше відповідь запиту взагалі не перевірялась —
+      // якщо сервер відповідав 400/500 (як довгий час було саме для
+      // quickbooks через баг у KEY_CONNECTABLE_PROVIDERS на бекенді),
+      // картка все одно малювала "відключено" локально, а після переходу на
+      // іншу вкладку й назад показувала знову "підключено", бо в БД нічого
+      // насправді не змінювалось. Тепер помилка показується явно замість
+      // мовчазного та оманливого "успіху".
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setErrorMsg(data?.error || "Disconnect failed");
+        return;
+      }
+    } catch {
+      setErrorMsg("Network error");
+      return;
+    }
+    setErrorMsg("");
     setStatus("idle");
     setLastSynced(null);
     setKeyPreview(null);
