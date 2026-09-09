@@ -2,6 +2,7 @@
   "crons": [
     { "path": "/api/cron/sync-stripe", "schedule": "0 3 * * *" },
     { "path": "/api/cron/monthly-digest", "schedule": "0 4 1 * *" },
+    { "path": "/api/cron/trial-prompt", "schedule": "0 9 * * *" },
     { "path": "/api/cron/addon-expiry", "schedule": "15 4 * * *" }
   ]
 }
