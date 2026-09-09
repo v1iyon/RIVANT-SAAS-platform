@@ -2059,17 +2059,17 @@ useEffect(() => {
       case "revenue":
         return (
           <MetricCard key={id} title={(t as any).revenue || "Revenue"} value={convert(currentRevenue)} change={revenueChange}
-            color="bg-blue-500" prefix={symbol} subtitle={periodSubtitle} sparklineData={revenueQueue} prevValue={prevRevenue} />
+            color="bg-blue-500" prefix={symbol} sparklineData={revenueQueue} prevValue={prevRevenue} />
         );
       case "profit":
         return (
           <MetricCard key={id} title={(t as any).profit || "Profit"} value={convert(currentProfit)} change={profitChange}
-            color="bg-green-500" prefix={symbol} subtitle={periodSubtitle} sparklineData={profitQueue} prevValue={prevProfit} />
+            color="bg-green-500" prefix={symbol} sparklineData={profitQueue} prevValue={prevProfit} />
         );
       case "margin":
         return (
           <MetricCard key={id} title={(t as any).margin || "Margin"} value={currentMargin} change={marginChange}
-            color="bg-purple-500" prefix="" suffix="%" subtitle={periodSubtitle} sparklineData={marginQueue} prevValue={prevMargin} />
+            color="bg-purple-500" prefix="" suffix="%" sparklineData={marginQueue} prevValue={prevMargin} />
         );
       case "cac":
         // CAC (вартість залучення клієнта) — це витрата: якщо вона росте,
@@ -2095,12 +2095,12 @@ useEffect(() => {
       case "orders":
         return (
           <MetricCard key={id} title={widgetLabel("orders")} value={currentOrders} change={ordersChange}
-            color="bg-cyan-500" prefix="" subtitle={periodSubtitle} sparklineData={ordersQueue} prevValue={prevOrders} />
+            color="bg-cyan-500" prefix="" sparklineData={ordersQueue} prevValue={prevOrders} />
         );
       case "aov":
         return (
           <MetricCard key={id} title={widgetLabel("aov")} value={convert(currentAov)} change={aovChange}
-            color="bg-pink-500" prefix={symbol} subtitle={periodSubtitle} sparklineData={aovQueue} prevValue={prevAov} />
+            color="bg-pink-500" prefix={symbol} sparklineData={aovQueue} prevValue={prevAov} />
         );
       case "expenses":
         // Витрати — це метрика, де ЗРОСТАННЯ = погано, тож invert=true:
@@ -2108,7 +2108,7 @@ useEffect(() => {
         // передавався, і зростання витрат помилково фарбувалось у зелений).
         return (
           <MetricCard key={id} title={widgetLabel("expenses")} value={convert(currentExpenses)} change={expensesChange}
-            color="bg-red-500" prefix={symbol} subtitle={periodSubtitle} sparklineData={expensesQueue} prevValue={prevExpenses} invert />
+            color="bg-red-500" prefix={symbol} sparklineData={expensesQueue} prevValue={prevExpenses} invert />
         );
       default:
         return null;
@@ -3128,7 +3128,7 @@ if (!subInfo) {
                       onNavigate={(view) => navigateToView(view)}
                     />
                   )}
-                  <div data-tour="metrics-overview" className="relative">
+                  <div data-tour="metrics-overview" className="relative pt-7">
                     <button
                       data-tour="metrics-gear"
                       onClick={() => setWidgetPrefsOpen(true)}
@@ -3139,9 +3139,10 @@ if (!subInfo) {
                     </button>
                     {/* Перемикач періоду для верхніх карток метрик: "Місяць" /
                         "Весь час". Не рухаємо графік нижче — у нього свій
-                        контрол. Розташований зліва зверху, дзеркально до
-                        шестерні справа, щоб не заважати карткам. */}
-                    <div className="flex items-center gap-1.5 mb-2.5 -mt-1">
+                        контрол. Абсолютно позиціонований зліва зверху, на
+                        одній лінії з шестернею справа (той самий -top-2),
+                        щоб не займати зайвий рядок над картками. */}
+                    <div className="absolute -top-2 left-0 z-10 flex items-center gap-1.5">
                       <div className="inline-flex items-center bg-gray-800/70 border border-gray-700 rounded-full p-0.5 text-[11px] font-medium">
                         <button
                           onClick={() => setMetricsPeriodPersisted("month")}
