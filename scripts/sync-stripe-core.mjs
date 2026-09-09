@@ -84,6 +84,102 @@ const REVENUE_DROP_MESSAGE = {
   DE: (name, pct) => `Umsatz von ${name} ist um ${pct}% gesunken`,
 };
 
+// margin_drop: окремий сигнал від revenue_drop — виручка може триматись
+// або навіть зростати, а маржа тим часом стискається (витрати/собівартість
+// ростуть швидше за виручку). Раніше такий сценарій взагалі не мав
+// власного алерту: revenue_drop лише ЗГАДУВАВ маржу в тексті повідомлення
+// про падіння виручки, але якщо виручка не падала — жодного сигналу про
+// маржу користувач не отримував, хоча прибутковість могла тихо танути
+// тижнями (саме такий тренд бачимо в прогнозі — маржа -0.40 п.п./день).
+// Поріг рахується в процентних пунктах (не у %), бо маржа сама по собі —
+// вже процентна величина: "маржа впала на 10 п.п." (з 40% до 30%) значно
+// зрозуміліше і стабільніше сигналізує проблему, ніж "маржа впала на 25%".
+const MARGIN_DROP_MESSAGE = {
+  UA: (name, pts) => `Маржа "${name}" впала на ${pts} п.п.`,
+  EN: (name, pts) => `Margin for ${name} dropped ${pts} pts`,
+  DE: (name, pts) => `Marge von ${name} ist um ${pts} Pp. gesunken`,
+};
+
+const MARGIN_PROMPTS = {
+  UA: (b, t, y, deltaPts) => `Дані бізнесу "${b.name}":
+За останні 24 години: виручка $${t.revenue}, витрати $${t.cost}, маржа ${t.margin_pct}%
+За попередні 24 години: виручка $${y.revenue}, витрати $${y.cost}, маржа ${y.margin_pct}%
+Маржа знизилась на ${Math.abs(deltaPts).toFixed(1)} процентних пункти, тоді як виручка ${t.revenue >= y.revenue ? "не впала" : "теж впала"}.
+Напиши ОДНЕ речення (до 30 слів) українською, професійним діловим тоном, без розмовних слів типу "тож" чи "отже", яке пояснює, що витрати/собівартість ростуть швидше за виручку, і дає 2-3 конкретні пункти для перевірки.
+Відповідай ЛИШЕ цим реченням, без лапок і пояснень.`,
+
+  EN: (b, t, y, deltaPts) => `Data for business "${b.name}":
+Last 24 hours: revenue $${t.revenue}, costs $${t.cost}, margin ${t.margin_pct}%
+Previous 24 hours: revenue $${y.revenue}, costs $${y.cost}, margin ${y.margin_pct}%
+Margin dropped ${Math.abs(deltaPts).toFixed(1)} percentage points, while revenue ${t.revenue >= y.revenue ? "did not fall" : "also fell"}.
+Write ONE sentence (max 30 words) in English, professional business tone, no filler words, explaining that costs/COGS are growing faster than revenue, and give 2-3 specific items to check.
+Reply ONLY with this sentence, no quotes or explanations.`,
+
+  DE: (b, t, y, deltaPts) => `Daten für "${b.name}":
+Letzte 24 Stunden: Umsatz $${t.revenue}, Kosten $${t.cost}, Marge ${t.margin_pct}%
+Vorherige 24 Stunden: Umsatz $${y.revenue}, Kosten $${y.cost}, Marge ${y.margin_pct}%
+Die Marge ist um ${Math.abs(deltaPts).toFixed(1)} Prozentpunkte gesunken, während der Umsatz ${t.revenue >= y.revenue ? "nicht gesunken ist" : "ebenfalls gesunken ist"}.
+Schreibe EINEN Satz (max. 30 Wörter) auf Deutsch, professioneller Geschäftston, keine Füllwörter, der erklärt, dass Kosten/Wareneinsatz schneller wachsen als der Umsatz, und nenne 2-3 konkrete Prüfpunkte.
+Antworte NUR mit diesem Satz, ohne Anführungszeichen oder Erklärungen.`,
+};
+
+function buildMarginFallbackExplanation(language, today, yesterday, deltaPts) {
+  const checkList = {
+    UA: "Перевірте: чи не зросла собівартість товару/постачальника, чи не подорожчала доставка чи реклама, і чи ціни не знижувались без потреби.",
+    EN: "Check: rising cost-of-goods or supplier prices, higher shipping/ad costs, and any unnecessary price cuts.",
+    DE: "Prüfen Sie: gestiegene Wareneinsatzkosten oder Lieferantenpreise, höhere Versand-/Werbekosten und unnötige Preissenkungen.",
+  };
+  const templates = {
+    UA: `Маржа знизилась на ${Math.abs(deltaPts).toFixed(1)} п.п. (з ${yesterday.margin_pct}% до ${today.margin_pct}%) — витрати ростуть швидше за виручку. ${checkList.UA}`,
+    EN: `Margin dropped ${Math.abs(deltaPts).toFixed(1)} pts (from ${yesterday.margin_pct}% to ${today.margin_pct}%) — costs are growing faster than revenue. ${checkList.EN}`,
+    DE: `Die Marge ist um ${Math.abs(deltaPts).toFixed(1)} Pp. gesunken (von ${yesterday.margin_pct}% auf ${today.margin_pct}%) — die Kosten wachsen schneller als der Umsatz. ${checkList.DE}`,
+  };
+  return templates[language] || templates.EN;
+}
+
+async function getMarginAIExplanation(business, today, yesterday, language = "EN", deltaPts) {
+  const buildPrompt = MARGIN_PROMPTS[language] || MARGIN_PROMPTS.EN;
+  const prompt = buildPrompt(business, today, yesterday, deltaPts);
+  const fallback = () => buildMarginFallbackExplanation(language, today, yesterday, deltaPts);
+
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": process.env.ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-5",
+          max_tokens: 150,
+          messages: [{ role: "user", content: prompt }],
+        }),
+      });
+
+      if (!res.ok) {
+        const errBody = await res.text();
+        throw new Error(`Anthropic API error: ${res.status} — ${errBody}`);
+      }
+      const data = await res.json();
+      return data.content?.[0]?.text?.trim() || fallback();
+    } catch (err) {
+      console.error(`Margin AI explanation failed (attempt ${attempt}/2):`, err.message);
+      if (attempt === 2) {
+        await logError({
+          source: "margin_ai_explanation",
+          message: err.message,
+          businessId: business.id,
+        });
+        return fallback();
+      }
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+  }
+  return fallback();
+}
+
 // Отдельный, более быстрый сигнал специально про технический сбой (упал
 // Stripe/чекаут/сайт), а не про спад спроса — см. обсуждение с пользователем:
 // сравнение "последние N часов vs предыдущие N часов" ложно срабатывает на
@@ -767,8 +863,90 @@ async function main(businessId, options = {}) {
               }
             );
           }
+
+          // margin_drop: незалежний від revenue_drop сигнал (див. коментар
+          // біля MARGIN_DROP_MESSAGE вище). Рахуємо повну маржу (з
+          // урахуванням expenses) для today/prev ЗАВЖДИ на цьому кроці, а
+          // не тільки всередині revenue_drop-гілки — інакше цей сигнал
+          // ніколи б не спрацював, якщо виручка сама по собі не впала.
+          {
+            const todaySmallRevenue = last24h.revenue < MIN_REVENUE_FOR_ALERT;
+            const { marginPct: todayFullMargin } = await getFullMargin(
+              business.id, date, last24h.revenue, last24hCost
+            );
+            const { marginPct: prevFullMargin } = await getFullMargin(
+              business.id, prevDate, prev24h.revenue, prev24hCost
+            );
+            const marginDeltaPts = todayFullMargin - prevFullMargin;
+
+            // Пороги в процентних пунктах (не в %) — та сама чутливість
+            // сповіщень (Settings), що й для revenue_drop, масштабує і цей
+            // поріг, щоб власник, який обрав "низьку чутливість", не
+            // отримував такий самий потік margin_drop, як і revenue_drop.
+            const marginDropThresholdPts = 10 * sensitivityMultiplier;
+            const marginHighSeverityPts = 20 * sensitivityMultiplier;
+            const marginCriticalSeverityPts = 30 * sensitivityMultiplier;
+
+            if (marginDeltaPts > -marginDropThresholdPts || tooSmallToMatter || todaySmallRevenue) {
+              await admin
+                .from("alerts_log")
+                .update({ status: "resolved" })
+                .eq("business_id", business.id)
+                .eq("type", "margin_drop")
+                .eq("status", "open");
+            }
+
+            if (
+              marginDeltaPts <= -marginDropThresholdPts &&
+              !tooSmallToMatter &&
+              !todaySmallRevenue &&
+              !(await hasRecentAlert(business.id, "margin_drop"))
+            ) {
+              const severity =
+                marginDeltaPts <= -marginCriticalSeverityPts
+                  ? "critical"
+                  : marginDeltaPts <= -marginHighSeverityPts
+                  ? "high"
+                  : "medium";
+
+              const { data: user } = await admin
+                .from("users")
+                .select("telegram_id, email, email_enabled, push_enabled, language")
+                .eq("id", business.user_id)
+                .maybeSingle();
+
+              const userLang = user?.language || "EN";
+              const buildMessage = MARGIN_DROP_MESSAGE[userLang] || MARGIN_DROP_MESSAGE.EN;
+              const message = buildMessage(business.name, Math.abs(marginDeltaPts).toFixed(1));
+
+              const aiExplanation = await getMarginAIExplanation(
+                business,
+                { revenue: last24h.revenue, cost: last24hCost, margin_pct: todayFullMargin },
+                { revenue: prev24h.revenue, cost: prev24hCost, margin_pct: prevFullMargin },
+                userLang,
+                marginDeltaPts
+              );
+
+              await sendAlertToBusiness(
+                business.id,
+                {
+                  telegramId: user?.push_enabled !== false ? user?.telegram_id : null,
+                  email: user?.email,
+                  emailEnabled: user?.email_enabled,
+                  userLang,
+                },
+                {
+                  type: "margin_drop",
+                  severity,
+                  message,
+                  aiExplanation,
+                }
+              );
+            }
+          }
         }
       }
+
 
       // "Тишина по платежам" — быстрый сигнал именно о технической проблеме,
       // не диллюированный суточным окном как revenue_drop. Порог — свой для

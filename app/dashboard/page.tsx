@@ -112,6 +112,7 @@ function alertTypeToCategory(type: string): Risk["category"] {
   if (type === "payment_silence_stripe") return "finance";
   if (type === "cac_spike") return "cac";
   if (type === "cogs_spike_shopify") return "margin";
+  if (type === "margin_drop") return "margin";
   if (type === "shipping_spike_shopify") return "shipping";
   if (type === "shipping_spike_woocommerce") return "shipping";
   if (type.startsWith("low_stock_shopify_")) return "inventory";
@@ -1003,6 +1004,43 @@ export default function DashboardClient() {
     v == null ? (v as null) : convert(v);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [activeView, setActiveView] = useState<ViewType>("overview");
+  // Кожна вкладка кабінету (risks/forecast/integrations/settings/faq)
+  // тепер має власну адресу (/dashboard?view=risks і т.д.), а не тільки
+  // внутрішній React-стан. Раніше activeView жив лише в useState — після
+  // Refresh або переходу по вкладці браузера "Назад" людину завжди
+  // повертало на "overview", навіть якщо вона щойно була на "Ризики" чи
+  // "Інтеграції". navigateToView() — єдина точка входу для переключення
+  // вкладки: одночасно міняє і React-стан (для рендера), і URL (через
+  // history.pushState, без переходу Next.js router, щоб не тригерити
+  // зайвий ре-фетч даних кабінету).
+  const navigateToView = useCallback((view: ViewType) => {
+    setActiveView(view);
+    const url = view === "overview" ? "/dashboard" : `/dashboard?view=${view}`;
+    if (typeof window !== "undefined" && `${window.location.pathname}${window.location.search}` !== url) {
+      window.history.pushState({ view }, "", url);
+    }
+  }, []);
+  const isViewType = (v: string | null): v is ViewType =>
+    v === "overview" || v === "risks" || v === "forecast" || v === "integrations" || v === "settings" || v === "faq";
+  // При першому рендері (F5 на /dashboard?view=risks, або перехід за
+  // збереженим/надісланим посиланням) читаємо вкладку з URL напряму з
+  // window.location — навмисно НЕ через useSearchParams(), щоб не тягнути
+  // за собою вимогу Suspense-межі для всього дашборду заради одного разового
+  // читання параметра.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const fromUrl = new URLSearchParams(window.location.search).get("view");
+    if (isViewType(fromUrl)) setActiveView(fromUrl);
+    // Кнопки "Назад"/"Вперед" браузера мають повертати на попередню
+    // вкладку кабінету, а не перезавантажувати сторінку — слухаємо popstate
+    // і синхронізуємо activeView з URL, який змінив сам браузер.
+    const onPopState = () => {
+      const v = new URLSearchParams(window.location.search).get("view");
+      setActiveView(isViewType(v) ? v : "overview");
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   // Объявлено здесь (а не рядом с остальными "showXyz" стейтами ниже),
   // потому что демо-данные тура (metricsRows/risks/forecastData ниже)
@@ -1200,7 +1238,7 @@ const digestRef = useRef<HTMLDivElement | null>(null);
   const [faqInitialSlug, setFaqInitialSlug] = useState<string | null>(null);
   const openFaqArticle = (slug: string) => {
     setFaqInitialSlug(slug);
-    setActiveView("faq");
+    navigateToView("faq");
   };
 const [deleteConfirmText, setDeleteConfirmText] = useState("");
 const [deleting, setDeleting] = useState(false);
@@ -2749,7 +2787,7 @@ if (!subInfo) {
               <button
                 key={item.label}
                 onClick={() => {
-                  setActiveView(item.view);
+                  navigateToView(item.view);
                   setIsMobileSidebarOpen(false);
                   // Обычный клик по вкладке в навигации — всегда полный список
                   // статей, а не та, что была открыта прошлой ссылкой
@@ -2930,7 +2968,7 @@ if (!subInfo) {
                           variant="ghost"
                           size="sm"
                           className="w-full text-blue-400 hover:bg-blue-500/10"
-                          onClick={() => { setActiveView("risks"); setNotifOpen(false); }}
+                          onClick={() => { navigateToView("risks"); setNotifOpen(false); }}
                         >
                           {getTranslation("viewAllAlerts", "View all alerts")}
                         </Button>
@@ -2965,7 +3003,7 @@ if (!subInfo) {
         {showOnboarding && (
           <OnboardingTour
             language={language}
-            onNavigate={(view) => setActiveView(view)}
+            onNavigate={(view) => navigateToView(view)}
             onFinish={completeOnboarding}
             businessName={businessName}
             onBusinessNameChange={setBusinessName}
@@ -3035,7 +3073,7 @@ if (!subInfo) {
                     <OnboardingChecklist
                       language={language}
                       businessId={businessId}
-                      onNavigate={(view) => setActiveView(view)}
+                      onNavigate={(view) => navigateToView(view)}
                     />
                   )}
                   <div data-tour="metrics-overview" className="relative">
@@ -3289,7 +3327,7 @@ if (!subInfo) {
                                 size="sm"
                                 variant="outline"
                                 className="h-8 text-sm border-gray-700 text-gray-400 hover:bg-gray-800"
-                                onClick={() => setActiveView("overview")}
+                                onClick={() => navigateToView("overview")}
                               >
                                 {language === "UA" ? "Переглянути огляд" : language === "DE" ? "Übersicht ansehen" : "View overview"}
                               </Button>
@@ -3461,7 +3499,7 @@ if (!subInfo) {
                       ? "Alle Umsatzquellen sind getrennt, daher wird derzeit keine Prognose berechnet — um keine Projektion auf Basis des alten Trends zu zeigen, als ob weiter Daten eingehen. Verbinden Sie Stripe, Shopify oder eine andere Integration, damit die Prognose wieder erscheint."
                       : "All revenue sources are disconnected, so no forecast is being calculated right now — to avoid projecting the old trend as if data were still coming in. Connect Stripe, Shopify, or another integration to see the forecast again."}
                   </p>
-                  <Button className="bg-blue-600 hover:bg-blue-700" onClick={() => setActiveView("integrations")}>
+                  <Button className="bg-blue-600 hover:bg-blue-700" onClick={() => navigateToView("integrations")}>
                     {language === "UA" ? "Перейти до інтеграцій" : language === "DE" ? "Zu Integrationen" : "Go to integrations"}
                   </Button>
                 </div>
@@ -4437,7 +4475,7 @@ if (!subInfo) {
             <button
               key={item.label}
               onClick={() => {
-                setActiveView(item.view);
+                navigateToView(item.view);
                 if (item.view === "faq") setFaqInitialSlug(null);
               }}
               className={`flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-colors min-w-[64px] ${activeView === item.view ? "bg-primary/10 text-primary" : "text-muted-foreground"}`}
