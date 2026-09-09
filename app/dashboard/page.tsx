@@ -2054,12 +2054,6 @@ useEffect(() => {
     dotClass: WIDGET_DOT_CLASS[id],
   }));
 
-  // Підпис під заголовком картки: "цього місяця" або "за весь час" залежно
-  // від metricsPeriod — той самий перемикач, що й для сум вище.
-  const periodSubtitle = isAllTimeMetrics
-    ? (language === "UA" ? "за весь час" : language === "DE" ? "gesamt" : "all time")
-    : (t as any).thisMonth;
-
   const renderOverviewWidget = (id: WidgetId) => {
     switch (id) {
       case "revenue":
