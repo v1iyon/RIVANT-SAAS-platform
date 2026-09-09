@@ -194,6 +194,27 @@ export default function PaymentModal({
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const supabase = useRef(createClient()).current;
 
+  // --------------------------------------------------------------------
+  // BUG FIX (false-positive "success" on re-checkout, 2026-09-09):
+  //
+  //   checkSubscriptionOnce/the Realtime handler used to treat ANY row
+  //   with access_status === "active" as proof THIS checkout succeeded.
+  //   That's wrong whenever the user already has an active subscription
+  //   from an earlier payment (e.g. re-opening the modal to upgrade, or
+  //   simply retrying after a prior successful purchase) — the very
+  //   first poll/Realtime read would find the pre-existing active row
+  //   and immediately flip to "success", even though the Creem popup is
+  //   still sitting on the billing-details form and no card was ever
+  //   charged. subscriptions.user_id is one row per user (upsert
+  //   onConflict: "user_id" in creem-webhook), so there's no per-plan
+  //   row to distinguish "old" from "new" — we snapshot the row's
+  //   current_period_end the moment we start waiting, and only accept
+  //   success once that value has actually changed (webhook's upsert
+  //   always sets a fresh current_period_end on real activation/renewal).
+  //   `undefined` = not captured yet, `null` = captured, no row existed.
+  // --------------------------------------------------------------------
+  const baselinePeriodEndRef = useRef<string | null | undefined>(undefined);
+
   const stopPolling = () => {
     if (pollRef.current) {
       clearInterval(pollRef.current);
@@ -222,15 +243,25 @@ export default function PaymentModal({
     })();
   }, [phase, resolvedUserId, userId, supabase]);
 
+  // Only treat a row as "this checkout just succeeded" once
+  // current_period_end has moved past whatever it was when we started
+  // waiting — see BUG FIX comment above baselinePeriodEndRef.
+  const isFreshActivation = (row: { access_status?: string; current_period_end?: string | null }) => {
+    if (row?.access_status !== "active") return false;
+    if (baselinePeriodEndRef.current === undefined) return false; // baseline not captured yet, don't trust it
+    return (row.current_period_end ?? null) !== baselinePeriodEndRef.current;
+  };
+
   const checkSubscriptionOnce = async (uid: string) => {
     const { data, error } = await supabase
       .from("subscriptions")
-      .select("access_status")
+      .select("access_status, current_period_end")
       .eq("user_id", uid)
       .maybeSingle();
 
-    if (!error && data?.access_status === "active") {
+    if (!error && isFreshActivation(data ?? {})) {
       setPhase("success");
+      onActivated?.();
       stopPolling();
     }
   };
@@ -241,14 +272,29 @@ export default function PaymentModal({
   useEffect(() => {
     if (phase !== "card-waiting" || !resolvedUserId) return;
 
+    let cancelled = false;
+
+    // Capture the baseline BEFORE subscribing/polling, so a pre-existing
+    // active subscription can't be mistaken for this checkout's result.
+    (async () => {
+      const { data, error } = await supabase
+        .from("subscriptions")
+        .select("current_period_end")
+        .eq("user_id", resolvedUserId)
+        .maybeSingle();
+      if (!cancelled) {
+        baselinePeriodEndRef.current = error ? null : (data?.current_period_end ?? null);
+      }
+    })();
+
     const channel = supabase
       .channel(`subscriptions-watch-${resolvedUserId}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "subscriptions", filter: `user_id=eq.${resolvedUserId}` },
         (payload) => {
-          const row = payload.new as { access_status?: string };
-          if (row?.access_status === "active") {
+          const row = payload.new as { access_status?: string; current_period_end?: string | null };
+          if (isFreshActivation(row)) {
             setPhase("success");
             onActivated?.();
             stopPolling();
@@ -260,6 +306,7 @@ export default function PaymentModal({
     pollRef.current = setInterval(() => checkSubscriptionOnce(resolvedUserId), 15000);
 
     return () => {
+      cancelled = true;
       supabase.removeChannel(channel);
       stopPolling();
     };
