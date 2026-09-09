@@ -1938,6 +1938,11 @@ if (bizData.business) {
 
  const isExpiredTrial = subInfo?.access_status === "expired";
 const hasGrowthAccess = subInfo ? ["trial", "growth", "scale"].includes(subInfo.plan || "") : false;
+// Тариф Starter обмежений 30 днями історії на бекенді (HISTORY_DAYS_BY_PLAN
+// в app/api/metrics/route.ts) — тобто на цьому тарифі "Весь час" фізично не
+// може показати більше даних, ніж "Місяць" (різниця лише на межі місяця).
+// Ховаємо перемикач зовсім, щоб не обіцяти те, чого тариф не дає.
+const canToggleMetricsPeriod = subInfo?.plan !== "starter";
 // Только для решения, что рендерить на шагах "Ризики"/"Прогноз" тура: план
 // нового юзера (`subInfo`) иногда ещё не успевает подгрузиться к моменту,
 // когда тур доходит до этих вкладок — без этого юзер видит "Доступно на
@@ -1951,6 +1956,16 @@ const isBlocked =
   (!subInfo.plan && !isExpiredTrial) ||
   subInfo.access_status === "blocked" ||
   subInfo.access_status === "none";
+
+// Якщо в localStorage лишився вибір "all" ще з часів, коли тариф дозволяв
+// перемикач (наприклад, після даунгрейду з Growth на Starter) — повертаємо
+// на "місяць", інакше картки мовчки лишаться на "весь час" без видимої
+// кнопки, якою це можна було б переключити назад.
+useEffect(() => {
+  if (!canToggleMetricsPeriod && metricsPeriod === "all") {
+    setMetricsPeriodPersisted("month");
+  }
+}, [canToggleMetricsPeriod, metricsPeriod]);
 
 useEffect(() => {
   if (isExpiredTrial) setShowExpiredNotice(true);
@@ -3128,7 +3143,7 @@ if (!subInfo) {
                       onNavigate={(view) => navigateToView(view)}
                     />
                   )}
-                  <div data-tour="metrics-overview" className="relative pt-7">
+                  <div data-tour="metrics-overview" className={`relative ${canToggleMetricsPeriod ? "pt-7" : ""}`}>
                     <button
                       data-tour="metrics-gear"
                       onClick={() => setWidgetPrefsOpen(true)}
@@ -3141,7 +3156,11 @@ if (!subInfo) {
                         "Весь час". Не рухаємо графік нижче — у нього свій
                         контрол. Абсолютно позиціонований зліва зверху, на
                         одній лінії з шестернею справа (той самий -top-2),
-                        щоб не займати зайвий рядок над картками. */}
+                        щоб не займати зайвий рядок над картками. Прихований
+                        на тарифі Starter — бекенд (HISTORY_DAYS_BY_PLAN)
+                        все одно обмежує йому історію 30 днями, тож "Весь
+                        час" там нічим не відрізнявся б від "Місяця". */}
+                    {canToggleMetricsPeriod && (
                     <div className="absolute -top-2 left-0 z-10 flex items-center gap-1.5">
                       <div className="inline-flex items-center bg-gray-800/70 border border-gray-700 rounded-full p-0.5 text-[11px] font-medium">
                         <button
@@ -3162,6 +3181,7 @@ if (!subInfo) {
                         </button>
                       </div>
                     </div>
+                    )}
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 items-start">
                       {widgetPrefsLoaded
                         ? widgetIds.map((id) => renderOverviewWidget(id))
