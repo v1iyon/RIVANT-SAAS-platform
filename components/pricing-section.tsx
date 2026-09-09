@@ -95,30 +95,29 @@ export function PricingSection() {
   ];
 
   // --------------------------------------------------------------------
-  // CHANGELOG (crypto for add-ons, п.1 of the plan — final piece):
+  // CHANGELOG (Ko-fi -> Creem, 2026-09-09):
   //
-  //   handleOrderService used to open the Ko-fi Shop Item link directly
-  //   in a popup with no payment-method choice and no cart warning. It
-  //   now just opens AddonCheckoutModal (new component), which owns the
-  //   Card-vs-Crypto choice, the KofiRedirectConfirm step, and — for
-  //   crypto — createCryptoOrder()/CryptoCheckoutModal. The old
-  //   ADDON_KOFI_LINKS map moves into ADDON_CATALOG below (now also
-  //   carrying `kind`, since AddonCheckoutModal needs to know one-time
-  //   vs recurring to pick the right waiting copy and to call
-  //   createCryptoOrder with the right addonKind).
+  //   handleOrderService opens AddonCheckoutModal, which owns the
+  //   Card-vs-Crypto choice and — for card — creates a one-shot Creem
+  //   checkout session server-side (creem-checkout Edge Function) instead
+  //   of opening a static Ko-fi Shop Item link. ADDON_CATALOG below no
+  //   longer carries a payment link at all — just `kind`, which
+  //   AddonCheckoutModal needs to know one-time vs recurring (waiting
+  //   copy) and to call createCryptoOrder with the right addonKind.
   //
   //   `kind` here MUST match ADDON_CATALOG in
-  //   supabase/functions/create-order/index.ts — that's the one the
-  //   server actually trusts; this copy is only used for local UI
-  //   decisions (which waiting message to show).
+  //   supabase/functions/create-order/index.ts (crypto pricing) and
+  //   ADDON_TO_CREEM in supabase/functions/creem-checkout/index.ts (card
+  //   product mapping) — those are the ones the server actually trusts;
+  //   this copy is only used for local UI decisions.
   //
-  //   business_setup (no Ko-fi link) still falls through to the old
-  //   /api/orders/create path untouched — see handleOrderService below.
+  //   business_setup still falls through to the old /api/orders/create
+  //   path untouched — see handleOrderService below.
   // --------------------------------------------------------------------
-  const ADDON_CATALOG: Record<string, { kofiLink: string; kind: "order" | "subscription" }> = {
-    whatif_analysis: { kofiLink: "https://ko-fi.com/s/41ec6cf444", kind: "order" }, // AI Historical Analysis
-    monthly_digest: { kofiLink: "https://ko-fi.com/s/cfa88bffb3", kind: "subscription" }, // AI Performance Digest
-    team_alerts: { kofiLink: "https://ko-fi.com/s/a6db84895c", kind: "subscription" }, // Team Alert Access
+  const ADDON_CATALOG: Record<string, { kind: "order" | "subscription" }> = {
+    whatif_analysis: { kind: "order" }, // AI Historical Analysis
+    monthly_digest: { kind: "subscription" }, // AI Performance Digest
+    team_alerts: { kind: "subscription" }, // Team Alert Access
   };
 
   const [orderingService, setOrderingService] = useState<string | null>(null);
@@ -140,13 +139,13 @@ export function PricingSection() {
         kind: catalogEntry.kind,
         name: displayName,
         priceLabel,
-        kofiLink: catalogEntry.kofiLink,
       });
       return;
     }
 
-    // Fallback for any service without a Ko-fi link yet (e.g. business_setup,
-    // which stays on the calendar-booking / Paddle route below).
+    // Fallback for any service without a Creem product mapping yet (e.g.
+    // business_setup, which stays on the calendar-booking / Paddle route
+    // below).
     setOrderingService(serviceType);
     try {
       const res = await fetch("/api/orders/create", {

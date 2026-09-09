@@ -3,11 +3,12 @@
 // frontend/PaymentModal.tsx
 //
 // Plan picker with two tabs:
-//   - "Card / PayPal" -> shows a short KofiRedirectConfirm warning, then
-//     opens the matching Ko-fi checkout in a centered popup window (falls
-//     back to a new tab if the popup is blocked), then waits for
-//     kofi-webhook to flip public.subscriptions.access_status to 'active'
-//     (Realtime + 15s poll fallback).
+//   - "Card" -> creates a Creem checkout session server-side
+//     (creem-checkout Edge Function, via lib/creem-checkout.ts), opens the
+//     returned checkout_url in a centered popup window (falls back to a
+//     new tab if the popup is blocked), then waits for creem-webhook to
+//     flip public.subscriptions.access_status to 'active' (Realtime + 15s
+//     poll fallback).
 //   - "Crypto (USDC / Polygon)" -> calls createCryptoOrder() as soon as the
 //     tab is selected (when initialPlan is known) and mounts the existing
 //     CryptoCheckoutModal, which owns its own waiting/expiry UI via
@@ -21,11 +22,28 @@
 // validation for every Scale customer — they all checked for the literal
 // string "scale", which never matched the real "premium" row.)
 //
-// Ko-fi Shop Item links are wired in below as DEFAULT_KOFI_LINKS. The
-// kofi-webhook matches these by direct_link_code (the part after /s/ in
-// the URL) — if you regenerate a Shop Item link in Ko-fi, its code changes
-// and BOTH this file and kofi-webhook's DIRECT_LINK_CODE_TO_PLAN_ID need
-// updating.
+// --------------------------------------------------------------------------
+// CHANGELOG (Ko-fi -> Creem replacement, 2026-09-09):
+//
+//   Ko-fi was a donation platform (Buy Me a Coffee-style checkout) — not a
+//   fit for a B2B SaaS pricing page. Replaced with Creem, a Merchant of
+//   Record built for SaaS: it handles VAT/tax compliance and gives a
+//   proper subscription checkout instead of a "donate" button.
+//
+//   The static DEFAULT_KOFI_LINKS map (one fixed URL per plan) is gone —
+//   Creem checkout sessions are created dynamically per click via
+//   creem-checkout/index.ts, which resolves the price from public.plans
+//   server-side and returns a one-time checkout_url. See
+//   lib/creem-checkout.ts (same shape/contract as lib/crypto-checkout.ts).
+//
+//   The KofiRedirectConfirm ("check your cart, old items may still be in
+//   it") warning step is REMOVED, not just relabeled: it existed only
+//   because Ko-fi's cart was persistent and invisible to us, so an
+//   abandoned earlier checkout could silently combine with a new one. A
+//   Creem checkout session is single-product and one-shot — that failure
+//   mode doesn't exist here, so handlePayWithCreem() goes straight from
+//   click to "generate checkout session" to "open popup", no confirm
+//   screen in between. Phase "kofi-confirm" is removed accordingly.
 //
 // --------------------------------------------------------------------------
 // FIX (subscriptions_owner_read / userId — same class of bug already fixed
@@ -34,16 +52,16 @@
 //   `userId` passed into this component is the raw Supabase auth uid
 //   (`data.session.user.id` in pricing-section.tsx). But subscriptions.user_id
 //   is a foreign key into public.users.id, not auth.users.id — both
-//   kofi-webhook and app/api/webhooks/paddle/route.js write user_id from
+//   creem-webhook and app/api/webhooks/paddle/route.js write user_id from
 //   `public.users.id`, resolved via auth_user_id. The old RLS policy
 //   compared auth.uid() = user_id, so it never matched, and this component
 //   was filtering .eq("user_id", userId) with the raw auth uid too — same
 //   two different UUIDs, same mismatch.
 //
 //   Practical effect: the "Waiting for payment confirmation" screen spun
-//   forever on the Ko-fi/card path even after kofi-webhook had already
-//   activated the subscription server-side — both the Realtime watch and
-//   the 15s poll fallback always got zero rows back.
+//   forever on the card path even after the webhook had already activated
+//   the subscription server-side — both the Realtime watch and the 15s
+//   poll fallback always got zero rows back.
 //
 //   Fixed the same way as AddonCheckoutModal.tsx: resolve public.users.id
 //   from auth_user_id first (see resolvedUserId below), then use THAT id
@@ -52,13 +70,13 @@
 //   public.users.id instead of auth.uid() — needs both sides, RLS fix
 //   alone still leaves the client filtering on the wrong id.
 //
-// CHANGELOG (this fix):
+// CHANGELOG (pre-Creem, kept for context):
 //   1. Crypto tab now fires createCryptoOrder() the moment the tab is
 //      clicked (when initialPlan is set), instead of waiting for a second
 //      click on the plan button. See handleMethodChange().
-//   2. Ko-fi checkout now opens in a centered popup window instead of a
-//      full new tab, so it reads as a modal over RIVANT rather than a
-//      full navigation away from the site. See openKofiPopup().
+//   2. Card checkout opens in a centered popup window instead of a full
+//      new tab, so it reads as a modal over RIVANT rather than a full
+//      navigation away from the site. See openCheckoutPopup().
 //   3. Closing (X) the crypto checkout screen now closes the whole modal
 //      instead of falling back to the method picker. See the onClose
 //      passed into <CryptoCheckoutModal> below.
@@ -66,20 +84,12 @@
 //      icon + arrow instead of a plain bordered row, plus a "secure
 //      checkout" badge instead of a small grey caption line. See
 //      styles.ctaBtn / styles.secureBadge.
-//   5. NEW: before opening the Ko-fi popup, show a short
-//      KofiRedirectConfirm warning ("check your cart — old items may
-//      still be in it", localized en/uk/de) — Ko-fi's cart is persistent
-//      and invisible to us, so this catches the case where a prior
-//      aborted checkout left something in it. handleKofiPay() no longer
-//      opens the popup directly; it sets phase to "kofi-confirm" and
-//      openKofiPopup() (the old handleKofiPay body) only runs after the
-//      user confirms. Reused as-is by the addon buy flow.
 
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase-browser";
 import { createCryptoOrder, type CryptoOrder } from "@/lib/crypto-checkout";
+import { createCreemCheckout } from "@/lib/creem-checkout";
 import { CryptoCheckoutModal } from "./crypto-checkout-modal";
-import { KofiRedirectConfirm } from "./kofi-redirect-confirm";
 import { CreditCard, Coins, ShieldCheck, ArrowRight } from "lucide-react";
 
 type Locale = "en" | "uk" | "de";
@@ -87,7 +97,7 @@ type PlanType = "starter" | "growth" | "scale";
 type Method = "card" | "crypto";
 type Phase =
   | "picker"
-  | "kofi-confirm"
+  | "checkout-loading"
   | "card-waiting"
   | "crypto-loading"
   | "crypto-checkout"
@@ -105,12 +115,10 @@ const DICT: Record<
     title: string;
     tabCard: string;
     tabCrypto: string;
-    payWithKofi: string;
+    payWithCreem: string;
     generateInvoice: string;
-    redirected: string;
     waitingTitle: string;
     waitingBody: string;
-    reopenLink: string;
     successTitle: string;
     successBody: string;
     close: string;
@@ -118,55 +126,40 @@ const DICT: Record<
 > = {
   en: {
     title: "Choose a plan",
-    tabCard: "Card / PayPal",
+    tabCard: "Card",
     tabCrypto: "Crypto (USDC / Polygon)",
-    payWithKofi: "Pay with Ko-fi",
+    payWithCreem: "Secure checkout via Creem",
     generateInvoice: "Generate crypto invoice",
-    redirected: "We opened the Ko-fi checkout page in a new tab.",
     waitingTitle: "Waiting for payment confirmation",
     waitingBody: "This can take a couple of minutes. Please don't close this window.",
-    reopenLink: "Tab didn't open? Open the link again",
     successTitle: "Subscription activated!",
     successBody: "Payment confirmed, your access is now open.",
     close: "Close",
   },
   uk: {
     title: "Оберіть тариф",
-    tabCard: "Картка / PayPal",
+    tabCard: "Картка",
     tabCrypto: "Крипта (USDC / Polygon)",
-    payWithKofi: "Оплатити через Ko-fi",
+    payWithCreem: "Безпечна оплата через Creem",
     generateInvoice: "Згенерувати рахунок",
-    redirected: "Ми відкрили сторінку оплати Ko-fi у новій вкладці.",
     waitingTitle: "Очікуємо підтвердження платежу",
     waitingBody: "Це може зайняти кілька хвилин. Не закривайте це вікно.",
-    reopenLink: "Вкладка не відкрилась? Відкрити посилання ще раз",
     successTitle: "Підписку активовано!",
     successBody: "Оплату підтверджено, доступ відкрито.",
     close: "Закрити",
   },
   de: {
     title: "Plan wählen",
-    tabCard: "Karte / PayPal",
+    tabCard: "Karte",
     tabCrypto: "Krypto (USDC / Polygon)",
-    payWithKofi: "Mit Ko-fi bezahlen",
+    payWithCreem: "Sichere Zahlung über Creem",
     generateInvoice: "Krypto-Rechnung erstellen",
-    redirected: "Wir haben die Ko-fi-Checkout-Seite in einem neuen Tab geöffnet.",
     waitingTitle: "Warte auf Zahlungsbestätigung",
     waitingBody: "Das kann ein paar Minuten dauern. Bitte schließen Sie dieses Fenster nicht.",
-    reopenLink: "Tab nicht geöffnet? Link erneut öffnen",
     successTitle: "Abo aktiviert!",
     successBody: "Zahlung bestätigt, Ihr Zugang ist jetzt freigeschaltet.",
     close: "Schließen",
   },
-};
-
-// Реальные ссылки на Ko-fi Shop Items (тарифы). Если понадобится
-// переопределить снаружи (напр. для теста) — проп kofiLinks всё ещё
-// опционален и перекроет эти дефолты.
-const DEFAULT_KOFI_LINKS: Record<PlanType, string> = {
-  starter: "https://ko-fi.com/s/10eb6d89bf",
-  growth: "https://ko-fi.com/s/9dcfdf1c5b",
-  scale: "https://ko-fi.com/s/ed50f0bf6a",
 };
 
 interface PaymentModalProps {
@@ -174,12 +167,11 @@ interface PaymentModalProps {
   onClose: () => void;
   locale: Locale;
   userId: string;
-  kofiLinks?: Record<PlanType, string>;
   onActivated?: () => void;
   // When set, the modal skips the "choose a plan" list entirely and opens
-  // straight on the method tabs (Card/PayPal vs Crypto) for THIS plan —
-  // the person already picked it by clicking a specific pricing card.
-  // Leave undefined to fall back to the old "pick any of 3 plans" picker.
+  // straight on the method tabs (Card vs Crypto) for THIS plan — the
+  // person already picked it by clicking a specific pricing card. Leave
+  // undefined to fall back to the old "pick any of 3 plans" picker.
   initialPlan?: PlanType;
 }
 
@@ -188,7 +180,6 @@ export default function PaymentModal({
   onClose,
   locale,
   userId,
-  kofiLinks = DEFAULT_KOFI_LINKS,
   onActivated,
   initialPlan,
 }: PaymentModalProps) {
@@ -196,9 +187,6 @@ export default function PaymentModal({
   const [method, setMethod] = useState<Method>("card");
   const [phase, setPhase] = useState<Phase>("picker");
   const [cryptoOrder, setCryptoOrder] = useState<CryptoOrder | null>(null);
-  // Plan awaiting confirmation on the KofiRedirectConfirm screen — set the
-  // moment the user clicks a Ko-fi CTA, cleared once they cancel/confirm.
-  const [pendingKofiPlan, setPendingKofiPlan] = useState<PlanType | null>(null);
   // Resolved public.users.id — see FIX comment at the top of this file.
   // `userId` prop is the raw auth uid; subscriptions.user_id stores
   // public.users.id, so we resolve it once before filtering/watching.
@@ -247,7 +235,7 @@ export default function PaymentModal({
     }
   };
 
-  // Realtime watch + 15s poll fallback while waiting on the Ko-fi flow.
+  // Realtime watch + 15s poll fallback while waiting on the card flow.
   // Waits on resolvedUserId (public.users.id), not the raw userId prop —
   // see FIX comment at the top of this file.
   useEffect(() => {
@@ -283,7 +271,6 @@ export default function PaymentModal({
       setPhase("picker");
       setMethod("card");
       setCryptoOrder(null);
-      setPendingKofiPlan(null);
       setResolvedUserId(null);
       stopPolling();
     }
@@ -298,43 +285,43 @@ export default function PaymentModal({
 
   if (!isOpen) return null;
 
-  // --- FIX 2: центрированный popup вместо полной новой вкладки ---------
-  // Раньше: window.open(kofiLinks[plan], "_blank", "noopener,noreferrer")
-  // открывал полноценную вкладку — пользователь визуально "уходил" с
-  // сайта на ko-fi.com. Popup фиксированного размера по центру экрана
-  // читается как модалка поверх RIVANT, а не как переход на чужой домен.
-  //
-  // --- FIX 5: вынесено из handleKofiPay ----------------------------------
-  // Раньше это тело и было handleKofiPay — попап открывался сразу по
-  // клику. Теперь это отдельная функция, которая вызывается только после
-  // подтверждения на экране KofiRedirectConfirm (см. handleKofiPay ниже).
-  const openKofiPopup = (plan: PlanType) => {
+  // Центрированный popup вместо полной новой вкладки — читается как
+  // модалка поверх RIVANT, а не как переход на чужой домен. Тот же
+  // подход, что был у Ko-fi, только URL теперь одноразовый и приходит с
+  // сервера (см. handlePayWithCreem ниже), а не берётся из статической
+  // ссылки на тариф.
+  const openCheckoutPopup = (checkoutUrl: string) => {
     const w = 480;
     const h = 720;
     const left = window.screenX + (window.outerWidth - w) / 2;
     const top = window.screenY + (window.outerHeight - h) / 2;
 
     const popup = window.open(
-      kofiLinks[plan],
+      checkoutUrl,
       "rivant_checkout",
       `width=${w},height=${h},left=${left},top=${top},resizable=no,scrollbars=yes`,
     );
 
     if (!popup) {
-      // Popup заблокирован браузером — фоллбэк на старое поведение,
-      // чтобы оплата не сломалась совсем.
-      window.open(kofiLinks[plan], "_blank", "noopener,noreferrer");
+      // Popup заблокирован браузером — фоллбэк, чтобы оплата не сломалась.
+      window.open(checkoutUrl, "_blank", "noopener,noreferrer");
     }
 
     setPhase("card-waiting");
   };
 
-  // --- FIX 5: клик по Ko-fi CTA теперь сначала показывает предупреждение
-  // про корзину, а не открывает попап напрямую. Сам попап открывает
-  // openKofiPopup(), вызываемый из onConfirm экрана KofiRedirectConfirm.
-  const handleKofiPay = (plan: PlanType) => {
-    setPendingKofiPlan(plan);
-    setPhase("kofi-confirm");
+  // Creem checkout session одноразовая — генерируем её прямо по клику,
+  // без промежуточного экрана подтверждения (Ko-fi's persistent-cart
+  // warning здесь не нужен, см. CHANGELOG выше).
+  const handlePayWithCreem = async (plan: PlanType) => {
+    setPhase("checkout-loading");
+    try {
+      const { checkout_url } = await createCreemCheckout({ planId: plan });
+      openCheckoutPopup(checkout_url);
+    } catch (err) {
+      console.error("[PaymentModal] createCreemCheckout failed", err);
+      setPhase("picker");
+    }
   };
 
   const handleCryptoPick = async (plan: PlanType) => {
@@ -354,7 +341,9 @@ export default function PaymentModal({
   // createCryptoOrder() вызывался лишь на отдельном клике по кнопке с
   // тарифом — то есть нужно было два клика подряд. Раз initialPlan уже
   // известен (пришли с конкретной карточки тарифа на pricing-странице),
-  // тариф для инвойса понятен уже в момент клика по табу.
+  // тариф для инвойса понятен уже в момент клика по табу. Card-таб этого
+  // не делает намеренно — checkout session создаётся ТОЛЬКО по явному
+  // клику на кнопку оплаты, не по факту переключения таба.
   const handleMethodChange = (m: Method) => {
     setMethod(m);
     if (m === "crypto" && initialPlan && !cryptoOrder && phase === "picker") {
@@ -388,29 +377,6 @@ export default function PaymentModal({
         onSuccess={() => {
           setPhase("success");
           onActivated?.();
-        }}
-      />
-    );
-  }
-
-  // --- FIX 5: экран подтверждения перед Ko-fi -----------------------------
-  // Отдельный ранний return, как и у crypto-checkout выше — KofiRedirectConfirm
-  // сам себе модалка (свой overlay), поэтому не встраиваем его внутрь
-  // styles.card ниже, чтобы не получить модалку-в-модалке.
-  if (phase === "kofi-confirm" && pendingKofiPlan) {
-    return (
-      <KofiRedirectConfirm
-        itemName={PLAN_LABELS[pendingKofiPlan].name}
-        priceLabel={PLAN_LABELS[pendingKofiPlan].price}
-        locale={locale}
-        onCancel={() => {
-          setPendingKofiPlan(null);
-          setPhase("picker");
-        }}
-        onConfirm={() => {
-          const plan = pendingKofiPlan;
-          setPendingKofiPlan(null);
-          openKofiPopup(plan);
         }}
       />
     );
@@ -450,7 +416,7 @@ export default function PaymentModal({
               // still a real choice here.
               <button
                 onClick={() =>
-                  method === "card" ? handleKofiPay(initialPlan) : handleCryptoPick(initialPlan)
+                  method === "card" ? handlePayWithCreem(initialPlan) : handleCryptoPick(initialPlan)
                 }
                 style={styles.ctaBtn}
               >
@@ -468,7 +434,7 @@ export default function PaymentModal({
                     <button
                       key={planId}
                       onClick={() =>
-                        method === "card" ? handleKofiPay(planId) : handleCryptoPick(planId)
+                        method === "card" ? handlePayWithCreem(planId) : handleCryptoPick(planId)
                       }
                       style={styles.ctaBtn}
                     >
@@ -485,9 +451,16 @@ export default function PaymentModal({
 
             <div style={styles.secureBadge}>
               <ShieldCheck size={14} style={{ flexShrink: 0 }} />
-              <span>{method === "card" ? t.payWithKofi : t.generateInvoice}</span>
+              <span>{method === "card" ? t.payWithCreem : t.generateInvoice}</span>
             </div>
           </>
+        )}
+
+        {phase === "checkout-loading" && (
+          <div style={styles.waitBlock}>
+            <Spinner />
+            <p style={styles.waitBody}>{t.payWithCreem}…</p>
+          </div>
         )}
 
         {phase === "crypto-loading" && (

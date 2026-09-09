@@ -3,18 +3,17 @@
 // components/AddonCheckoutModal.tsx
 //
 // Payment-method picker for a single add-on (whatif_analysis /
-// monthly_digest / team_alerts), replacing the old "click -> straight to
-// Ko-fi" flow in PricingSection.tsx's handleOrderService.
+// monthly_digest / team_alerts).
 //
 // Mirrors PaymentModal.tsx's structure closely (tabs -> CTA -> waiting ->
 // success), just scoped to one add-on instead of a 3-plan picker:
-//   - "Card / PayPal" -> KofiRedirectConfirm warning, then opens Ko-fi in a
-//     centered popup (same pattern as PaymentModal.openKofiPopup). No
-//     `orders` row exists for this path, so there's nothing to poll for a
-//     one-time service (service_orders creation is fire-and-forget from
-//     the UI's perspective — kofi-webhook creates it once the payment
-//     lands, per plan.md: "просто подтверждение, без ожидания real-time").
-//     For a recurring add-on we CAN watch for activation, via
+//   - "Card" -> creates a one-shot Creem checkout session server-side
+//     (creem-checkout Edge Function, same call as PaymentModal.tsx's
+//     handlePayWithCreem) and opens it in a centered popup. No `orders`
+//     row exists for this path, so there's nothing to poll for a one-time
+//     service (service_orders creation is fire-and-forget from the UI's
+//     perspective — creem-webhook creates it once checkout.completed
+//     lands). For a recurring add-on we CAN watch for activation, via
 //     useAddonSubscriptionStatus on public.addon_subscriptions.
 //   - "Crypto (USDC / Polygon)" -> createCryptoOrder({ addonKind, addonSlug })
 //     and mounts the existing (already generic) CryptoCheckoutModal, which
@@ -23,6 +22,13 @@
 //     request that flips `orders.status` to 'paid', CryptoCheckoutModal's
 //     onSuccess is already a reliable signal here — no extra polling
 //     needed on the crypto path, for either addon kind.
+//
+// CHANGELOG (Ko-fi -> Creem replacement, 2026-09-09): dropped the
+// KofiRedirectConfirm cart-warning step and the static `kofiLink` on
+// AddonInfo — a Creem checkout session is single-product and generated
+// per click, so there's no persistent invisible cart to warn about. See
+// PaymentModal.tsx's changelog for the full rationale (same change,
+// applied there first).
 //
 // Locales: en / uk / de only, same rule as the rest of the payment flow.
 //
@@ -52,8 +58,8 @@
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase-browser";
 import { createCryptoOrder, type CryptoOrder } from "@/lib/crypto-checkout";
+import { createCreemCheckout } from "@/lib/creem-checkout";
 import { CryptoCheckoutModal } from "./crypto-checkout-modal";
-import { KofiRedirectConfirm } from "./kofi-redirect-confirm";
 import { useAddonSubscriptionStatus } from "@/hooks/use-addon-subscription-status";
 import { CreditCard, Coins, ShieldCheck, ArrowRight } from "lucide-react";
 
@@ -62,18 +68,17 @@ type Method = "card" | "crypto";
 type AddonKind = "order" | "subscription";
 type Phase =
   | "method"
-  | "kofi-confirm"
+  | "checkout-loading"
   | "card-waiting"
   | "crypto-loading"
   | "crypto-checkout"
   | "success";
 
 export interface AddonInfo {
-  slug: string; // e.g. "whatif_analysis" — must match ADDON_CATALOG in create-order/index.ts
+  slug: string; // e.g. "whatif_analysis" — must match ADDON_CATALOG in create-order/index.ts and creem-checkout/index.ts
   kind: AddonKind; // "order" (one-time) | "subscription" (recurring)
   name: string;
   priceLabel: string; // e.g. "$199" — display only, real price is resolved server-side
-  kofiLink: string;
 }
 
 const DICT: Record<
@@ -81,7 +86,7 @@ const DICT: Record<
   {
     tabCard: string;
     tabCrypto: string;
-    payWithKofi: string;
+    payWithCreem: string;
     generateInvoice: string;
     waitingTitleOrder: string;
     waitingBodyOrder: string;
@@ -94,9 +99,9 @@ const DICT: Record<
   }
 > = {
   en: {
-    tabCard: "Card / PayPal",
+    tabCard: "Card",
     tabCrypto: "Crypto (USDC / Polygon)",
-    payWithKofi: "Pay with Ko-fi",
+    payWithCreem: "Secure checkout via Creem",
     generateInvoice: "Generate crypto invoice",
     waitingTitleOrder: "Payment submitted",
     waitingBodyOrder: "Your order has been sent — the report will be delivered within a few days.",
@@ -108,9 +113,9 @@ const DICT: Record<
     close: "Close",
   },
   uk: {
-    tabCard: "Картка / PayPal",
+    tabCard: "Картка",
     tabCrypto: "Крипта (USDC / Polygon)",
-    payWithKofi: "Оплатити через Ko-fi",
+    payWithCreem: "Безпечна оплата через Creem",
     generateInvoice: "Згенерувати рахунок",
     waitingTitleOrder: "Оплату надіслано",
     waitingBodyOrder: "Замовлення передано — звіт надійде протягом кількох днів.",
@@ -122,9 +127,9 @@ const DICT: Record<
     close: "Закрити",
   },
   de: {
-    tabCard: "Karte / PayPal",
+    tabCard: "Karte",
     tabCrypto: "Krypto (USDC / Polygon)",
-    payWithKofi: "Mit Ko-fi bezahlen",
+    payWithCreem: "Sichere Zahlung über Creem",
     generateInvoice: "Krypto-Rechnung erstellen",
     waitingTitleOrder: "Zahlung übermittelt",
     waitingBodyOrder: "Ihre Bestellung wurde gesendet — der Bericht wird innerhalb weniger Tage geliefert.",
@@ -219,24 +224,35 @@ export function AddonCheckoutModal({ isOpen, onClose, locale, userId, addon }: A
 
   if (!isOpen) return null;
 
-  // Same centered-popup pattern as PaymentModal.openKofiPopup.
-  const openKofiPopup = () => {
+  // Same centered-popup pattern as PaymentModal.openCheckoutPopup.
+  const openCheckoutPopup = (checkoutUrl: string) => {
     const w = 480;
     const h = 720;
     const left = window.screenX + (window.outerWidth - w) / 2;
     const top = window.screenY + (window.outerHeight - h) / 2;
 
     const popup = window.open(
-      addon.kofiLink,
+      checkoutUrl,
       "rivant_checkout",
       `width=${w},height=${h},left=${left},top=${top},resizable=no,scrollbars=yes`,
     );
 
     if (!popup) {
-      window.open(addon.kofiLink, "_blank", "noopener,noreferrer");
+      window.open(checkoutUrl, "_blank", "noopener,noreferrer");
     }
 
     setPhase("card-waiting");
+  };
+
+  const handlePayWithCreem = async () => {
+    setPhase("checkout-loading");
+    try {
+      const { checkout_url } = await createCreemCheckout({ addonSlug: addon.slug });
+      openCheckoutPopup(checkout_url);
+    } catch (err) {
+      console.error("[AddonCheckoutModal] createCreemCheckout failed", err);
+      setPhase("method");
+    }
   };
 
   const handleCryptoPick = async () => {
@@ -283,18 +299,6 @@ export function AddonCheckoutModal({ isOpen, onClose, locale, userId, addon }: A
     );
   }
 
-  if (phase === "kofi-confirm") {
-    return (
-      <KofiRedirectConfirm
-        itemName={addon.name}
-        priceLabel={addon.priceLabel}
-        locale={locale}
-        onCancel={() => setPhase("method")}
-        onConfirm={openKofiPopup}
-      />
-    );
-  }
-
   return (
     <div role="dialog" aria-modal="true" style={styles.overlay}>
       <div style={styles.card}>
@@ -324,7 +328,7 @@ export function AddonCheckoutModal({ isOpen, onClose, locale, userId, addon }: A
             </div>
 
             <button
-              onClick={() => (method === "card" ? setPhase("kofi-confirm") : handleCryptoPick())}
+              onClick={() => (method === "card" ? handlePayWithCreem() : handleCryptoPick())}
               style={styles.ctaBtn}
             >
               {method === "card" ? <CreditCard size={20} /> : <Coins size={20} />}
@@ -336,9 +340,16 @@ export function AddonCheckoutModal({ isOpen, onClose, locale, userId, addon }: A
 
             <div style={styles.secureBadge}>
               <ShieldCheck size={14} style={{ flexShrink: 0 }} />
-              <span>{method === "card" ? t.payWithKofi : t.generateInvoice}</span>
+              <span>{method === "card" ? t.payWithCreem : t.generateInvoice}</span>
             </div>
           </>
+        )}
+
+        {phase === "checkout-loading" && (
+          <div style={styles.waitBlock}>
+            <Spinner />
+            <p style={styles.waitBody}>{t.payWithCreem}…</p>
+          </div>
         )}
 
         {phase === "crypto-loading" && (
