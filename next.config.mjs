@@ -14,9 +14,8 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  experimental: {
-    allowedDevOrigins: ['192.168.100.185'],
-  },
+  allowedDevOrigins: ['192.168.100.185'],
+
   // п.10 аудита: раньше вообще не было security-заголовков. Vercel сам их
   // не добавляет. Набор ниже — консервативный: закрывает clickjacking на
   // /admin (главный названный в аудите риск) и базовые MIME/referrer-дыры,
