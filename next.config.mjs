@@ -21,7 +21,7 @@ const nextConfig = {
   // не добавляет. Набор ниже — консервативный: закрывает clickjacking на
   // /admin (главный названный в аудите риск) и базовые MIME/referrer-дыры,
   // без строгого CSP на script-src/connect-src — сайт грузит Stripe,
-  // Paddle, Ko-fi, Supabase, Google/Meta пиксели и шрифты, и жёсткий CSP
+  // Paddle, Creem, Supabase, Google/Meta пиксели и шрифты, и жёсткий CSP
   // без полной инвентаризации доменов скорее сломает чекаут/оплату, чем
   // защитит. frame-ancestors в CSP продублирован с X-Frame-Options для
   // старых браузеров, которые CSP не читают.
