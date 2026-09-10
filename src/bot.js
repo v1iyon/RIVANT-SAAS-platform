@@ -154,7 +154,28 @@ bot.command("start", async (ctx) => {
     return ctx.reply(getDict("EN").linkInvalid);
   }
 
-  await supabase.from("users").update({ telegram_id: ctx.from.id }).eq("id", linkToken.user_id);
+  // ФІКС (залишок з аудиту, п. "silent link failure"): раніше помилка тут
+  // взагалі не перевірялась. Якщо цей Telegram вже прив'язаний до ІНШОГО
+  // users.id (users_telegram_id_key — UNIQUE), update падав з 23505, але
+  // код все одно позначав токен used=true і бот бадьоро відповідав
+  // "успішно підключено" — людина лишалась непідключеною назавжди
+  // (токен одноразовий, перегенерувати з тим самим результатом не вийде).
+  const { error: linkUpdateErr } = await supabase
+    .from("users")
+    .update({ telegram_id: ctx.from.id })
+    .eq("id", linkToken.user_id);
+
+  if (linkUpdateErr) {
+    if (linkUpdateErr.code === "23505") {
+      // Токен навмисно НЕ позначаємо used — власник токена не винен, що
+      // хтось інший (або він сам зі старого чату) вже зайняв цей Telegram;
+      // нехай спробує ще раз тим самим посиланням після відв'язки.
+      return ctx.reply(getDict("EN").linkAlreadyTaken);
+    }
+    console.error("telegram link: failed to set telegram_id:", linkUpdateErr);
+    return ctx.reply(getDict("EN").linkInvalid);
+  }
+
   await supabase.from("link_tokens").update({ used: true }).eq("token", token);
 
   const { data: user } = await supabase

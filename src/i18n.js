@@ -5,6 +5,7 @@ const DICT = {
     welcomeNoToken: "Hi! 👋 This is the RIVANT bot.\n\nTo connect your account, open the cabinet on the website and click \"Connect Telegram\" — I'll handle the rest.",
     linkInvalid: "This link is invalid or already used. Generate a new one in the cabinet.",
     linkSuccess: "✅ Telegram successfully connected to your RIVANT account!",
+    linkAlreadyTaken: "⚠️ This Telegram account is already linked to a different RIVANT account. Unlink it there first, or contact support if that's not you.",
     accountNotFound: (siteUrl) => `Account not found. Connect Telegram via the cabinet: ${siteUrl}`,
     menu: {
       summary: "📊 Today's summary",
@@ -52,6 +53,7 @@ const DICT = {
     welcomeNoToken: "Hallo! 👋 Das ist der RIVANT-Bot.\n\nUm Ihr Konto zu verbinden, öffnen Sie das Kundenkonto auf der Website und klicken Sie auf „Telegram verbinden\" — den Rest erledige ich.",
     linkInvalid: "Dieser Link ist ungültig oder bereits verwendet. Erstellen Sie einen neuen im Kundenkonto.",
     linkSuccess: "✅ Telegram wurde erfolgreich mit Ihrem RIVANT-Konto verbunden!",
+    linkAlreadyTaken: "⚠️ Dieses Telegram-Konto ist bereits mit einem anderen RIVANT-Konto verknüpft. Trennen Sie es dort zuerst oder kontaktieren Sie den Support.",
     accountNotFound: (siteUrl) => `Konto nicht gefunden. Verbinden Sie Telegram über das Kundenkonto: ${siteUrl}`,
     menu: {
       summary: "📊 Übersicht heute",
@@ -99,6 +101,7 @@ const DICT = {
     welcomeNoToken: "Привіт! 👋 Це бот RIVANT.\n\nЩоб підключити акаунт, відкрийте кабінет на сайті та натисніть «Підключити Telegram» — я все зроблю сам.",
     linkInvalid: "Посилання недійсне або вже використане. Згенеруйте нове в кабінеті.",
     linkSuccess: "✅ Telegram успішно підключено до вашого акаунту RIVANT!",
+    linkAlreadyTaken: "⚠️ Цей Telegram вже прив'язаний до іншого акаунту RIVANT. Спочатку відв'яжіть його там або зверніться до підтримки, якщо це не ви.",
     accountNotFound: (siteUrl) => `Акаунт не знайдено. Підключіть Telegram через кабінет на сайті: ${siteUrl}`,
     menu: {
       summary: "📊 Зведення за сьогодні",
