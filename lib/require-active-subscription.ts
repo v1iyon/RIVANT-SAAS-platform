@@ -15,6 +15,7 @@
 // побочные эффекты здесь не нужно.
 import { createClient } from "@supabase/supabase-js";
 import { requireUser, UnauthorizedError } from "@/lib/require-user";
+import { ensureTrial } from "@/lib/ensure-trial";
 
 const admin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -64,18 +65,14 @@ export async function requireActiveSubscription(): Promise<ActiveSubscription> {
   // опросил /api/subscription-status (например, прямой curl сразу после
   // регистрации), у пользователя ещё может не быть строки в subscriptions.
   if (!sub) {
-    const periodEnd = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
-    const { data: created } = await admin
-      .from("subscriptions")
-      .insert({
-        user_id: appUser.id,
-        plan: "trial",
-        access_status: "trial",
-        current_period_end: periodEnd,
-      })
-      .select("plan, access_status, current_period_end")
-      .maybeSingle();
-        sub = created ?? null;
+    // ФІКС (антифрод, 10.09.2026): раніше тут була окрема копія створення
+    // trial-підписки, яка ніколи не перевіряла і не писала used_trial_emails —
+    // саме тому антифрод-таблиця лишалась порожньою, а видалення акаунта
+    // дозволяло нескінченно перевидавати триал. Тепер використовуємо ту ж
+    // саму ensureTrial(), що й /api/subscription-status.
+    const { sub: created, error } = await ensureTrial(appUser.id, email);
+    if (error) throw new SubscriptionInactiveError("no_subscription");
+    sub = created;
   }
 
   if (!sub) throw new SubscriptionInactiveError("no_subscription");
