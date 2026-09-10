@@ -17,7 +17,6 @@ export function LossCalculator() {
   const [techEfficiency, setTechEfficiency] = useState([60]);
   const [marketingChannels, setMarketingChannels] = useState([4]);
   const [email, setEmail] = useState("");
-  const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   // Honeypot: реальні люди це поле ніколи не бачать і не заповнюють (сховане
   // стилями нижче) — той самий патерн, що вже є в components/contact-form.tsx.
   // Раніше в цьому компоненті такого поля не було взагалі, хоча запит іде в
@@ -50,26 +49,39 @@ export function LossCalculator() {
     }).format(convert(value));
   };
 
-  const handleSend = async () => {
-    if (!email.trim()) return;
-    setStatus("sending");
-    try {
-      const res = await fetch("/api/contact", {
+  // ФІКС (маркетинговий розворот, 2026-09-10): раніше кнопка вела в
+  // /api/contact і закінчувалась тупиковим "Дякуємо, зв'яжемось протягом
+  // 24 годин" — людина щойно побачила конкретну суму втрат і одразу
+  // впиралась у стіну очікування замість можливості одразу щось з цим
+  // зробити. Тепер: лід у /api/contact все одно летить (маркетологу
+  // потрібні ці дані навіть від тих, хто не дорегеструється — джерело
+  // "loss_calculator" видно в /admin/leads), але це fire-and-forget —
+  // ми НЕ чекаємо відповіді і НЕ показуємо "успішно надіслано". Замість
+  // цього одразу відкриваємо модалку реєстрації (той самий механізм, що
+  // й у кнопок тарифів — rivant:open-signup) з уже підставленим email,
+  // щоб не змушувати вводити його вдруге. Помилка запису ліда — не привід
+  // блокувати людину, що йде реєструватись, тому тут немає catch->error UI.
+  const handleGetStarted = () => {
+    const trimmedEmail = email.trim();
+
+    if (trimmedEmail) {
+      fetch("/api/contact", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: "Loss Calculator Lead",
           company: "—",
-          email,
+          email: trimmedEmail,
           source: "loss_calculator",
           website_url: websiteUrl,
           message: `Estimated monthly loss: ${formatCurrency(estimatedLoss)}\n\nInputs:\n- Monthly Revenue: ${formatCurrency(revenue[0])}\n- Team Size: ${teamSize[0]}\n- Tech Stack Efficiency: ${techEfficiency[0]}%\n- Marketing Channels: ${marketingChannels[0]}`,
         }),
-      });
-      setStatus(res.ok ? "sent" : "error");
-    } catch {
-      setStatus("error");
+      }).catch((e) => console.error("loss-calculator lead capture failed:", e));
     }
+
+    window.dispatchEvent(
+      new CustomEvent("rivant:open-signup", { detail: trimmedEmail ? { email: trimmedEmail } : undefined })
+    );
   };
 
   return (
@@ -128,46 +140,44 @@ export function LossCalculator() {
         </div>
 
         <div className="mt-6 space-y-3">
-          {status === "sent" ? (
-            <p className="text-center text-green-500 font-medium py-4">
-              {language === "UA" ? "Дякуємо! Ми зв'яжемося з вами протягом 24 годин." : language === "DE" ? "Danke! Wir melden uns innerhalb von 24 Stunden." : "Thanks! We'll be in touch within 24 hours."}
-            </p>
-          ) : (
-            <>
-              {/* Honeypot: видиме ботам, невидиме людям. Не чіпати tabIndex/
-                  autoComplete/position — саме так поле лишається невидимим
-                  і недосяжним для реальної клавіатурної навігації. */}
-              <input
-                type="text"
-                name="website_url"
-                tabIndex={-1}
-                autoComplete="off"
-                aria-hidden="true"
-                value={websiteUrl}
-                onChange={(e) => setWebsiteUrl(e.target.value)}
-                style={{ position: "absolute", left: "-9999px", width: "1px", height: "1px", opacity: 0 }}
-              />
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder={language === "UA" ? "Ваша робоча пошта" : language === "DE" ? "Ihre geschäftliche E-Mail" : "Your work email"}
-                className="w-full px-4 py-3 bg-input border border-border rounded-lg text-foreground"
-              />
-              {status === "error" && (
-                <p className="text-sm text-destructive text-center">
-                  {language === "UA" ? "Щось пішло не так. Спробуйте ще раз." : language === "DE" ? "Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut." : "Something went wrong. Please try again."}
-                </p>
-              )}
-              <Button
-                className="w-full py-6 text-lg font-bold shadow-lg hover:shadow-primary/20"
-                onClick={handleSend}
-                disabled={status === "sending" || !email.trim()}
-              >
-                {status === "sending" ? "..." : (T.requestDemoBtn || "Send Request")}
-              </Button>
-            </>
-          )}
+          <p className="text-center text-sm text-muted-foreground">
+            {language === "UA"
+              ? "RIVANT допоможе зупинити ці втрати. Зареєструйтесь і отримайте 14 днів безкоштовно."
+              : language === "DE"
+              ? "RIVANT hilft, diese Verluste zu stoppen. Registrieren Sie sich und erhalten Sie 14 Tage kostenlos."
+              : "RIVANT can help you stop losing this money. Sign up and get 14 days free."}
+          </p>
+
+          {/* Honeypot: видиме ботам, невидиме людям. Не чіпати tabIndex/
+              autoComplete/position — саме так поле лишається невидимим
+              і недосяжним для реальної клавіатурної навігації. */}
+          <input
+            type="text"
+            name="website_url"
+            tabIndex={-1}
+            autoComplete="off"
+            aria-hidden="true"
+            value={websiteUrl}
+            onChange={(e) => setWebsiteUrl(e.target.value)}
+            style={{ position: "absolute", left: "-9999px", width: "1px", height: "1px", opacity: 0 }}
+          />
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder={language === "UA" ? "Ваша робоча пошта" : language === "DE" ? "Ihre geschäftliche E-Mail" : "Your work email"}
+            className="w-full px-4 py-3 bg-input border border-border rounded-lg text-foreground"
+          />
+          <Button
+            className="w-full py-6 text-lg font-bold shadow-lg hover:shadow-primary/20"
+            onClick={handleGetStarted}
+          >
+            {language === "UA"
+              ? "Спробувати безкоштовно 14 днів"
+              : language === "DE"
+              ? "14 Tage kostenlos testen"
+              : "Start your 14-day free trial"}
+          </Button>
         </div>
       </div>
     </section>

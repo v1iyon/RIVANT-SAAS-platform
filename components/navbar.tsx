@@ -185,7 +185,14 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
   // pricing-section) открыть модалку регистрации, не поднимая стейт
   // модалки на уровень страницы: window.dispatchEvent(new CustomEvent("rivant:open-signup"))
   useEffect(() => {
-    const handleOpenSignup = () => {
+    // FIX (loss-calculator CTA, 2026-09-10): событие теперь может нести
+    // detail.email — калькулятор потерь на лендинге собирает email ДО
+    // открытия этой модалки, и вместо мёртвого "спасибо, свяжемся с вами"
+    // сразу ведёт человека в форму регистрации с уже заполненным полем,
+    // чтобы не заставлять вводить его дважды. Источник опционален — все
+    // остальные вызыватели (pricing-section, live-demo-modal) просто не
+    // передают detail, и всё работает как раньше.
+    const handleOpenSignup = (e: Event) => {
       // FIX: раньше здесь всегда стоял authMode "signup" — даже если человек
       // уже регистрировался в этом браузере раньше. Теперь смотрим на флаг
       // rivant_has_account (ставится ниже при успешном входе/регистрации) и
@@ -200,6 +207,8 @@ export function Navbar({ onOpenDemo }: NavbarProps) {
       setOtpStep(false);
       setAgreedTerms(false);
       setAgreedPrivacy(false);
+      const prefillEmail = (e as CustomEvent<{ email?: string }>).detail?.email;
+      if (prefillEmail) setLoginEmail(prefillEmail);
       setIsLoginModalOpen(true);
       setIsMobileMenuOpen(false);
     };
