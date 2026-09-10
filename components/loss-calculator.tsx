@@ -169,7 +169,7 @@ export function LossCalculator() {
             className="w-full px-4 py-3 bg-input border border-border rounded-lg text-foreground"
           />
           <Button
-            className="w-full py-6 text-lg font-bold shadow-lg hover:shadow-primary/20"
+            className="w-full h-auto min-h-14 py-3 px-4 text-base sm:text-lg font-bold shadow-lg hover:shadow-primary/20 whitespace-normal leading-snug text-center"
             onClick={handleGetStarted}
           >
             {language === "UA"
