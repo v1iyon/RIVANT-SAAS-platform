@@ -9,6 +9,54 @@ interface Review {
   business_name: string | null;
   rating: number;
   comment: string;
+  created_at: string;
+  avatar_url: string | null;
+}
+
+// Формат даты+времени публикации отзыва под текущий язык интерфейса.
+// Берём created_at как есть (UTC из БД) — Intl сам переводит его в
+// локальное время браузера читателя, отдельного поля таймзоны не нужно.
+function formatReviewDate(iso: string, language: string) {
+  const locale = language === "UA" ? "uk-UA" : language === "DE" ? "de-DE" : "en-US";
+  try {
+    return new Intl.DateTimeFormat(locale, {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date(iso));
+  } catch {
+    return "";
+  }
+}
+
+// Реальное фото, если модератор/автор его указали; иначе — кружок с
+// инициалами (как было раньше). Если ссылка на фото битая (404, CORS,
+// удалённый хостинг и т.п.) — тихо откатываемся на инициалы через onError,
+// а не показываем сломанную иконку.
+function ReviewAvatar({ name, avatarUrl }: { name: string; avatarUrl: string | null }) {
+  const [failed, setFailed] = useState(false);
+  const initials = name.split(" ").map((n) => n[0]).join("").slice(0, 2);
+
+  if (avatarUrl && !failed) {
+    return (
+      <img
+        src={avatarUrl}
+        alt={name}
+        onError={() => setFailed(true)}
+        className="w-12 h-12 rounded-full object-cover shrink-0 border border-white/10"
+        loading="lazy"
+        referrerPolicy="no-referrer"
+      />
+    );
+  }
+
+  return (
+    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+      <span className="text-sm font-semibold text-primary">{initials}</span>
+    </div>
+  );
 }
 
 export function Testimonials() {
@@ -129,15 +177,16 @@ export function Testimonials() {
                   </div>
 
                   <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                      <span className="text-sm font-semibold text-primary">
-                        {item.author_name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
-                      </span>
-                    </div>
+                    <ReviewAvatar name={item.author_name} avatarUrl={item.avatar_url} />
                     <div>
                       <div className="font-medium text-foreground">{item.author_name}</div>
                       {item.business_name && (
                         <div className="text-sm text-muted-foreground">{item.business_name}</div>
+                      )}
+                      {item.created_at && (
+                        <div className="text-xs text-muted-foreground/70 mt-0.5">
+                          {formatReviewDate(item.created_at, language)}
+                        </div>
                       )}
                     </div>
                   </div>
