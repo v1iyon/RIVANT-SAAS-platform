@@ -18,6 +18,24 @@ interface Review {
   content?: string | null;
   status: string;
   created_at: string;
+  // Фото из личного кабинета автора (users.avatar_url), подтягивается на
+  // бэкенде через join — здесь только для наглядности при модерации, вручную
+  // это поле не редактируется.
+  avatar_url?: string | null;
+}
+
+function formatDate(iso: string) {
+  try {
+    return new Intl.DateTimeFormat("ru-RU", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date(iso));
+  } catch {
+    return iso;
+  }
 }
 
 // Достаём текст отзыва независимо от того, как называется колонка в БД.
@@ -35,6 +53,26 @@ function statusBadgeClass(status: string) {
   if (status === "approved") return "bg-green-500/20 text-green-400";
   if (status === "rejected") return "bg-red-500/20 text-red-400";
   return "bg-gray-500/20 text-gray-400";
+}
+
+// Маленький кружок с фото/инициалами — чисто чтобы модератор видел то же,
+// что увидит посетитель сайта, не более.
+function AvatarPreview({ name, avatarUrl }: { name: string; avatarUrl?: string | null }) {
+  if (avatarUrl) {
+    return (
+      <img
+        src={avatarUrl}
+        alt={name}
+        className="h-8 w-8 rounded-full object-cover border border-gray-700"
+        referrerPolicy="no-referrer"
+      />
+    );
+  }
+  return (
+    <div className="h-8 w-8 rounded-full bg-gray-700 flex items-center justify-center text-[10px] text-gray-300">
+      {name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
+    </div>
+  );
 }
 
 export default function AdminReviewsPage() {
@@ -92,9 +130,13 @@ export default function AdminReviewsPage() {
         {pending.map((r) => (
           <div key={r.id} className="rounded-xl border border-gray-800 bg-gray-900 p-4">
             <div className="mb-2 flex items-start justify-between">
-              <div>
-                <p className="font-medium text-white">{r.author_name}</p>
-                {r.business_name && <p className="text-xs text-gray-500">{r.business_name}</p>}
+              <div className="flex items-center gap-3">
+                <AvatarPreview name={r.author_name} avatarUrl={r.avatar_url} />
+                <div>
+                  <p className="font-medium text-white">{r.author_name}</p>
+                  {r.business_name && <p className="text-xs text-gray-500">{r.business_name}</p>}
+                  <p className="text-xs text-gray-600">{formatDate(r.created_at)}</p>
+                </div>
               </div>
               <span className="text-sm text-yellow-400">
                 {"★".repeat(r.rating)}
@@ -132,9 +174,13 @@ export default function AdminReviewsPage() {
         {other.map((r) => (
           <div key={r.id} className="rounded-xl border border-gray-800 bg-gray-900/50 p-4">
             <div className="mb-2 flex items-start justify-between">
-              <div>
-                <p className="font-medium text-white">{r.author_name}</p>
-                {r.business_name && <p className="text-xs text-gray-500">{r.business_name}</p>}
+              <div className="flex items-center gap-3">
+                <AvatarPreview name={r.author_name} avatarUrl={r.avatar_url} />
+                <div>
+                  <p className="font-medium text-white">{r.author_name}</p>
+                  {r.business_name && <p className="text-xs text-gray-500">{r.business_name}</p>}
+                  <p className="text-xs text-gray-600">{formatDate(r.created_at)}</p>
+                </div>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-sm text-yellow-400">
