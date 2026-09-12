@@ -129,22 +129,22 @@ export default function AdminReviewsPage() {
         {pending.length === 0 && <p className="text-sm text-gray-500">Нет отзывов на рассмотрении.</p>}
         {pending.map((r) => (
           <div key={r.id} className="rounded-xl border border-gray-800 bg-gray-900 p-4">
-            <div className="mb-2 flex items-start justify-between">
-              <div className="flex items-center gap-3">
+            <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex items-center gap-3 min-w-0">
                 <AvatarPreview name={r.author_name} avatarUrl={r.avatar_url} />
-                <div>
-                  <p className="font-medium text-white">{r.author_name}</p>
-                  {r.business_name && <p className="text-xs text-gray-500">{r.business_name}</p>}
+                <div className="min-w-0">
+                  <p className="font-medium text-white break-words">{r.author_name}</p>
+                  {r.business_name && <p className="text-xs text-gray-500 break-words">{r.business_name}</p>}
                   <p className="text-xs text-gray-600">{formatDate(r.created_at)}</p>
                 </div>
               </div>
-              <span className="text-sm text-yellow-400">
+              <span className="text-sm text-yellow-400 shrink-0">
                 {"★".repeat(r.rating)}
                 {"☆".repeat(5 - r.rating)}
               </span>
             </div>
             <p className="mb-3 text-sm text-gray-300">{getReviewText(r)}</p>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => updateStatus(r.id, "approved")}
                 className="rounded-lg bg-green-600 px-4 py-1.5 text-sm text-white hover:bg-green-700"
@@ -159,7 +159,7 @@ export default function AdminReviewsPage() {
               </button>
               <button
                 onClick={() => deleteReview(r.id, r.author_name)}
-                className="ml-auto rounded-lg bg-gray-700 px-4 py-1.5 text-sm text-gray-300 hover:bg-gray-600"
+                className="rounded-lg bg-gray-700 px-4 py-1.5 text-sm text-gray-300 hover:bg-gray-600 sm:ml-auto"
               >
                 Удалить
               </button>
@@ -173,16 +173,16 @@ export default function AdminReviewsPage() {
         {other.length === 0 && <p className="text-sm text-gray-500">Пока пусто.</p>}
         {other.map((r) => (
           <div key={r.id} className="rounded-xl border border-gray-800 bg-gray-900/50 p-4">
-            <div className="mb-2 flex items-start justify-between">
-              <div className="flex items-center gap-3">
+            <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex items-center gap-3 min-w-0">
                 <AvatarPreview name={r.author_name} avatarUrl={r.avatar_url} />
-                <div>
-                  <p className="font-medium text-white">{r.author_name}</p>
-                  {r.business_name && <p className="text-xs text-gray-500">{r.business_name}</p>}
+                <div className="min-w-0">
+                  <p className="font-medium text-white break-words">{r.author_name}</p>
+                  {r.business_name && <p className="text-xs text-gray-500 break-words">{r.business_name}</p>}
                   <p className="text-xs text-gray-600">{formatDate(r.created_at)}</p>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 <span className="text-sm text-yellow-400">
                   {"★".repeat(r.rating)}
                   {"☆".repeat(5 - r.rating)}
@@ -193,7 +193,7 @@ export default function AdminReviewsPage() {
               </div>
             </div>
             <p className="mb-3 text-sm text-gray-300">{getReviewText(r)}</p>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               {r.status === "approved" ? (
                 <button
                   onClick={() => updateStatus(r.id, "rejected")}
@@ -211,7 +211,7 @@ export default function AdminReviewsPage() {
               )}
               <button
                 onClick={() => deleteReview(r.id, r.author_name)}
-                className="ml-auto rounded-lg bg-red-900/40 px-3 py-1.5 text-sm text-red-300 hover:bg-red-900/70"
+                className="rounded-lg bg-red-900/40 px-3 py-1.5 text-sm text-red-300 hover:bg-red-900/70 sm:ml-auto"
               >
                 Удалить
               </button>
