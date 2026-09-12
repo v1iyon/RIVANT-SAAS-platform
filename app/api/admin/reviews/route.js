@@ -22,12 +22,21 @@ export async function PUT(req) {
   const authError = requireAdmin(req);
   if (authError) return authError;
 
-  const { id, status } = await req.json();
+  const { id, status, avatar_url } = await req.json();
   if (!id || !["approved", "rejected"].includes(status)) {
     return Response.json({ error: "invalid input" }, { status: 400 });
   }
 
-  const { error } = await admin.from("reviews").update({ status }).eq("id", id);
+  // avatar_url — необязательное поле, которое админ может проставить/убрать
+  // прямо при модерации (например, клиент прислал фото в переписке, а не
+  // через форму отзыва). undefined в теле запроса = поле не трогаем;
+  // "" или null = явно очистить (вернуться к аватару-заглушке с инициалами).
+  const update = { status };
+  if (avatar_url !== undefined) {
+    update.avatar_url = avatar_url ? String(avatar_url).trim() : null;
+  }
+
+  const { error } = await admin.from("reviews").update(update).eq("id", id);
   if (error) return Response.json({ error: error.message }, { status: 500 });
 
   return Response.json({ ok: true });
