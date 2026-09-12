@@ -13,7 +13,7 @@ const admin = createClient(
 export async function GET() {
   const { data: reviews } = await admin
     .from("reviews")
-    .select("author_name, business_name, rating, comment, created_at")
+    .select("author_name, business_name, rating, comment, created_at, avatar_url")
     .eq("status", "approved")
     .order("created_at", { ascending: false })
     .limit(9);
@@ -55,7 +55,7 @@ export async function POST(req) {
   }
 
   const body = await req.json();
-  const { author_name, business_name, rating, comment } = body;
+  const { author_name, business_name, rating, comment, avatar_url } = body;
 
   // Honeypot — см. lib/rate-limit.js. Фронту нужно добавить скрытое поле
   // с тем же именем в форму отзыва.
@@ -70,6 +70,20 @@ export async function POST(req) {
     return Response.json({ error: "invalid rating" }, { status: 400 });
   }
 
+  // avatar_url необязателен: автор может прислать ссылку на своё реальное
+  // фото (например, LinkedIn/Gravatar). Валидируем по минимуму — только
+  // https-ссылка разумной длины, никакого upload'а файлов тут нет. Модератор
+  // всё равно видит это поле в app/admin/reviews перед одобрением и может
+  // очистить его, если ссылка выглядит подозрительно.
+  let cleanAvatarUrl = null;
+  if (avatar_url) {
+    const trimmed = String(avatar_url).trim();
+    if (trimmed.length > 500 || !/^https:\/\//i.test(trimmed)) {
+      return Response.json({ error: "invalid avatar_url" }, { status: 400 });
+    }
+    cleanAvatarUrl = trimmed;
+  }
+
   const { data: user } = await admin.from("users").select("id").eq("email", email).maybeSingle();
   if (!user) return Response.json({ error: "user not found" }, { status: 404 });
 
@@ -79,6 +93,7 @@ export async function POST(req) {
     business_name: business_name || null,
     rating,
     comment,
+    avatar_url: cleanAvatarUrl,
     status: "pending",
   });
 
