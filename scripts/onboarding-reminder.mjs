@@ -30,9 +30,9 @@ const REMINDER_AFTER_DAYS = 2; // раньше этого — не дёргае�
 const COOLDOWN_HOURS = 24 * 7; // не чаще раза в неделю на один и тот же бизнес
 
 const REMINDER_MESSAGE = {
-  UA: (name) => `Привіт! Помітили, що "${name}" ще не підключив(-ла) жодного джерела доходу — без цього прогнози й сповіщення про ризики не працюють. Заходьте в кабінет → "Інтеграції", це займає пару хвилин.`,
-  EN: (name) => `Hey! We noticed "${name}" hasn't connected a revenue source yet — forecasts and risk alerts won't work without one. Head to the dashboard → "Integrations", it only takes a couple of minutes.`,
-  DE: (name) => `Hallo! Uns ist aufgefallen, dass für "${name}" noch keine Umsatzquelle verbunden ist — ohne sie funktionieren Prognosen und Risiko-Warnungen nicht. Im Dashboard unter "Integrationen" dauert das nur ein paar Minuten.`,
+  UA: (name) => Привіт! Помітили, що "${name}" ще не підключив(-ла) жодного джерела доходу — без цього прогнози й сповіщення про ризики не працюють. Заходьте в кабінет → "Інтеграції", це займає пару хвилин.,
+  EN: (name) => Hey! We noticed "${name}" hasn't connected a revenue source yet — forecasts and risk alerts won't work without one. Head to the dashboard → "Integrations", it only takes a couple of minutes.,
+  DE: (name) => Hallo! Uns ist aufgefallen, dass für "${name}" noch keine Umsatzquelle verbunden ist — ohne sie funktionieren Prognosen und Risiko-Warnungen nicht. Im Dashboard unter "Integrationen" dauert das nur ein paar Minuten.,
 };
 
 export async function runOnboardingReminder() {
@@ -47,10 +47,30 @@ export async function runOnboardingReminder() {
     await logError({ source: "onboarding_reminder", message: "Failed to load businesses list", details: businessesErr.message });
     return { checked: 0, sent: 0 };
   }
-  if (!businesses || !businesses.length) return { checked: 0, sent: 0 };
+  if (!businesses  !businesses.length) return { checked: 0, sent: 0 };
+
+  // Дубли от гонки при создании бизнеса (см. lib/get-primary-business.ts) не
+  // должны получать отдельное напоминание под своим (часто устаревшим)
+  // именем — иначе владелец видит в Telegram напоминания, которые не
+  // соответствуют тому, что он видит и переименовывает в кабинете. Кабинет
+  // всегда работает с самым первым созданным бизнесом пользователя — здесь
+  // повторяем ту же логику (не можем импортировать .ts-хелпер: этот скрипт
+  // гоняется через обычный `node`, без ts-node/tsx).
+  const userIds = [...new Set(businesses.map((b) => b.user_id))];
+  const { data: allUserBusinesses } = await admin
+    .from("businesses")
+    .select("id, user_id, created_at")
+    .in("user_id", userIds)
+    .order("created_at", { ascending: true });
+
+  const primaryIdByUser = new Map();
+  for (const b of allUserBusinesses  []) {
+    if (!primaryIdByUser.has(b.user_id)) primaryIdByUser.set(b.user_id, b.id);
+  }
 
   let sent = 0;
   for (const business of businesses) {
+    if (primaryIdByUser.get(business.user_id) !== business.id) continue; // не основной бизнес — пропускаем
     try {
       const { data: integrations } = await admin
         .from("integrations")
@@ -66,12 +86,12 @@ export async function runOnboardingReminder() {
       const contact = await getUserContact(business.user_id);
       if (!contact.telegramId && !(contact.emailEnabled && contact.email)) continue; // некому слать
 
-      const messageFn = REMINDER_MESSAGE[contact.userLang] || REMINDER_MESSAGE.EN;
+      const messageFn = REMINDER_MESSAGE[contact.userLang]  REMINDER_MESSAGE.EN;
       const wasSent = await sendAlert({
         businessId: business.id,
         type: "onboarding_incomplete_setup",
         severity: "low",
-        message: messageFn(business.name || "—"),
+        message: messageFn(business.name  "—"),
         userLang: contact.userLang,
         telegramId: contact.telegramId,
         email: contact.email,
@@ -80,8 +100,8 @@ export async function runOnboardingReminder() {
       });
       if (wasSent) sent += 1;
     } catch (err) {
-      console.error(`onboarding-reminder: failed for business ${business.id}:`, err);
-      await logError({ source: "onboarding_reminder", message: `Failed for business ${business.id}`, details: String(err) });
+      console.error(onboarding-reminder: failed for business ${business.id}:, err);
+      await logError({ source: "onboarding_reminder", message: Failed for business ${business.id}, details: String(err) });
       // Не прерываем остальных — один сбойный бизнес не должен блокировать напоминания другим.
     }
   }
