@@ -1,0 +1,24 @@
+# shopify.app.toml  (put in repo root, deploy with: shopify app deploy)
+# Replace client_id with the Client ID from Shopify Partners / Dev Dashboard. Verify field names against your CLI version.
+name = "RIVANT"
+client_id = "YOUR_SHOPIFY_CLIENT_ID"
+application_url = "https://rivant-os.com/api/shopify/auth"
+embedded = false
+
+[access_scopes]
+scopes = "read_orders,read_products,read_analytics,read_inventory"
+use_legacy_install_flow = true
+
+[auth]
+redirect_urls = ["https://rivant-os.com/api/shopify/callback"]
+
+[webhooks]
+api_version = "2026-10"
+
+  [[webhooks.subscriptions]]
+  topics = ["app/uninstalled"]
+  uri = "https://rivant-os.com/api/shopify/webhooks"
+
+  [[webhooks.subscriptions]]
+  compliance_topics = ["customers/data_request", "customers/redact", "shop/redact"]
+  uri = "https://rivant-os.com/api/shopify/webhooks"

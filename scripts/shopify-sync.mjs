@@ -1,23 +1,24 @@
 // scripts/shopify-sync.mjs
 //
-// Этап 3 плана — sync-модуль для Shopify. Паттерн 1:1 с sync-stripe-core.mjs:
-// расшифровать ключ -> запрос к API провайдера -> запись в expenses -> логирование ошибок.
+// Sync-модуль для Shopify. Паттерн 1:1 с sync-stripe-core.mjs:
+// получить токен -> запрос к API провайдера -> запись в expenses/metrics_computed -> логирование ошибок.
 //
-// Пишем в expenses и СТОИМОСТЬ ДОСТАВКИ (shipping, есть прямо в заказе), и
-// СЕБЕСТОИМОСТЬ ТОВАРА (cost of goods). Себестоимость лежит на уровне
-// inventory_item.cost, а не в заказе — поэтому на каждый УНИКАЛЬНЫЙ variant
-// в окне синка уходит 2 доп. запроса к Shopify (variant → inventory_item_id,
-// потом inventory_item → cost). Кэшируем в рамках одного прогона, чтобы один
-// и тот же товар не запрашивался повторно, если его купили несколько раз.
-// Важно: Shopify REST ограничивает ~2 запроса/сек (leaky bucket), поэтому
-// запросы идут последовательно с небольшой паузой — при большом ассортименте
-// синк может занять заметное время (сотни SKU = пара минут). Если вариант
-// не имеет cost, выставленного в Shopify (поле пустое), он просто
-// пропускается — его нельзя посчитать, это не баг.
+// ТОЛЬКО GraphQL Admin API (требование Shopify App Store для новых публичных приложений).
+// Пишем в expenses СТОИМОСТЬ ДОСТАВКИ (shipping) и СЕБЕСТОИМОСТЬ ТОВАРА (cost_of_goods).
+// Себестоимость берётся тем же запросом заказов: lineItems.variant.inventoryItem.unitCost —
+// никаких доп. запросов на каждый variant и пауз под REST-лимит. Если unitCost у товара не
+// заполнен в Shopify, строка пропускается (посчитать нельзя — это не баг). Если у токена нет
+// доступа к unitCost (ACCESS_DENIED), синк продолжается без себестоимости, а не падает —
+// в этом случае добавьте scope read_inventory.
+//
+// Токен: интеграции, подключённые через OAuth (config.auth === "oauth"), берут токен через
+// getValidAccessToken() (шифрование + авто-refresh). Старые интеграции с ручным ключом
+// продолжают работать через resolveShopifyToken() до миграции клиентов.
 import { createClient } from "@supabase/supabase-js";
 import { decrypt } from "../lib/crypto.js";
 import { logError } from "../lib/log-error.js";
 import { resolveShopifyToken } from "../lib/shopify-token.mjs";
+import { getValidAccessToken } from "../lib/shopify/server.mjs";
 import { sendAlertToBusiness, getUserContact, generateAlertExplanation, detectExpenseAnomaly, getAlertSensitivity } from "../lib/alerts.mjs";
 
 const SYNC_FAILURE_MESSAGE = {
@@ -28,7 +29,7 @@ const SYNC_FAILURE_MESSAGE = {
 
 function getSyncFailureReason(error) {
   const message = String(error?.message || "").toLowerCase();
-  if (message.includes("app_not_installed")) return "app_not_installed";
+  if (message.includes("app_not_installed") || message.includes("not connected")) return "app_not_installed";
   if (message.includes("401") || message.includes("403") || message.includes("token")) return "access_denied";
   if (message.includes("404") || message.includes("not found")) return "store_not_found";
   return "connection_failed";
@@ -67,18 +68,23 @@ const SHIPPING_SPIKE_MESSAGE = {
   DE: (pct, avg, today, date) => `Versandkosten sind am ${date} um ${pct}% gestiegen (von $${Math.round(avg)} auf $${Math.round(today)})`,
 };
 
-const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+const LOW_STOCK_MESSAGE = {
+  UA: (name, quantity) => `Низький залишок: «${name}» — ${quantity} шт.`,
+  EN: (name, quantity) => `Low stock: “${name}” — ${quantity} units.`,
+  DE: (name, quantity) => `Niedriger Bestand: „${name}“ — ${quantity} Stück.`,
+};
 
-const SHOPIFY_API_VERSION = "2024-01";
+const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY);
+
+const SHOPIFY_API_VERSION = process.env.SHOPIFY_API_VERSION || "2026-10";
 const LOW_STOCK_THRESHOLD = 20;
 
-// ФІКС: раніше всі дати тут рахувались по UTC (new Date(...).toISOString().
-// slice(0,10)), тоді як sync-stripe-core.mjs уже давно перейшов на локальну
-// дату бізнеса (див. коментар на початку того файлу — саме ця розбіжність
-// колись ламала дайджест/бота). Для shopify-authoritative бізнесів (дефолтний
-// revenue_mode: "replace") це та сама проблема: замовлення під кінець/початок
-// локального дня потрапляли не в той стовпчик графіка. Тепер Shopify рахує
-// дати так само, як Stripe — по timezone бізнесу.
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// ФІКС: дати рахуються по локальному timezone бізнесу (як у sync-stripe-core.mjs),
+// а не по UTC — інакше замовлення біля межі дня потрапляли в не той стовпчик графіка.
 function localDateStr(tz, dateInput) {
   const d = typeof dateInput === "string" || typeof dateInput === "number" ? new Date(dateInput) : dateInput;
   try {
@@ -88,19 +94,8 @@ function localDateStr(tz, dateInput) {
   }
 }
 
-// ФІКС (аудит #2, знахідка №5 — SSRF): раніше, якщо в домені вже БУЛА
-// крапка (а крапка є в БУДЬ-ЯКОМУ зовнішньому домені або IP-адресі), домен
-// пропускався як є без жодної перевірки. Будь-який клієнт міг підключити
-// "Shopify"-інтеграцію з shop_domain "169.254.169.254" (IP
-// cloud-metadata сервісу AWS/GCP) або довільним доменом — і сервер сам
-// ходив туди HTTPS POST-запитом із реальним Shopify access token у
-// заголовках (класичний SSRF: сканування внутрішньої мережі, крадіжка
-// cloud credentials, використання інфраструктури як проксі).
-//
-// Тепер приймаємо ТІЛЬКИ валідний *.myshopify.com хостнейм (єдиний формат,
-// у якому Shopify взагалі видає access tokens при підключенні магазину).
-// Все інше — null, і виклик далі по ланцюгу повинен трактувати null як
-// помилку підключення, а не намагатись синкати.
+// ФІКС (аудит #2, знахідка №5 — SSRF): приймаємо ТІЛЬКИ валідний *.myshopify.com хостнейм.
+// Все інше — null, і виклик трактує null як помилку підключення, а не намагається синкати.
 function normalizeShopDomain(raw) {
   let domain = (raw || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
   if (!domain) return null;
@@ -111,18 +106,37 @@ function normalizeShopDomain(raw) {
   return valid ? domain : null;
 }
 
-// Извлекает числовой ID из Shopify GraphQL GID вида "gid://shopify/Order/123456".
-// Нужен, чтобы line_items[].variant_id остался числом — на него завязан REST-запрос
-// в fetchVariantCost() ниже, который мы намеренно не трогаем.
+// Числовой ID из GID вида "gid://shopify/Order/123456" (нужен для стабильных ключей алертов).
 function extractNumericId(gid) {
   if (!gid) return null;
   const match = String(gid).match(/(\d+)$/);
   return match ? Number(match[1]) : null;
 }
 
-const ORDERS_GRAPHQL_QUERY = `
-  query GetOrders($cursor: String, $searchQuery: String!) {
-    orders(first: 100, after: $cursor, query: $searchQuery, sortKey: CREATED_AT) {
+// ---------- GraphQL ----------
+async function gqlRequest(shopDomain, token, query, variables) {
+  const res = await fetch(`https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`, {
+    method: "POST",
+    headers: { "X-Shopify-Access-Token": token, "Content-Type": "application/json" },
+    body: JSON.stringify({ query, variables }),
+    signal: AbortSignal.timeout(30000),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Shopify API error: ${res.status} — ${body.slice(0, 300)}`);
+  }
+  return res.json();
+}
+
+const hasCode = (errors, code) => (errors || []).some((e) => e.extensions?.code === code);
+
+// ВАЖНО: запит навмисно не торкається customer, email, shippingAddress, billingAddress та інших
+// protected-полів — Shopify гейтить Protected Customer Data на рівні ПОЛІВ у GraphQL, тож цей
+// запит працює без Protected Customer Data approval.
+function ordersQuery(includeCost) {
+  return `
+  query GetOrders($cursor: String, $searchQuery: String!, $pageSize: Int!) {
+    orders(first: $pageSize, after: $cursor, query: $searchQuery, sortKey: CREATED_AT) {
       pageInfo { hasNextPage endCursor }
       edges {
         node {
@@ -132,61 +146,46 @@ const ORDERS_GRAPHQL_QUERY = `
           currentTotalPriceSet { shopMoney { amount } }
           totalShippingPriceSet { shopMoney { amount } }
           shippingLines(first: 10) { edges { node { originalPriceSet { shopMoney { amount } } } } }
-          lineItems(first: 100) {
-            edges { node { quantity variant { id } } }
+          lineItems(first: 50) {
+            edges { node { quantity variant { id${includeCost ? " inventoryItem { unitCost { amount } }" : ""} } } }
           }
         }
       }
     }
-  }
-`;
+  }`;
+}
 
-// ВАЖНО: этот запрос намеренно не трогает customer, email, shippingAddress,
-// billingAddress и другие protected-поля. Shopify гейтит Protected Customer
-// Data на уровне ПОЛЕЙ в GraphQL (в отличие от REST /orders.json, который
-// блокирует весь endpoint целиком, даже если фильтровать fields= в запросе —
-// см. https://shopify.dev/docs/apps/launch/protected-customer-data). Поэтому
-// этот запрос работает без всякого approval — ни для нас, ни для клиентов,
-// и так будет для любого нового клиента, которого подключат в будущем.
-// Если когда-нибудь понадобится email/адрес клиента — тогда и только тогда
-// нужен будет Protected Customer Data approval, и только на эти поля.
 async function fetchShopifyOrders(shopDomain, token, sinceIso) {
   const searchQuery = `created_at:>='${sinceIso}'`;
-  const endpoint = `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`;
 
-  const allOrders = [];
+  let allOrders = [];
   let cursor = null;
   let hasNextPage = true;
-  let pageGuard = 0; // защита от бесконечного цикла, если Shopify начнёт врать про hasNextPage
+  let includeCost = true;
+  let pageSize = 50; // при MAX_COST_EXCEEDED автоматически уменьшаем
+  let throttles = 0;
+  let pageGuard = 0; // защита от бесконечного цикла
 
-  while (hasNextPage && pageGuard < 50) {
+  while (hasNextPage && pageGuard < 200) {
     pageGuard += 1;
-
-    const res = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "X-Shopify-Access-Token": token,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        query: ORDERS_GRAPHQL_QUERY,
-        variables: { cursor, searchQuery },
-      }),
-    });
-
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      throw new Error(`Shopify API error: ${res.status} — ${body.slice(0, 300)}`);
-    }
-
-    const data = await res.json();
+    const data = await gqlRequest(shopDomain, token, ordersQuery(includeCost), { cursor, searchQuery, pageSize });
 
     if (data.errors) {
-      // THROTTLED — GraphQL cost-based rate limit, не то же самое что REST leaky
-      // bucket. Ждём и повторяем один раз ту же страницу вместо падения синка.
-      const throttled = data.errors.some((e) => e.extensions?.code === "THROTTLED");
-      if (throttled) {
+      if (hasCode(data.errors, "THROTTLED") && throttles < 10) {
+        throttles += 1;
         await sleep(2000);
+        continue;
+      }
+      if (hasCode(data.errors, "MAX_COST_EXCEEDED") && pageSize > 5) {
+        pageSize = Math.max(5, Math.floor(pageSize / 2));
+        continue;
+      }
+      if (includeCost && hasCode(data.errors, "ACCESS_DENIED")) {
+        console.warn(`Shopify ${shopDomain}: no access to inventoryItem.unitCost — cost of goods skipped (add read_inventory scope)`);
+        includeCost = false;
+        cursor = null;
+        allOrders = [];
+        hasNextPage = true;
         continue;
       }
       throw new Error(`Shopify GraphQL error: ${JSON.stringify(data.errors).slice(0, 300)}`);
@@ -195,11 +194,7 @@ async function fetchShopifyOrders(shopDomain, token, sinceIso) {
     const ordersPage = data.data?.orders;
     if (!ordersPage) break;
 
-    for (const edge of ordersPage.edges) {
-      const node = edge.node;
-      // Реshape под REST-совместимую форму, которую уже ожидает остальной файл
-      // (computeRevenueByDate, computeCogsByDate, main) — так их не пришлось
-      // переписывать вообще.
+    for (const { node } of ordersPage.edges) {
       allOrders.push({
         id: extractNumericId(node.id),
         created_at: node.createdAt,
@@ -211,10 +206,15 @@ async function fetchShopifyOrders(shopDomain, token, sinceIso) {
         shipping_lines: (node.shippingLines?.edges || []).map((e) => ({
           price: e.node.originalPriceSet?.shopMoney?.amount ?? "0",
         })),
-        line_items: (node.lineItems?.edges || []).map((e) => ({
-          quantity: e.node.quantity,
-          variant_id: extractNumericId(e.node.variant?.id),
-        })),
+        line_items: (node.lineItems?.edges || []).map((e) => {
+          const raw = e.node.variant?.inventoryItem?.unitCost?.amount;
+          const unitCost = raw == null ? null : Number(raw);
+          return {
+            quantity: e.node.quantity,
+            variant_id: extractNumericId(e.node.variant?.id),
+            unit_cost: Number.isFinite(unitCost) ? unitCost : null,
+          };
+        }),
       });
     }
 
@@ -225,39 +225,69 @@ async function fetchShopifyOrders(shopDomain, token, sinceIso) {
   return allOrders;
 }
 
-async function fetchLowStockVariants(shopDomain, token) {
-  const lowStock = [];
-  let url = `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/products.json?status=active&limit=250&fields=id,title,variants`;
-
-  while (url) {
-    const res = await fetch(url, { headers: { "X-Shopify-Access-Token": token } });
-    if (!res.ok) throw new Error(`Shopify inventory request failed: ${res.status}`);
-    const data = await res.json();
-    for (const product of data.products || []) {
-      for (const variant of product.variants || []) {
-        const quantity = Number(variant.inventory_quantity);
-        if (variant.inventory_management === "shopify" && Number.isFinite(quantity) && quantity < LOW_STOCK_THRESHOLD) {
-          lowStock.push({ id: variant.id, productTitle: product.title, variantTitle: variant.title, quantity });
+const LOW_STOCK_QUERY = `
+  query LowStock($cursor: String, $pageSize: Int!) {
+    products(first: $pageSize, after: $cursor, query: "status:active") {
+      pageInfo { hasNextPage endCursor }
+      edges {
+        node {
+          title
+          variants(first: 50) {
+            edges { node { id title inventoryQuantity inventoryItem { tracked } } }
+          }
         }
       }
     }
-    const links = res.headers.get("link") || "";
-    const next = links.match(/<([^>]+)>;\s*rel="next"/);
-    url = next?.[1] || null;
+  }
+`;
+
+// Остатки нужны только для операционных алертов; ошибка здесь не должна ронять синк продаж
+// (main() ловит её отдельно). Варианты сверх первых 50 у одного товара не проверяются.
+async function fetchLowStockVariants(shopDomain, token) {
+  const lowStock = [];
+  let cursor = null;
+  let hasNextPage = true;
+  let pageSize = 20;
+  let throttles = 0;
+  let pageGuard = 0;
+
+  while (hasNextPage && pageGuard < 200) {
+    pageGuard += 1;
+    const data = await gqlRequest(shopDomain, token, LOW_STOCK_QUERY, { cursor, pageSize });
+
+    if (data.errors) {
+      if (hasCode(data.errors, "THROTTLED") && throttles < 10) {
+        throttles += 1;
+        await sleep(2000);
+        continue;
+      }
+      if (hasCode(data.errors, "MAX_COST_EXCEEDED") && pageSize > 3) {
+        pageSize = Math.max(3, Math.floor(pageSize / 2));
+        continue;
+      }
+      throw new Error(`Shopify GraphQL error: ${JSON.stringify(data.errors).slice(0, 300)}`);
+    }
+
+    const page = data.data?.products;
+    if (!page) break;
+
+    for (const { node: product } of page.edges) {
+      for (const { node: variant } of product.variants?.edges || []) {
+        const quantity = Number(variant.inventoryQuantity);
+        if (variant.inventoryItem?.tracked && Number.isFinite(quantity) && quantity < LOW_STOCK_THRESHOLD) {
+          lowStock.push({ id: extractNumericId(variant.id), productTitle: product.title, variantTitle: variant.title, quantity });
+        }
+      }
+    }
+
+    hasNextPage = page.pageInfo?.hasNextPage ?? false;
+    cursor = page.pageInfo?.endCursor ?? null;
   }
   return lowStock;
 }
 
-const LOW_STOCK_MESSAGE = {
-  UA: (name, quantity) => `Низький залишок: «${name}» — ${quantity} шт.`,
-  EN: (name, quantity) => `Low stock: “${name}” — ${quantity} units.`,
-  DE: (name, quantity) => `Niedriger Bestand: „${name}“ — ${quantity} Stück.`,
-};
-
-// current_total_price — це вже фактична сума ПІСЛЯ повернень/часткових
-// рефандів (на відміну від total_price, який лишається "як було виставлено
-// на момент замовлення"). Скасовані замовлення (cancelled_at заповнений)
-// прибираємо повністю — це не дохід.
+// current_total_price — це вже фактична сума ПІСЛЯ повернень/часткових рефандів.
+// Скасовані замовлення (cancelled_at заповнений) прибираємо повністю — це не дохід.
 function computeRevenueByDate(orders, tz) {
   const byDate = {};
   for (const order of orders) {
@@ -269,8 +299,19 @@ function computeRevenueByDate(orders, tz) {
   return byDate;
 }
 
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+// Себестоимость по заказам окна синка — unit_cost уже пришёл в самом заказе.
+function computeCogsByDate(orders, tz) {
+  const byDate = {};
+  for (const order of orders) {
+    const date = localDateStr(tz, order.created_at);
+    let orderCogs = 0;
+    for (const li of order.line_items || []) {
+      if (li.unit_cost == null) continue; // нет данных о себестоимости — пропускаем, не выдумываем
+      orderCogs += li.unit_cost * (Number(li.quantity) || 0);
+    }
+    if (orderCogs > 0) byDate[date] = (byDate[date] || 0) + orderCogs;
+  }
+  return byDate;
 }
 
 async function getBusinessUserId(businessId) {
@@ -278,37 +319,16 @@ async function getBusinessUserId(businessId) {
   return data?.user_id ?? null;
 }
 
-// Записує дохід із Shopify-замовлень у metrics_computed — ту саму таблицю,
-// яку sync-stripe-core.mjs заповнює зі Stripe. Один рядок на business+date,
-// тому робимо read-modify-write, а не сліпий upsert: інакше перезаписали б
-// cost/margin_pct/orders, які вже там могли лежати. revenue_mode:
-//   "replace" (дефолт) — Shopify стає єдиним джерелом revenue за цю дату,
-//     бо в переважній більшості випадків це ті самі гроші, що вже пройшли
-//     через Stripe як платіжний процесор всередині Shopify Checkout —
-//     складання дало б задвоєний дохід.
-//   "add" — користувач явно позначив магазин як окремий, незалежний потік
-//     грошей (чекбокс при підключенні) — тоді додаємо суму до того, що вже
-//     є в рядку, а не заміщуємо.
+// Записує дохід із Shopify-замовлень у metrics_computed — ту саму таблицю, яку
+// sync-stripe-core.mjs заповнює зі Stripe. Один рядок на business+date, тому read-modify-write.
+// revenue_mode:
+//   "replace" (дефолт) — Shopify єдине джерело revenue за дату (гроші вже пройшли через Stripe
+//     всередині Shopify Checkout — складання дало б задвоєння).
+//   "add" — магазин є окремим потоком грошей — додаємо до того, що вже є в рядку.
 //
-// ФІКС (задвоєння доходу в режимі "add"): `revenue`, який приходить сюди —
-// це ЗАВЖДИ повна сума Shopify-замовлень за ЦЮ ДАТУ, порахована наново з
-// нуля (вікно синку sinceIso = now-48h перечитує Shopify щогодини заново,
-// той самий підхід, що і в sync-stripe-core.mjs). Раніше в режимі "add" код
-// робив `revenue + existing.revenue` — тобто щогодини ПОВНА денна сума
-// Shopify додавалась ЗНОВУ поверх того, що вже лежало в рядку (а там уже
-// могла бути ця ж сума з попереднього прогону). За добу, поки дата
-// залишається в 48-годинному вікні синку (тобто ~48 годинних прогонів),
-// дохід за день роздувався в десятки разів. Особливо критично саме для
-// "add" — це режим для магазину БЕЗ Stripe, тобто нема іншого синку, який
-// би перезаписав/скинув це значення між прогонами Shopify.
-//
-// Тепер пам'ятаємо в integrations.config.shopify_revenue_memo (мапа
-// date -> сума, яку МИ САМІ востаннє туди додали) і на кожному прогоні
-// додаємо лише РІЗНИЦЮ між новою порахованою сумою і тим, що вже додавали
-// раніше за цю дату — так дохід за день завжди дорівнює РЕАЛЬНІЙ денній
-// сумі Shopify (+ те, що додав іще хтось інший, напр. Stripe), а не сумі
-// по кількості прогонів синку. Мапа обрізається до останніх 3 днів, щоб
-// integrations.config не росло безмежно.
+// ФІКС (задвоєння в режимі "add"): `revenue` — це ЗАВЖДИ повна сума за дату, порахована
+// наново (вікно 48h перечитується щогодини). Тому в integrations.config.shopify_revenue_memo
+// пам'ятаємо, що МИ додали за кожну дату, і додаємо лише РІЗНИЦЮ. Мапа обрізається до 3 днів.
 async function upsertShopifyRevenue({ integrationId, integrationConfig, businessId, date, revenue, orders, revenueMode }) {
   const { data: existing } = await admin
     .from("metrics_computed")
@@ -329,9 +349,6 @@ async function upsertShopifyRevenue({ integrationId, integrationConfig, business
     finalOrders = Math.max(0, (existing?.orders || 0) + orders - Number(memo[`${date}_orders`] || 0));
     memo[date] = revenue;
     memo[`${date}_orders`] = orders;
-    // Тримаємо мемо лише за останні 3 дні (той самий порядок величини, що
-    // й вікно синку) — старі дати більше не оновлюються, зберігати їх сенсу
-    // немає.
     const cutoff = new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString().slice(0, 10);
     for (const key of Object.keys(memo)) {
       const keyDate = key.replace(/_orders$/, "");
@@ -365,73 +382,12 @@ async function upsertShopifyRevenue({ integrationId, integrationConfig, business
       .update({ config: { ...(integrationConfig || {}), shopify_revenue_memo: updatedMemo } })
       .eq("id", integrationId);
     if (memoErr) console.error(`Failed to persist shopify_revenue_memo for integration ${integrationId}:`, memoErr.message);
-    else integrationConfig.shopify_revenue_memo = updatedMemo; // тримаємо in-memory config актуальним для наступних дат у цьому ж прогоні
+    else integrationConfig.shopify_revenue_memo = updatedMemo; // in-memory config актуальний для наступних дат
   }
 }
 
-// cost of goods для одного variant_id: variant → inventory_item_id → inventory_item.cost.
-// Возвращает число (юнит-себестоимость в валюте магазина) или null, если Shopify
-// не отдал cost (поле не заполнено продавцом) либо variant/inventory_item недоступны.
-async function fetchVariantCost(shopDomain, token, variantId) {
-  try {
-    const variantRes = await fetch(
-      `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/variants/${variantId}.json?fields=id,inventory_item_id`,
-      { headers: { "X-Shopify-Access-Token": token } }
-    );
-    if (!variantRes.ok) return null;
-    const variantData = await variantRes.json();
-    const inventoryItemId = variantData?.variant?.inventory_item_id;
-    if (!inventoryItemId) return null;
-
-    await sleep(550); // грубый троттлинг под лимит Shopify REST (~2 req/sec)
-
-    const itemRes = await fetch(
-      `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/inventory_items/${inventoryItemId}.json?fields=id,cost`,
-      { headers: { "X-Shopify-Access-Token": token } }
-    );
-    if (!itemRes.ok) return null;
-    const itemData = await itemRes.json();
-    const cost = Number(itemData?.inventory_item?.cost);
-    return Number.isFinite(cost) ? cost : null;
-  } catch {
-    return null;
-  }
-}
-
-// Себестоимость по всем заказам окна синка. Каждый уникальный variant_id
-// запрашивается у Shopify максимум один раз за прогон (кэш в variantCostCache),
-// даже если товар встречается в нескольких заказах.
-async function computeCogsByDate(shopDomain, token, orders, tz) {
-  const uniqueVariantIds = [
-    ...new Set(
-      orders.flatMap((o) => (o.line_items || []).map((li) => li.variant_id).filter(Boolean))
-    ),
-  ];
-
-  const variantCostCache = new Map();
-  for (const variantId of uniqueVariantIds) {
-    const cost = await fetchVariantCost(shopDomain, token, variantId);
-    variantCostCache.set(variantId, cost);
-    await sleep(550);
-  }
-
-  const byDate = {};
-  for (const order of orders) {
-    const date = localDateStr(tz, order.created_at);
-    let orderCogs = 0;
-    for (const li of order.line_items || []) {
-      const unitCost = li.variant_id ? variantCostCache.get(li.variant_id) : null;
-      if (unitCost == null) continue; // нет данных о себестоимости — пропускаем, не выдумываем
-      orderCogs += unitCost * (Number(li.quantity) || 0);
-    }
-    if (orderCogs > 0) byDate[date] = (byDate[date] || 0) + orderCogs;
-  }
-  return byDate;
-}
-
-// Пишем в expenses идемпотентно: сначала удаляем старую запись за этот
-// business+date+source+category, потом вставляем свежую — иначе каждый
-// часовой прогон будет плодить дубли (в expenses нет unique-констрейнта).
+// Пишем в expenses идемпотентно: удаляем старую запись за business+date+source+category,
+// потом вставляем свежую (в expenses нет unique-констрейнта).
 async function upsertExpense({ businessId, date, amount, category, source, description }) {
   await admin
     .from("expenses")
@@ -442,13 +398,8 @@ async function upsertExpense({ businessId, date, amount, category, source, descr
     .eq("category", category);
 
   if (amount > 0) {
-    // ФІКС (аудит 03.09.2026, той самий, що і причина category:"cost_of_goods"
-    // вище): раніше .insert() тут не перевірявся взагалі — саме тому
-    // constraint violation ('cogs' не в дозволеному ENUM) роками мовчки
-    // губила КОЖЕН запис COGS, і ніхто цього не бачив ні в логах, ні в
-    // /admin. Тепер будь-яка помилка вставки (ця чи будь-яка майбутня —
-    // новий constraint, зміна схеми і т.д.) хоча б потрапляє в error_logs,
-    // замість того щоб просто зникати.
+    // ФІКС (аудит 03.09.2026): помилка .insert() раніше ігнорувалась (constraint на category
+    // мовчки губив COGS). Тепер будь-яка помилка вставки потрапляє в error_logs.
     const { error } = await admin.from("expenses").insert({
       business_id: businessId,
       amount,
@@ -470,13 +421,7 @@ async function upsertExpense({ businessId, date, amount, category, source, descr
 }
 
 async function main(businessId) {
-  // ФІКС: той самий self-lockout, що і в sync-stripe-core.mjs — status:
-  // "connected" в фільтрі означав, що інтеграція, яка хоч раз впала в
-  // "error", більше ніколи не потрапляла в цей запит (ні в кроні, ні в
-  // ручному "Sync now"), а тільки успішний прогін всередині циклу повертав
-  // status назад на "connected". Один тимчасовий збій — і синк зупинявся
-  // назавжди без ручного втручання. Тепер підбираємо і "error" теж, щоб
-  // синк міг сам спробувати ще раз і сам відновити статус при успіху.
+  // ФІКС (self-lockout): підбираємо і "error" теж, щоб синк міг сам відновитись після збою.
   let query = admin
     .from("integrations")
     .select("id, business_id, api_key_encrypted, config")
@@ -502,16 +447,22 @@ async function main(businessId) {
       if (!shopDomain) {
         throw new Error("Missing shop_domain in integration config");
       }
-      const secretPayload = decrypt(integ.api_key_encrypted);
-      const token = await resolveShopifyToken({
-        shopDomain,
-        secretPayload,
-        clientId: integ.config?.client_id || null,
-      });
+
+      let token;
+      if (integ.config?.auth === "oauth") {
+        token = await getValidAccessToken(shopDomain); // расшифровка + авто-refresh
+      } else {
+        // Legacy: ручной ключ (оставлено до миграции существующих клиентов на OAuth)
+        const secretPayload = decrypt(integ.api_key_encrypted);
+        token = await resolveShopifyToken({
+          shopDomain,
+          secretPayload,
+          clientId: integ.config?.client_id || null,
+        });
+      }
+
       const orders = await fetchShopifyOrders(shopDomain, token, sinceIso);
 
-      // Локальна дата бізнеса — той самий підхід, що вже застосований у
-      // sync-stripe-core.mjs, щоб дати з обох джерел завжди збігались.
       const { data: bizRow } = await admin
         .from("businesses")
         .select("timezone")
@@ -539,23 +490,9 @@ async function main(businessId) {
         });
       }
 
-      const cogsByDate = await computeCogsByDate(shopDomain, token, orders, bizTimezone);
-      // ФІКС (аудит 03.09.2026, критична знахідка): реальний CHECK-констрейнт
-      // на public.expenses.category (див. supabase/migrations/
-      // 20260828000000_baseline_catchup.sql, дамп продової схеми) дозволяє
-      // ЛИШЕ 'advertising' | 'shipping' | 'cost_of_goods' | 'other'. Тут
-      // раніше писалось category: "cogs" — рядок, якого констрейнт не знає.
-      // upsertExpense() не перевіряє помилку .insert() (мовчки ковтає її),
-      // тому COGS для ВСІХ Shopify-клієнтів ніколи фізично не потрапляв у
-      // expenses — жодного запису, жодного логу. Маржа на дашборді/в
-      // прогнозі/в AI-поясненнях рахувалась БЕЗ реальної собівартості
-      // товару (лише orders/expenses.total, куди cogs теж не потрапляв) —
-      // тобто систематично завищена для кожного Shopify-магазину відтоді,
-      // як цей код почав працювати. Читачі expenses (lib/margin.js,
-      // /api/metrics, forecast) сумують ВСІ рядки без фільтра по category,
-      // тому перейменування тут нічого іншого не ламає — вплив лише на сам
-      // .insert()/detectExpenseAnomaly нижче, куди тепер пишеться і
-      // читається однакове, справжнє значення constraint'у.
+      const cogsByDate = computeCogsByDate(orders, bizTimezone);
+      // category ДОЛЖНА быть 'cost_of_goods' (CHECK на public.expenses.category:
+      // 'advertising' | 'shipping' | 'cost_of_goods' | 'other').
       for (const [date, amount] of Object.entries(cogsByDate)) {
         await upsertExpense({
           businessId: integ.business_id,
@@ -567,9 +504,6 @@ async function main(businessId) {
         });
       }
 
-      // revenue_mode: "replace" (дефолт, чекбокс не відмічений при
-      // підключенні) чи "add" (окремий потік грошей) — див. коментар біля
-      // upsertShopifyRevenue вище.
       const revenueMode = integ.config?.revenue_mode === "add" ? "add" : "replace";
       const revenueByDate = computeRevenueByDate(orders, bizTimezone);
       const ordersCountByDate = {};
@@ -590,14 +524,8 @@ async function main(businessId) {
         });
       }
 
-      // Перевіряємо аномалії тільки за останню (найсвіжішу) дату з вікна синку —
-      // старіші дні вже перевірялись на попередніх прогонах. Умисно НЕ додаємо
-      // окремий "order_volume_drop" — падіння продажів вже ловить revenue_drop
-      // зі Stripe-синку, дублювати той самий сигнал іншими словами тільки додасть
-      // зайвих сповіщень, а не користі.
-      // Товарні залишки перевіряються лише для операційних сповіщень: вони не
-      // впливають на фінансові метрики, графіки чи текст прогнозу. Відсутність
-      // дозволу read_products не повинна зупиняти синхронізацію продажів.
+      // Товарні залишки — лише операційні сповіщення; відсутність доступу до товарів
+      // не повинна зупиняти синхронізацію продажів.
       try {
         const lowStockVariants = await fetchLowStockVariants(shopDomain, token);
         if (lowStockVariants.length) {
@@ -611,11 +539,7 @@ async function main(businessId) {
               type: `low_stock_shopify_${item.id}`,
               severity: item.quantity === 0 ? "critical" : item.quantity <= 5 ? "medium" : "low",
               message,
-              // На відміну від фінансових алертів (24h), тут довший cooldown:
-              // власник вже побачив сповіщення, зв'язався з постачальником,
-              // і поки товар їде — щоденне повторення того самого "закінчується"
-              // тільки дратує, нової інформації воно не несе. Раз на тиждень
-              // достатньо, щоб нагадати, якщо товар досі не поповнили.
+              // Довший cooldown (раз на тиждень): власник уже побачив сповіщення.
               cooldownHours: 24 * 7,
             });
           }
@@ -624,6 +548,8 @@ async function main(businessId) {
         console.warn(`Shopify inventory check skipped for ${integ.id}:`, inventoryError.message);
       }
 
+      // Аномалії — лише за останню дату вікна синку. Окремий "order_volume_drop" не додаємо:
+      // падіння продажів вже ловить revenue_drop зі Stripe-синку.
       const allDates = [...new Set([...Object.keys(byDate), ...Object.keys(cogsByDate)])].sort();
       if (allDates.length) {
         const latestDate = allDates[allDates.length - 1];
@@ -684,6 +610,14 @@ async function main(businessId) {
         .from("integrations")
         .update({ last_synced_at: new Date().toISOString(), status: "connected", config: cleanConfig })
         .eq("id", integ.id);
+
+      // Синхронизируем статус OAuth-подключения (для индикатора в дашборде)
+      if (integ.config?.auth === "oauth") {
+        await admin
+          .from("shopify_connections")
+          .update({ sync_status: "done", last_sync_at: new Date().toISOString() })
+          .eq("shop_domain", shopDomain);
+      }
 
       console.log(
         `Shopify synced business ${integ.business_id}: ${Object.keys(byDate).length} day(s) shipping, ${Object.keys(cogsByDate).length} day(s) cogs`
